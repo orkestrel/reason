@@ -997,9 +997,9 @@ export function factToKey(source: Fact, identities: Map<object, number>): string
 		String(source.terms.length),
 		...Array.from(source.terms, (term) => termToKey(term, identities)),
 	]
-	// Length-prefix every part so the ' ' delimiter cannot be forged by a
+	// Length-prefix every part so the '\0' delimiter cannot be forged by a
 	// term string that embeds it — the framing stays injective.
-	return parts.map((part) => `${part.length}:${part}`).join(' ')
+	return parts.map((part) => `${part.length}:${part}`).join('\0')
 }
 
 /**
