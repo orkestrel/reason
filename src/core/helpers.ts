@@ -877,7 +877,7 @@ export function findDuplicates(items: readonly { readonly id: string }[]): reado
  * different predicate+arity pairing; `terms.length` is always a plain
  * non-negative integer (never itself contains a space) so it needs no prefix.
  *
- * @param fact - The fact (or premise pattern) to key
+ * @param source - The fact (or premise pattern) to key
  * @returns The predicate+arity key string
  *
  * @example
@@ -888,9 +888,9 @@ export function findDuplicates(items: readonly { readonly id: string }[]): reado
  * factToArityKey(fact('b', 'human', ['x', 'y'])) // arity 2 — distinct key
  * ```
  */
-export function factToArityKey(fact: Fact): string {
-	const p = fact.predicate
-	return `${p.length}:${p} ${fact.terms.length}`
+export function factToArityKey(source: Fact): string {
+	const p = source.predicate
+	return `${p.length}:${p} ${source.terms.length}`
 }
 
 /**
@@ -1148,7 +1148,7 @@ export function subjectToFacts(subject: Subject, trace: string[]): Fact[] {
  * `terms`, and returns the remainder once each, in the conclusion's authored
  * order.
  *
- * @param inference - The inference whose conclusion is checked against its premises
+ * @param source - The inference whose conclusion is checked against its premises
  * @returns The unbound conclusion variable names, once each, authored order
  *
  * @example
@@ -1160,9 +1160,9 @@ export function subjectToFacts(subject: Subject, trace: string[]): Fact[] {
  * ) // ['?y'] — '?x' is bound by the premise, '?y' is not
  * ```
  */
-export function findUnboundVariables(inference: Inference): readonly string[] {
+export function findUnboundVariables(source: Inference): readonly string[] {
 	const bound = new Set<string>()
-	for (const premise of inference.premises) {
+	for (const premise of source.premises) {
 		for (const term of premise.terms) {
 			if (isString(term) && term.startsWith('?')) bound.add(term)
 		}
@@ -1170,7 +1170,7 @@ export function findUnboundVariables(inference: Inference): readonly string[] {
 
 	const unbound: string[] = []
 	const seen = new Set<string>()
-	for (const term of inference.conclusion.terms) {
+	for (const term of source.conclusion.terms) {
 		if (!isString(term) || !term.startsWith('?')) continue
 		if (bound.has(term) || seen.has(term)) continue
 		seen.add(term)
@@ -1971,7 +1971,7 @@ export function removeFactor(group: FactorGroup, id: string): FactorGroup {
  * conclusion.
  *
  * @param definition - The definition to insert into
- * @param rule - The rule to insert
+ * @param source - The rule to insert
  * @param target - Optional rule id to insert immediately after
  * @returns A fresh definition with `rule` inserted
  * @throws {@link ReasonError} `'TARGET'` when `target` names no existing rule
@@ -1985,10 +1985,10 @@ export function removeFactor(group: FactorGroup, id: string): FactorGroup {
  */
 export function appendRule(
 	definition: LogicalDefinition,
-	rule: Rule,
+	source: Rule,
 	target?: string,
 ): LogicalDefinition {
-	return { ...definition, rules: appendById(definition.rules, rule, target) }
+	return { ...definition, rules: appendById(definition.rules, source, target) }
 }
 
 /**
@@ -1996,7 +1996,7 @@ export function appendRule(
  * at the start, or immediately before `target`.
  *
  * @param definition - The definition to insert into
- * @param rule - The rule to insert
+ * @param source - The rule to insert
  * @param target - Optional rule id to insert immediately before
  * @returns A fresh definition with `rule` inserted
  * @throws {@link ReasonError} `'TARGET'` when `target` names no existing rule
@@ -2010,10 +2010,10 @@ export function appendRule(
  */
 export function prependRule(
 	definition: LogicalDefinition,
-	rule: Rule,
+	source: Rule,
 	target?: string,
 ): LogicalDefinition {
-	return { ...definition, rules: prependById(definition.rules, rule, target) }
+	return { ...definition, rules: prependById(definition.rules, source, target) }
 }
 
 /**
@@ -2021,7 +2021,7 @@ export function prependRule(
  * preserving its position (appends when absent).
  *
  * @param definition - The definition to update
- * @param rule - The replacement rule
+ * @param source - The replacement rule
  * @returns A fresh definition with the rule replaced
  *
  * @example
@@ -2032,8 +2032,8 @@ export function prependRule(
  * replaceRule(definition, rule('r1', [], atom('a', 'equals', false)))
  * ```
  */
-export function replaceRule(definition: LogicalDefinition, rule: Rule): LogicalDefinition {
-	return { ...definition, rules: replaceById(definition.rules, rule) }
+export function replaceRule(definition: LogicalDefinition, source: Rule): LogicalDefinition {
+	return { ...definition, rules: replaceById(definition.rules, source) }
 }
 
 /**
@@ -2067,7 +2067,7 @@ export function removeRule(definition: LogicalDefinition, id: string): LogicalDe
  * rounded solution feeds forward.
  *
  * @param definition - The definition to insert into
- * @param equation - The equation to insert
+ * @param source - The equation to insert
  * @param target - Optional equation id to insert immediately after
  * @returns A fresh definition with `equation` inserted
  * @throws {@link ReasonError} `'TARGET'` when `target` names no existing equation
@@ -2081,10 +2081,10 @@ export function removeRule(definition: LogicalDefinition, id: string): LogicalDe
  */
 export function appendEquation(
 	definition: SymbolicDefinition,
-	equation: Equation,
+	source: Equation,
 	target?: string,
 ): SymbolicDefinition {
-	return { ...definition, equations: appendById(definition.equations, equation, target) }
+	return { ...definition, equations: appendById(definition.equations, source, target) }
 }
 
 /**
@@ -2092,7 +2092,7 @@ export function appendEquation(
  * then-insert at the start, or immediately before `target`.
  *
  * @param definition - The definition to insert into
- * @param equation - The equation to insert
+ * @param source - The equation to insert
  * @param target - Optional equation id to insert immediately before
  * @returns A fresh definition with `equation` inserted
  * @throws {@link ReasonError} `'TARGET'` when `target` names no existing equation
@@ -2106,10 +2106,10 @@ export function appendEquation(
  */
 export function prependEquation(
 	definition: SymbolicDefinition,
-	equation: Equation,
+	source: Equation,
 	target?: string,
 ): SymbolicDefinition {
-	return { ...definition, equations: prependById(definition.equations, equation, target) }
+	return { ...definition, equations: prependById(definition.equations, source, target) }
 }
 
 /**
@@ -2117,7 +2117,7 @@ export function prependEquation(
  * PLACE, preserving its position (appends when absent).
  *
  * @param definition - The definition to update
- * @param equation - The replacement equation
+ * @param source - The replacement equation
  * @returns A fresh definition with the equation replaced
  *
  * @example
@@ -2130,9 +2130,9 @@ export function prependEquation(
  */
 export function replaceEquation(
 	definition: SymbolicDefinition,
-	equation: Equation,
+	source: Equation,
 ): SymbolicDefinition {
-	return { ...definition, equations: replaceById(definition.equations, equation) }
+	return { ...definition, equations: replaceById(definition.equations, source) }
 }
 
 /**
@@ -2218,7 +2218,7 @@ export function removeVariable(definition: SymbolicDefinition, name: string): Sy
  * id-keyed dedup.
  *
  * @param definition - The definition to insert into
- * @param fact - The fact to insert
+ * @param source - The fact to insert
  * @param target - Optional fact id to insert immediately after
  * @returns A fresh definition with `fact` inserted
  * @throws {@link ReasonError} `'TARGET'` when `target` names no existing fact
@@ -2232,10 +2232,10 @@ export function removeVariable(definition: SymbolicDefinition, name: string): Sy
  */
 export function appendFact(
 	definition: InferentialDefinition,
-	fact: Fact,
+	source: Fact,
 	target?: string,
 ): InferentialDefinition {
-	return { ...definition, facts: appendById(definition.facts, fact, target) }
+	return { ...definition, facts: appendById(definition.facts, source, target) }
 }
 
 /**
@@ -2243,7 +2243,7 @@ export function appendFact(
  * insert at the start, or immediately before `target`.
  *
  * @param definition - The definition to insert into
- * @param fact - The fact to insert
+ * @param source - The fact to insert
  * @param target - Optional fact id to insert immediately before
  * @returns A fresh definition with `fact` inserted
  * @throws {@link ReasonError} `'TARGET'` when `target` names no existing fact
@@ -2257,10 +2257,10 @@ export function appendFact(
  */
 export function prependFact(
 	definition: InferentialDefinition,
-	fact: Fact,
+	source: Fact,
 	target?: string,
 ): InferentialDefinition {
-	return { ...definition, facts: prependById(definition.facts, fact, target) }
+	return { ...definition, facts: prependById(definition.facts, source, target) }
 }
 
 /**
@@ -2268,7 +2268,7 @@ export function prependFact(
  * PLACE, preserving its position (appends when absent).
  *
  * @param definition - The definition to update
- * @param fact - The replacement fact
+ * @param source - The replacement fact
  * @returns A fresh definition with the fact replaced
  *
  * @example
@@ -2279,8 +2279,11 @@ export function prependFact(
  * replaceFact(definition, fact('f1', 'human', ['plato']))
  * ```
  */
-export function replaceFact(definition: InferentialDefinition, fact: Fact): InferentialDefinition {
-	return { ...definition, facts: replaceById(definition.facts, fact) }
+export function replaceFact(
+	definition: InferentialDefinition,
+	source: Fact,
+): InferentialDefinition {
+	return { ...definition, facts: replaceById(definition.facts, source) }
 }
 
 /**
@@ -2312,7 +2315,7 @@ export function removeFact(definition: InferentialDefinition, id: string): Infer
  * returns on first success.
  *
  * @param definition - The definition to insert into
- * @param inference - The inference to insert
+ * @param source - The inference to insert
  * @param target - Optional inference id to insert immediately after
  * @returns A fresh definition with `inference` inserted
  * @throws {@link ReasonError} `'TARGET'` when `target` names no existing inference
@@ -2329,10 +2332,10 @@ export function removeFact(definition: InferentialDefinition, id: string): Infer
  */
 export function appendInference(
 	definition: InferentialDefinition,
-	inference: Inference,
+	source: Inference,
 	target?: string,
 ): InferentialDefinition {
-	return { ...definition, inferences: appendById(definition.inferences, inference, target) }
+	return { ...definition, inferences: appendById(definition.inferences, source, target) }
 }
 
 /**
@@ -2340,7 +2343,7 @@ export function appendInference(
  * dedup-then-insert at the start, or immediately before `target`.
  *
  * @param definition - The definition to insert into
- * @param inference - The inference to insert
+ * @param source - The inference to insert
  * @param target - Optional inference id to insert immediately before
  * @returns A fresh definition with `inference` inserted
  * @throws {@link ReasonError} `'TARGET'` when `target` names no existing inference
@@ -2357,10 +2360,10 @@ export function appendInference(
  */
 export function prependInference(
 	definition: InferentialDefinition,
-	inference: Inference,
+	source: Inference,
 	target?: string,
 ): InferentialDefinition {
-	return { ...definition, inferences: prependById(definition.inferences, inference, target) }
+	return { ...definition, inferences: prependById(definition.inferences, source, target) }
 }
 
 /**
@@ -2368,7 +2371,7 @@ export function prependInference(
  * IN PLACE, preserving its position (appends when absent).
  *
  * @param definition - The definition to update
- * @param inference - The replacement inference
+ * @param source - The replacement inference
  * @returns A fresh definition with the inference replaced
  *
  * @example
@@ -2382,9 +2385,9 @@ export function prependInference(
  */
 export function replaceInference(
 	definition: InferentialDefinition,
-	inference: Inference,
+	source: Inference,
 ): InferentialDefinition {
-	return { ...definition, inferences: replaceById(definition.inferences, inference) }
+	return { ...definition, inferences: replaceById(definition.inferences, source) }
 }
 
 /**
