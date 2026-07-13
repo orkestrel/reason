@@ -1,11 +1,11 @@
-import type { EmitterInterface } from '../../../emitters/index.js'
+import type { EmitterInterface } from '@orkestrel/emitter'
 import type {
 	Inference,
 	InferenceManagerEventMap,
 	InferenceManagerInterface,
 	InferenceManagerOptions,
 } from '../../types.js'
-import { Emitter } from '../../../emitters/index.js'
+import { Emitter } from '@orkestrel/emitter'
 import { appendById, prependById, removeById, replaceById } from '../../helpers.js'
 import { ReasonError } from '../../errors.js'
 

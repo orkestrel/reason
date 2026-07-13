@@ -1,12 +1,12 @@
-import type { EmitterInterface } from '../../emitters/index.js'
+import type { EmitterInterface } from '@orkestrel/emitter'
 import type {
 	Subject,
 	SubjectBuilderEventMap,
 	SubjectBuilderInterface,
 	SubjectBuilderOptions,
 } from '../types.js'
-import { Emitter } from '../../emitters/index.js'
-import { isArray } from '../../contracts/index.js'
+import { Emitter } from '@orkestrel/emitter'
+import { isArray } from '@orkestrel/contract'
 import { assignField, mergeSubjects, removeField, repeatSubject } from '../helpers.js'
 import { SUBJECT_BUILDER_BRAND } from '../constants.js'
 import { ReasonError } from '../errors.js'

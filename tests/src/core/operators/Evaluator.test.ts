@@ -11,7 +11,7 @@ import {
 	sequence,
 	sparse,
 	TRICKY_KEYS,
-} from '../../../../setup.js'
+} from '../../../setup.js'
 
 // `Evaluator` behavior — the shared predicate engine: strict `===` / `!==` for
 // equals / not (no coercion, reference equality for objects), number-demanding

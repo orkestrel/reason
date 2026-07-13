@@ -1,4 +1,4 @@
-import type { Guard } from '../contracts/index.js'
+import type { FieldPath, Guard } from '@orkestrel/contract'
 import type {
 	Aggregation,
 	Bounds,
@@ -13,7 +13,6 @@ import type {
 	Factor,
 	FactorGroup,
 	FactorRange,
-	FieldPath,
 	Inference,
 	InferentialDefinition,
 	LogicalDefinition,
@@ -43,7 +42,7 @@ import {
 	recordOf,
 	unionOf,
 	whereOf,
-} from '../contracts/index.js'
+} from '@orkestrel/contract'
 import { DEFINITION_BUILDER_BRAND, SUBJECT_BUILDER_BRAND } from './constants.js'
 
 // AGENTS §14: every guard here is a TOTAL function — adversarial input (junk,

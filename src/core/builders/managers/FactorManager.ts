@@ -1,4 +1,4 @@
-import type { EmitterInterface } from '../../../emitters/index.js'
+import type { EmitterInterface } from '@orkestrel/emitter'
 import type {
 	Factor,
 	FactorGroup,
@@ -7,7 +7,7 @@ import type {
 	FactorManagerOptions,
 	GroupManagerInterface,
 } from '../../types.js'
-import { Emitter } from '../../../emitters/index.js'
+import { Emitter } from '@orkestrel/emitter'
 import { appendFactor, prependFactor, removeFactor, replaceFactor } from '../../helpers.js'
 import { ReasonError } from '../../errors.js'
 

@@ -1,2 +1,3 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+# Enforce LF line endings everywhere — prevents CRLF/LF churn on Windows
+* text=auto eol=lf
+

@@ -1,7 +1,7 @@
 import type { SubjectBuilderInterface, Subject } from '@src/core'
 import { createSubjectBuilder, isReasonError, isSubjectBuilder } from '@src/core'
 import { describe, expect, it } from 'vitest'
-import { captureError, deepFreeze, recordEmitterEvents, runTwice } from '../../../../setup.js'
+import { captureError, deepFreeze, recordEmitterEvents, runTwice } from '../../../setup.js'
 
 // `SubjectBuilder` — the definitions & subjects capability layer's stateful
 // subject builder (PROPOSAL.md §14): a flat single-collection workspace

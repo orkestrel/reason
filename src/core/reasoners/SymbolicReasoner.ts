@@ -9,7 +9,7 @@ import type {
 	SymbolicExpression,
 	SymbolicReasonerOptions,
 } from '../types.js'
-import { parseNumber } from '../../contracts/index.js'
+import { parseNumber } from '@orkestrel/contract'
 import {
 	applyOperation,
 	containsVariable,

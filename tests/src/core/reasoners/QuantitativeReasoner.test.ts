@@ -28,7 +28,7 @@ import {
 	sequence,
 	sparse,
 	TRICKY_KEYS,
-} from '../../../../setup.js'
+} from '../../../setup.js'
 
 // `QuantitativeReasoner` behavior — the full factor pipeline (checks gate →
 // source resolve with fallback → finite check → transforms → bounds clamp →

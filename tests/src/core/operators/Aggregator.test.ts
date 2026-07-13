@@ -1,6 +1,6 @@
 import { Aggregator, createAggregator } from '@src/core'
 import { describe, expect, it } from 'vitest'
-import { invokeRaw, repeatValue, sequence } from '../../../../setup.js'
+import { invokeRaw, repeatValue, sequence } from '../../../setup.js'
 
 // `Aggregator` behavior — the quantitative combiner: per-aggregation reduction
 // (sum / product / average / minimum / maximum), the empty-input identities

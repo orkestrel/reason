@@ -1,4 +1,4 @@
-import type { EmitterInterface } from '../emitters/index.js'
+import type { EmitterInterface } from '@orkestrel/emitter'
 import type {
 	Definition,
 	ReasonEventMap,
@@ -10,8 +10,8 @@ import type {
 	ReasonerInterface,
 	Subject,
 } from './types.js'
-import { Emitter } from '../emitters/index.js'
-import { isArray } from '../contracts/index.js'
+import { Emitter } from '@orkestrel/emitter'
+import { isArray } from '@orkestrel/contract'
 import { buildErrorResult } from './helpers.js'
 import { DEFAULT_REASON_BAIL, DEFAULT_VALIDATE } from './constants.js'
 import { ReasonError } from './errors.js'

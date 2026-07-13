@@ -1,6 +1,5 @@
 import type { Check, CheckResult, EvaluatorInterface, EvaluatorOptions, Subject } from '../types.js'
-import { isArray, isNumber } from '../../contracts/index.js'
-import { resolveField } from '../../helpers.js'
+import { isArray, isNumber, resolveField } from '@orkestrel/contract'
 import { EVALUATOR_ID } from '../constants.js'
 
 /**

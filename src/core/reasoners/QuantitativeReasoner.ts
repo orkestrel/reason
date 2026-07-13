@@ -15,8 +15,7 @@ import type {
 	Subject,
 	TransformerInterface,
 } from '../types.js'
-import { parseNumberField } from '../../contracts/index.js'
-import { resolveField } from '../../helpers.js'
+import { parseNumberField, resolveField } from '@orkestrel/contract'
 import { clamp, findDuplicates, roundTo, sortByPriority } from '../helpers.js'
 import { DEFAULT_BASE, DEFAULT_PRECISION, DEFAULT_WEIGHT, QUANTITATIVE_ID } from '../constants.js'
 import { ReasonError } from '../errors.js'

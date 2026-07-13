@@ -1,6 +1,6 @@
 import { createTransformer, transform, Transformer } from '@src/core'
 import { describe, expect, it } from 'vitest'
-import { EXTREME_NUMBERS, invokeRaw, repeatValue } from '../../../../setup.js'
+import { EXTREME_NUMBERS, invokeRaw, repeatValue } from '../../../setup.js'
 
 // `Transformer` behavior — the quantitative per-factor math stage: every
 // operation with its default operand (identity-preserving 1 for multiply /

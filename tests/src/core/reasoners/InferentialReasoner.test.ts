@@ -21,7 +21,7 @@ import {
 	sequence,
 	sparse,
 	TRICKY_KEYS,
-} from '../../../../setup.js'
+} from '../../../setup.js'
 
 // `InferentialReasoner` behavior — bidirectional positional unification
 // (`?`-prefixed string terms are variables on EITHER side, consistent within a

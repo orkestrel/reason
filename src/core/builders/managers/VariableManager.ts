@@ -1,10 +1,10 @@
-import type { EmitterInterface } from '../../../emitters/index.js'
+import type { EmitterInterface } from '@orkestrel/emitter'
 import type {
 	VariableManagerEventMap,
 	VariableManagerInterface,
 	VariableManagerOptions,
 } from '../../types.js'
-import { Emitter } from '../../../emitters/index.js'
+import { Emitter } from '@orkestrel/emitter'
 import { ReasonError } from '../../errors.js'
 
 /**

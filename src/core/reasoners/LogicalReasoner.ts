@@ -12,12 +12,12 @@ import type {
 	RuleResult,
 	Subject,
 } from '../types.js'
-import { formatField } from '../../helpers.js'
 import {
 	equalValues,
 	extractConclusions,
 	findDuplicates,
 	findOverlayMismatches,
+	formatField,
 	sortByPriority,
 } from '../helpers.js'
 import { DEFAULT_DEPTH, LOGICAL_ID } from '../constants.js'

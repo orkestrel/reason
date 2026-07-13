@@ -21,7 +21,7 @@ import {
 	sequence,
 	sparse,
 	TRICKY_KEYS,
-} from '../../../../setup.js'
+} from '../../../setup.js'
 
 // `LogicalReasoner` behavior — forward chaining as a fixpoint (derived
 // conclusion atoms overlay the subject on later passes, convergence traced,

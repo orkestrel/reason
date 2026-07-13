@@ -24,7 +24,7 @@ import {
 	sequence,
 	sparse,
 	TRICKY_KEYS,
-} from '../../../../setup.js'
+} from '../../../setup.js'
 
 // `SymbolicReasoner` behavior — bindings seeded from definition variables and
 // OVERRIDDEN by numeric subject fields (parseNumber coercion: numeric strings

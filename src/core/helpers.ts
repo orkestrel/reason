@@ -11,7 +11,6 @@ import type {
 	Factor,
 	FactorGroup,
 	FactorRange,
-	FieldPath,
 	Inference,
 	InferentialDefinition,
 	LogicalDefinition,
@@ -26,8 +25,8 @@ import type {
 	SymbolicExpression,
 	Transform,
 } from './types.js'
-import { formatField } from '../helpers.js'
-import { isString, parseJSONAs } from '../contracts/index.js'
+import type { FieldPath } from '@orkestrel/contract'
+import { isString, parseJSONAs } from '@orkestrel/contract'
 import { DEFAULT_CONFIDENCE, DEFAULT_PRIORITY } from './constants.js'
 import { ReasonError } from './errors.js'
 import { isDefinition } from './validators.js'
@@ -38,6 +37,29 @@ import { isDefinition } from './validators.js'
 // output round-trips through the exact-record validators (AGENTS §14). Builders
 // with an `overrides` bag spread it LAST — an override always wins over a
 // default (a `name` defaults to the `id` wherever a display name is required).
+
+// === Field display
+
+/**
+ * Format a {@link FieldPath} for display — the single string key itself, or the
+ * array segments joined with `.`.
+ *
+ * @remarks
+ * Display-only: the joined form is how a field appears in traces and derived
+ * overlays; it is NOT re-parsed into a path (a string stays ONE key).
+ *
+ * @param field - The field path to format
+ * @returns The display string
+ *
+ * @example
+ * ```ts
+ * formatField('age')               // 'age'
+ * formatField(['address', 'city']) // 'address.city'
+ * ```
+ */
+export function formatField(field: FieldPath): string {
+	return isString(field) ? field : field.join('.')
+}
 
 // === Checks & expressions
 

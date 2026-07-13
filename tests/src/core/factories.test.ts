@@ -14,7 +14,7 @@ import {
 	transform,
 } from '@src/core'
 import { describe, expect, it } from 'vitest'
-import { buildStaticDefinition, expectQuantitative } from '../../../setup.js'
+import { buildStaticDefinition, expectQuantitative } from '../../setup.js'
 
 // The reasons factories — each `create*` returns a WORKING instance behind its
 // interface type, with the default id when no options are given and a custom id

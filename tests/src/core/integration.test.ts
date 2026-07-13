@@ -55,7 +55,7 @@ import {
 	expectQuantitative,
 	expectSymbolic,
 	sequence,
-} from '../../../setup.js'
+} from '../../setup.js'
 
 // Cross-module composition of the reasons layer (AGENTS §16 cross-cutting
 // "integration" test, exempt from the 1:1 source mirror): the

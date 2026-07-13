@@ -1,8 +1,8 @@
-# Reasons
+# Reason
 
 > A zero-dependency, synchronous, deterministic reasoning engine: declarative, **JSON-serializable definitions** are evaluated against **subjects** (plain data records) to produce traceable **results**. Four strategies behind one dispatch surface — `quantitative` (factor-based numeric scoring), `logical` (rule-based boolean deduction with forward / backward chaining), `symbolic` (algebraic equation solving by variable isolation), `inferential` (fact derivation with unification variables and proof trees) — each a `ReasonerInterface` registered on the thin `Reason` orchestrator, with three injectable operators (`Evaluator` / `Transformer` / `Aggregator`) doing the shared arithmetic. Every result is a fresh object carrying `success`, a human-readable `trace`, and accumulated `errors`; nothing mutates its inputs.
 >
-> The design stance is **data in, data out, no surprises**: definitions are pure data (built by hand or with the shipped builders), the orchestrator holds NO strategy logic (dispatch is a registry lookup by the `reasoning` discriminant), the operators are total (an unknown comparison surfaces as a `CheckResult.error`, an unknown math operation is a no-op, divide-by-zero is `NaN` — never a throw), and a reasoner never assumes `validate` ran — a malformed definition yields a failure RESULT, reserving throws for caller misuse (a coded `ReasonError`). On top of the evaluation engine sits the definitions & subjects capability layer: a pure copy-on-write helper family that changes / extends / merges / round-trips definitions as data, and two brand-guarded workspace builders — `DefinitionBuilder` (seven self-owning managers, taverna `AgentContext`-shaped) and `SubjectBuilder` (one flat collection, `Workspace`-shaped) — that accumulate state through named methods and `build()` a fresh plain payload on demand. Building happens OUTSIDE the engine: `reason` and `validate` take only the plain data, so a builder's `build()` output is passed at the call site. Deliberately absent: async reasoners, definition persistence, and probabilistic strategies beyond the multiplicative `confidence` of inferential facts. Source: [`src/core/reasons`](../../src/core/reasons). Surfaced through the `@src/core` barrel.
+> The design stance is **data in, data out, no surprises**: definitions are pure data (built by hand or with the shipped builders), the orchestrator holds NO strategy logic (dispatch is a registry lookup by the `reasoning` discriminant), the operators are total (an unknown comparison surfaces as a `CheckResult.error`, an unknown math operation is a no-op, divide-by-zero is `NaN` — never a throw), and a reasoner never assumes `validate` ran — a malformed definition yields a failure RESULT, reserving throws for caller misuse (a coded `ReasonError`). On top of the evaluation engine sits the definitions & subjects capability layer: a pure copy-on-write helper family that changes / extends / merges / round-trips definitions as data, and two brand-guarded workspace builders — `DefinitionBuilder` (seven self-owning managers, taverna `AgentContext`-shaped) and `SubjectBuilder` (one flat collection, `Workspace`-shaped) — that accumulate state through named methods and `build()` a fresh plain payload on demand. Building happens OUTSIDE the engine: `reason` and `validate` take only the plain data, so a builder's `build()` output is passed at the call site. Deliberately absent: async reasoners, definition persistence, and probabilistic strategies beyond the multiplicative `confidence` of inferential facts. Source: [`src/core`](../../src/core). Surfaced through the `@src/core` barrel.
 
 ## Surface
 
@@ -30,6 +30,9 @@ const definition = quantitativeDefinition('risk', 'Risk score', [
 const result = reason.reason({ age: 25 }, definition) // one subject → one result
 if (result.reasoning === 'quantitative') result.value // 35 — narrow by the discriminant
 result.trace // the step-by-step account of how the value came to be
+
+reason.supports('quantitative') // true — a reasoner IS registered for this reasoning
+reason.reasoner('quantitative')?.supports(definition) // the reasoner's own guard, same check
 ```
 
 `reason` dispatches by `definition.reasoning` — pass an ARRAY of subjects and the batch overload maps them in order to an equal-length result array. Results are a discriminated union (`reasoning` names the axis, AGENTS §4.4): narrow with the discriminant and read the strategy-specific payload (`value` / `conclusion` / `solutions` / `derived`).
@@ -126,6 +129,7 @@ Every builder returns a fresh object and OMITS absent optional keys entirely, so
 
 | API                     | Kind     | Summary                                                                                                                           |
 | ----------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `formatField`           | function | Format a `FieldPath` for display — the string key itself, or the array segments joined with `.`.                                  |
 | `clamp`                 | function | Clamp a number to inclusive `Bounds` (either side optional; no bounds → unchanged).                                               |
 | `roundTo`               | function | Round to a fixed count of decimal places (`Math.round` semantics; extreme precisions pass the value through).                     |
 | `equalValues`           | function | SameValueZero equality (`NaN` equals `NaN`, `+0` equals `-0`) — the chaining reasoners' derivation equality.                      |
@@ -199,7 +203,7 @@ The definitions & subjects capability layer (below) adds a pure, copy-on-write C
 
 ### Validators
 
-Total guards (AGENTS §14) composed from the [contracts](contracts.md) combinators — adversarial input (junk, cycles, hostile prototypes) returns `false`, never throws. Record guards are **exact**: an extra key fails. Numeric fields guard with `isFiniteNumber` (JSON cannot carry `NaN` / `±Infinity`); the recursive shapes recurse through `lazyOf`.
+Total guards (AGENTS §14) composed from the [contracts](contract.md) combinators — adversarial input (junk, cycles, hostile prototypes) returns `false`, never throws. Record guards are **exact**: an extra key fails. Numeric fields guard with `isFiniteNumber` (JSON cannot carry `NaN` / `±Infinity`); the recursive shapes recurse through `lazyOf`.
 
 | API                        | Kind     | Narrows to                                                                                               |
 | -------------------------- | -------- | -------------------------------------------------------------------------------------------------------- |
@@ -303,6 +307,7 @@ Total guards (AGENTS §14) composed from the [contracts](contracts.md) combinato
 | `Inference`                   | interface | id / `name` / `premises` (patterns) / `conclusion` (pattern) + `confidence?` / `enabled?`.                                                                                 |
 | `InferentialDefinition`       | interface | `reasoning: 'inferential'` + `inferences` / `facts` / `strategy` / `depth?`.                                                                                               |
 | `Definition`                  | type      | The union of the four definitions, discriminated by `reasoning`.                                                                                                           |
+| `DefinitionEnvelope`          | type      | The scalar-only projection of each definition kind (collections omitted) — the `DefinitionBuilder` implementation's private envelope shape.                                |
 | `FactorResult`                | interface | `{ id, applied, value, raw?, checks? }` — `raw` is the pre-transform source value.                                                                                         |
 | `GroupResult`                 | interface | `{ id, applied, value, factors }` — disabled factors omitted entirely.                                                                                                     |
 | `QuantitativeResult`          | interface | `reasoning: 'quantitative'` + `value` / `groups` / `count` / `success` / `trace` / `errors`.                                                                               |
@@ -529,9 +534,9 @@ The `SUBJECT_BUILDER_BRAND`-carrying stateful builder accumulating a `Subject`. 
 
 ## Contract
 
-These invariants hold across `src/core/reasons` ↔ `reasons.md`:
+These invariants hold across `src/core` ↔ `reason.md`:
 
-1. **DOC ↔ SOURCE bijection.** Every `function` / `class` / `const` / `interface` / `type` row in the `## Surface` tables is a real export of the reasons source tree, and every export appears as a Surface row — exhaustive, both directions (AGENTS §22).
+1. **DOC ↔ SOURCE bijection.** Every `function` / `class` / `const` / `interface` / `type` row in the `## Surface` tables is a real export of the reason source tree, and every export appears as a Surface row — exhaustive, both directions (AGENTS §22).
 2. **Deterministic, synchronous, immutable (§11).** Same subject + same definition → the same result, every time — no clocks, no randomness, no I/O, nothing async. No input is ever mutated; every result (and every builder output) is a fresh object. A result always carries `success`, a `trace` narrating each step, and the accumulated `errors` — an error does NOT abort the run (the value / conclusion / solutions are still computed from whatever applied), it just makes `success` false. Expression evaluation and symbolic isolation recurse with the input expression's own depth, so a pathologically deep hand-built expression (on the order of `10,000` levels of nesting) is OUTSIDE the supported contract and may exhaust the call stack; `extractAtoms` and `containsVariable` are the exception — both walk ITERATIVELY and stay total at any depth. The two workspace builders (and their managers) are the deliberate stateful exception to statelessness, not to immutability: they mutate NOTHING they are given (the seed is spread on construction, every mutation is copy-on-write through the pure helper family), and `build()` returns a fresh payload deterministically derived from the current state, every call — handed to `reason` by the caller, never built inside the engine.
 3. **Dispatch and `bail` (§12).** The orchestrator is a thin router: registry lookup by `definition.reasoning`, one reasoner per reasoning, re-registration replaces. A registry miss throws `MISSING` and a pre-run validation failure (only when the `validate` option is on) throws `INVALID` — both are caller misuse, BYPASS `bail`, and emit nothing. A reasoner throw always emits `error` with the raw thrown value; under `bail: true` (the default) it is rethrown, under `bail: false` it becomes an empty type-shaped failure result. Only successful results emit `reason`. The batch overload maps subjects in order (per-subject validation when on).
 4. **Failure results, not throws, inside a reasoner.** A reasoner's single throw is `MISMATCH` (handed a definition of a different reasoning); every structural malformation — missing / non-array `groups` / `rules` / `equations` / `facts` — yields a failure RESULT, because the runtime never assumes `validate` ran. The operators are total the same way: an unknown `Comparison` surfaces as `CheckResult.error` (`met: false`), an unknown `MathOperation` returns the value unchanged, divide-by-zero is `NaN`, and the `Aggregator` has fixed empty-input identities (`sum` / `average` → `0`, `product` → `1`, `minimum` / `maximum` → `NaN`). Definition arrays (`facts` / `inferences` / `rules` / `equations` / `groups` / `factors`) are iterated defensively — an array hole, `null`, or other ill-typed junk entry is skipped rather than crashing evaluation.
@@ -591,9 +596,26 @@ if (result.reasoning === 'quantitative') {
 
 An `enabled: false` factor or group is skipped and OMITTED from results; a `required` factor that fails its gate or cannot resolve adds an error (`success: false`) while the rest of the run continues.
 
+The three operators (`Evaluator` / `Transformer` / `Aggregator`) are usable directly, independent of any reasoner — the `QuantitativeReasoner` composes them internally, but each is a total, injectable seam:
+
+```ts
+import { check, createAggregator, createEvaluator, createTransformer, transform } from '@src/core'
+
+const evaluator = createEvaluator()
+evaluator.evaluate(check('age', 'above', 18), { age: 25 }) // { field: 'age', met: true, actual: 25 }
+evaluator.batch([check('age', 'above', 18)], { age: 25 }) // one CheckResult per check, positionally
+
+const transformer = createTransformer()
+transformer.apply(10, transform('multiply', 2)) // 20 — one math step
+transformer.chain(10, [transform('add', 5), transform('multiply', 2)]) // 30 — left-folded
+
+const aggregator = createAggregator()
+aggregator.aggregate([10, 20, 30], 'sum') // 60
+```
+
 ### Numeric domains
 
-`reasons` runs on ordinary JS `number` — binary floating point, not decimal. A definition's `value` rounds to `precision` (`DEFAULT_PRECISION = 4`) only ONCE, at the end of the pipeline (`transforms` → `bounds` → terminal round, above), so intermediate float error from earlier steps has already accumulated before that single round ever sees it. TC39 `Decimal` is still Stage 1, so until it lands the compliant answer for a money-like domain is a scaled-integer recipe, not a new dependency.
+`reason` runs on ordinary JS `number` — binary floating point, not decimal. A definition's `value` rounds to `precision` (`DEFAULT_PRECISION = 4`) only ONCE, at the end of the pipeline (`transforms` → `bounds` → terminal round, above), so intermediate float error from earlier steps has already accumulated before that single round ever sees it. TC39 `Decimal` is still Stage 1, so until it lands the compliant answer for a money-like domain is a scaled-integer recipe, not a new dependency.
 
 **Scaled integers.** Represent a money amount as integer minor units (cents), a rate as integer basis points (`1e-4` units), a ppm quantity as integer `1e-6` units — do the arithmetic on the scaled integers and divide back only for display. Binary floating point cannot represent most decimal fractions exactly:
 
@@ -713,6 +735,7 @@ const definition = symbolicDefinition(
 
 const result = reason.reason({ total: 25 }, definition) // subject overrides / supplies bindings
 if (result.reasoning === 'symbolic') result.solutions // { net: 20, discount: 2 }
+definition.equations // the two equations above, in solve order
 ```
 
 ### Inferential derivation and proof
@@ -747,6 +770,8 @@ const result = reason.reason({}, definition)
 if (result.reasoning === 'inferential') {
 	result.derived // grandparent('alice', 'carol') — confidence 0.9 (1 × 0.9 × 1)
 }
+definition.facts // the two seed facts above
+definition.inferences // the one inference rule above
 
 // Backward: prove one conclusion and return its proof tree.
 const proved = reason.reason(
@@ -838,6 +863,7 @@ draft.factors.replace(
 	fieldFactor('age', 'age', { checks: [check('licensed', 'equals', true)] }),
 ) // in place
 draft.groups.append(factorGroup('region', 'sum', [staticFactor('flat', 5)]))
+draft.groups.prepend(factorGroup('base', 'sum', [staticFactor('seed', 1)])) // insert at the start
 draft.groups.group('region') // FactorGroup | undefined — the §9.1 accessors read
 draft.clear('description') // delete one optional field for this reasoning
 
@@ -864,6 +890,7 @@ const applicant = createSubjectBuilder({ id: 'alice', age: 25 })
 applicant.set('region', 'CA')
 applicant.merge({ licensed: true, accidents: 0 }) // incoming wins, id kept
 applicant.remove(['accidents']) // batch form first (§9.2) — returns whether ALL existed
+applicant.fields() // { id: 'alice', age: 25, region: 'CA', licensed: true } — the §9.1 plural read
 
 const result = reason.reason(applicant.build(), definition) // build OUTSIDE, pass the payload
 const cohort = applicant.repeat(3) // plain subjects: ids 'alice-0', 'alice-1', 'alice-2'
@@ -914,7 +941,8 @@ draft.emitter.on('merge', (reasoning) => console.log(`merged a ${reasoning} revi
 Definitions are JSON-serializable data, so they arrive from storage / the wire as `unknown`. Narrow in two passes: the structural guard (`isDefinition` — exact records, total on adversarial input, §14), then the semantic pass (`validate` — ids present, sources declared, non-empty rule sets) whose `warnings` flag runnable-but-suspicious definitions.
 
 ```ts
-import { createLogicalReasoner, createReason, isDefinition, parseJSON } from '@src/core'
+import { createLogicalReasoner, createReason, isDefinition } from '@src/core'
+import { parseJSON } from '@orkestrel/contract'
 
 const reason = createReason({ reasoners: [createLogicalReasoner()] })
 const parsed = parseJSON(text) // unknown — the JSON boundary (§14): narrow, never assert
@@ -949,25 +977,25 @@ Prefer this at boundaries over the orchestrator's `validate: true` option (which
 
 ## Tests
 
-- [`tests/guides/src/parity.test.ts`](../../tests/guides/src/parity.test.ts) — the `## Surface` ↔ `src/core/reasons` bijection (value + type exports) and the `## Methods` ↔ interface-method bijection.
-- [`tests/src/core/reasons/Reason.test.ts`](../../tests/src/core/reasons/Reason.test.ts) — the orchestrator: dispatch, batch order, `bail` both ways, the `MISSING` / `INVALID` / `DESTROYED` codes, event sequences, idempotent `destroy`, build-outside equivalence (a builder's `build()` output reasons identically to inline plain data).
-- [`tests/src/core/reasons/builders/DefinitionBuilder.test.ts`](../../tests/src/core/reasons/builders/DefinitionBuilder.test.ts) — the definition builder: mutation → `build` round-trips per manager, inert off-kind managers, per-manager event pins, manager + builder destroy semantics, brand-forge negatives, seed immutability.
-- [`tests/src/core/reasons/builders/SubjectBuilder.test.ts`](../../tests/src/core/reasons/builders/SubjectBuilder.test.ts) — the subject builder: id defaulting + immutability + anonymous builds, batch `remove`, incoming-wins `merge`, deterministic `repeat`, `build` determinism, destroy semantics.
-- [`tests/src/core/reasons/helpers.test.ts`](../../tests/src/core/reasons/helpers.test.ts) — every builder's output shape (override merging, key omission), `clamp` / `roundTo` / `equalValues` / `sortByPriority` / `findDuplicates`, and the capability-layer engine (`appendById` placement + `TARGET`, per-kind append / prepend / replace / remove, `merge*` / `clear*`, `parseDefinition`, the subject helpers).
-- [`tests/src/core/reasons/validators.test.ts`](../../tests/src/core/reasons/validators.test.ts) — each guard accepts valid / rejects invalid + adversarial junk, exact-record semantics, `lazyOf` recursion containment.
-- [`tests/src/core/reasons/factories.test.ts`](../../tests/src/core/reasons/factories.test.ts) — every factory wires a working instance; custom `id`s via the options objects.
-- [`tests/src/core/reasons/operators/Evaluator.test.ts`](../../tests/src/core/reasons/operators/Evaluator.test.ts) — all ten comparisons (strictness, numeric requirements, the `any` / `none` asymmetry vs the pure-negation `outside`), `FieldPath` resolution, unknown-operator totality.
-- [`tests/src/core/reasons/operators/Transformer.test.ts`](../../tests/src/core/reasons/operators/Transformer.test.ts) — per-operation operand defaults, divide-by-zero `NaN`, unary operations, `chain` folding.
-- [`tests/src/core/reasons/operators/Aggregator.test.ts`](../../tests/src/core/reasons/operators/Aggregator.test.ts) — empty-input identities, weight-as-exponent `product`, zero-total-weight `average`, length-mismatch weight fallback.
-- [`tests/src/core/reasons/reasoners/QuantitativeReasoner.test.ts`](../../tests/src/core/reasons/reasoners/QuantitativeReasoner.test.ts) — the factor pipeline, priorities, `strict` / `required`, source resolution + `parseNumber` coercion, base / bounds / precision stacking.
-- [`tests/src/core/reasons/reasoners/LogicalReasoner.test.ts`](../../tests/src/core/reasons/reasoners/LogicalReasoner.test.ts) — forward fixpoint + derived overlays, backward proving + cycle safety, the connective truth tables.
-- [`tests/src/core/reasons/reasoners/SymbolicReasoner.test.ts`](../../tests/src/core/reasons/reasoners/SymbolicReasoner.test.ts) — subject binding + overrides, isolation through invertible operations, rounded feed-forward, per-equation failure isolation.
-- [`tests/src/core/reasons/reasoners/InferentialReasoner.test.ts`](../../tests/src/core/reasons/reasoners/InferentialReasoner.test.ts) — unification + relational joins, confidence products, dedupe, subject-fact injection, backward proof trees.
-- [`tests/src/core/reasons/integration.test.ts`](../../tests/src/core/reasons/integration.test.ts) — cross-strategy scenarios through one orchestrator.
+- [`tests/guides/src/parity.test.ts`](../../tests/guides/src/parity.test.ts) — the `## Surface` ↔ `src/core` bijection (value + type exports) and the `## Methods` ↔ interface-method bijection.
+- [`tests/src/core/Reason.test.ts`](../../tests/src/core/Reason.test.ts) — the orchestrator: dispatch, batch order, `bail` both ways, the `MISSING` / `INVALID` / `DESTROYED` codes, event sequences, idempotent `destroy`, build-outside equivalence (a builder's `build()` output reasons identically to inline plain data).
+- [`tests/src/core/builders/DefinitionBuilder.test.ts`](../../tests/src/core/builders/DefinitionBuilder.test.ts) — the definition builder: mutation → `build` round-trips per manager, inert off-kind managers, per-manager event pins, manager + builder destroy semantics, brand-forge negatives, seed immutability.
+- [`tests/src/core/builders/SubjectBuilder.test.ts`](../../tests/src/core/builders/SubjectBuilder.test.ts) — the subject builder: id defaulting + immutability + anonymous builds, batch `remove`, incoming-wins `merge`, deterministic `repeat`, `build` determinism, destroy semantics.
+- [`tests/src/core/helpers.test.ts`](../../tests/src/core/helpers.test.ts) — every builder's output shape (override merging, key omission), `clamp` / `roundTo` / `equalValues` / `sortByPriority` / `findDuplicates`, and the capability-layer engine (`appendById` placement + `TARGET`, per-kind append / prepend / replace / remove, `merge*` / `clear*`, `parseDefinition`, the subject helpers).
+- [`tests/src/core/validators.test.ts`](../../tests/src/core/validators.test.ts) — each guard accepts valid / rejects invalid + adversarial junk, exact-record semantics, `lazyOf` recursion containment.
+- [`tests/src/core/factories.test.ts`](../../tests/src/core/factories.test.ts) — every factory wires a working instance; custom `id`s via the options objects.
+- [`tests/src/core/operators/Evaluator.test.ts`](../../tests/src/core/operators/Evaluator.test.ts) — all ten comparisons (strictness, numeric requirements, the `any` / `none` asymmetry vs the pure-negation `outside`), `FieldPath` resolution, unknown-operator totality.
+- [`tests/src/core/operators/Transformer.test.ts`](../../tests/src/core/operators/Transformer.test.ts) — per-operation operand defaults, divide-by-zero `NaN`, unary operations, `chain` folding.
+- [`tests/src/core/operators/Aggregator.test.ts`](../../tests/src/core/operators/Aggregator.test.ts) — empty-input identities, weight-as-exponent `product`, zero-total-weight `average`, length-mismatch weight fallback.
+- [`tests/src/core/reasoners/QuantitativeReasoner.test.ts`](../../tests/src/core/reasoners/QuantitativeReasoner.test.ts) — the factor pipeline, priorities, `strict` / `required`, source resolution + `parseNumber` coercion, base / bounds / precision stacking.
+- [`tests/src/core/reasoners/LogicalReasoner.test.ts`](../../tests/src/core/reasoners/LogicalReasoner.test.ts) — forward fixpoint + derived overlays, backward proving + cycle safety, the connective truth tables.
+- [`tests/src/core/reasoners/SymbolicReasoner.test.ts`](../../tests/src/core/reasoners/SymbolicReasoner.test.ts) — subject binding + overrides, isolation through invertible operations, rounded feed-forward, per-equation failure isolation.
+- [`tests/src/core/reasoners/InferentialReasoner.test.ts`](../../tests/src/core/reasoners/InferentialReasoner.test.ts) — unification + relational joins, confidence products, dedupe, subject-fact injection, backward proof trees.
+- [`tests/src/core/integration.test.ts`](../../tests/src/core/integration.test.ts) — cross-strategy scenarios through one orchestrator.
 
 ## See also
 
-- [`contracts.md`](contracts.md) — the guards, combinators, and `parseNumber` coercion the validators and reasoners compose.
-- [`emitters.md`](emitters.md) — the typed emitter behind the orchestrator's observation surface.
+- [`contract.md`](contract.md) — the guards, combinators, and `parseNumber` coercion the validators and reasoners compose.
+- [`emitter.md`](emitter.md) — the typed emitter behind the orchestrator's observation surface.
 - [`AGENTS.md`](../../AGENTS.md) — the rules; §12 errors, §13 emitters, §14 totality, §22 documentation-as-contracts.
 - [`README.md`](../README.md) — the guides index.

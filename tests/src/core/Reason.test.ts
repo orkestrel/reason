@@ -32,7 +32,7 @@ import {
 	expectQuantitative,
 	recordEmitterEvents,
 	sequence,
-} from '../../../setup.js'
+} from '../../setup.js'
 
 // `Reason` orchestrator behavior — the registry (one reasoner per reasoning,
 // re-registration replaces, fresh-array snapshots), dispatch by

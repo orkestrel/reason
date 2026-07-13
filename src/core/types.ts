@@ -1,5 +1,5 @@
-import type { FieldPath } from '../types.js'
-import type { EmitterErrorHandler, EmitterHooks, EmitterInterface } from '../emitters/index.js'
+import type { FieldPath } from '@orkestrel/contract'
+import type { EmitterErrorHandler, EmitterHooks, EmitterInterface } from '@orkestrel/emitter'
 import { DEFINITION_BUILDER_BRAND, SUBJECT_BUILDER_BRAND } from './constants.js'
 
 // Reasons — a zero-dependency, synchronous, deterministic reasoning engine.
@@ -12,19 +12,6 @@ import { DEFINITION_BUILDER_BRAND, SUBJECT_BUILDER_BRAND } from './constants.js'
 // the source of truth (AGENTS §2); every discriminant names its axis, never
 // `kind` / `type` (AGENTS §4.4): `reasoning` splits definitions and results,
 // `form` splits expression nodes, `origin` splits factor sources.
-
-
-// === Record access
-
-/**
- * A field path into a record: a single key, or an ordered list of keys to
- * descend through nested objects.
- *
- * @remarks
- * A single `string` is ONE key — it is never split on `.`, so keys that contain
- * dots stay safe. Use a `readonly string[]` to descend into nested objects.
- */
-export type FieldPath = string | readonly string[]
 
 // === Vocabulary
 
@@ -1231,6 +1218,17 @@ export interface VariableManagerOptions {
 }
 
 // === Definitions & subjects capability layer — entities
+
+/**
+ * The scalar-only projection of each definition kind — the {@link DefinitionBuilderInterface}
+ * implementation's private envelope holds the non-collection fields; `build()` re-composes
+ * the kind's collections from the managers' plural accessors.
+ */
+export type DefinitionEnvelope =
+	| Omit<QuantitativeDefinition, 'groups'>
+	| Omit<LogicalDefinition, 'rules'>
+	| Omit<SymbolicDefinition, 'equations' | 'variables'>
+	| Omit<InferentialDefinition, 'facts' | 'inferences'>
 
 /**
  * The push observation surface of a {@link DefinitionBuilderInterface}

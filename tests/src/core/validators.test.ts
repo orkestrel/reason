@@ -43,7 +43,6 @@ import {
 	logicalDefinition,
 	lookupSource,
 	operation,
-	parseJSON,
 	quantitativeDefinition,
 	rangeSource,
 	rule,
@@ -54,8 +53,9 @@ import {
 	transform,
 	variable,
 } from '@src/core'
+import { parseJSON } from '@orkestrel/contract'
 import { describe, expect, it } from 'vitest'
-import { TRICKY_KEYS, captureError, sequence } from '../../../setup.js'
+import { TRICKY_KEYS, captureError, sequence } from '../../setup.js'
 
 // The reasons validators — deep TOTAL guards (AGENTS §14): every guard accepts
 // its builder's output (builder ↔ guard round-trip), rejects off-shape input,

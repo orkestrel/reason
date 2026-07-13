@@ -105,7 +105,7 @@ import {
 	invokeRaw,
 	sequence,
 	sparse,
-} from '../../../setup.js'
+} from '../../setup.js'
 
 // The reasons builders + helpers — every builder's exact output shape (fresh
 // JSON-serializable values), absent optional keys OMITTED entirely (so outputs
@@ -118,6 +118,24 @@ import {
 // ascending copy sort), and `findDuplicates` (the validate uniqueness scan).
 // Ports the scsr builder surface onto the renamed vocabulary (DESIGN §2:
 // origin / form discriminants, checks, terms, name).
+
+describe('formatField — display form of a FieldPath', () => {
+	it('returns a string key as itself', () => {
+		expect(formatField('age')).toBe('age')
+	})
+
+	it('joins array segments with a dot', () => {
+		expect(formatField(['address', 'city'])).toBe('address.city')
+	})
+
+	it('a dotted string passes through untouched (never re-split)', () => {
+		expect(formatField('a.b')).toBe('a.b')
+	})
+
+	it('an empty array joins to the empty string', () => {
+		expect(formatField([])).toBe('')
+	})
+})
 
 describe('check / atom / compound — expression builders', () => {
 	it('check builds the field / operator / value triple', () => {

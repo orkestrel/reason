@@ -1,23 +1,20 @@
-import type { EmitterInterface } from '../../emitters/index.js'
+import type { EmitterInterface } from '@orkestrel/emitter'
 import type {
 	Definition,
 	DefinitionBuilderEventMap,
 	DefinitionBuilderInterface,
 	DefinitionBuilderOptions,
+	DefinitionEnvelope,
 	EquationManagerInterface,
 	FactManagerInterface,
 	FactorManagerInterface,
 	GroupManagerInterface,
 	InferenceManagerInterface,
-	InferentialDefinition,
-	LogicalDefinition,
-	QuantitativeDefinition,
 	Reasoning,
 	RuleManagerInterface,
-	SymbolicDefinition,
 	VariableManagerInterface,
 } from '../types.js'
-import { Emitter } from '../../emitters/index.js'
+import { Emitter } from '@orkestrel/emitter'
 import {
 	clearInferentialDefinition,
 	clearLogicalDefinition,
@@ -37,15 +34,6 @@ import { GroupManager } from './managers/GroupManager.js'
 import { InferenceManager } from './managers/InferenceManager.js'
 import { RuleManager } from './managers/RuleManager.js'
 import { VariableManager } from './managers/VariableManager.js'
-
-// The scalar-only projection of each definition kind — the builder's private
-// envelope holds the non-collection fields; `build()` re-composes the kind's
-// collections from the managers' plural accessors.
-type DefinitionEnvelope =
-	| Omit<QuantitativeDefinition, 'groups'>
-	| Omit<LogicalDefinition, 'rules'>
-	| Omit<SymbolicDefinition, 'equations' | 'variables'>
-	| Omit<InferentialDefinition, 'facts' | 'inferences'>
 
 /**
  * A stateful workspace builder accumulating a {@link Definition} through seven
