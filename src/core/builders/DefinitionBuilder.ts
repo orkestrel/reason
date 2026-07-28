@@ -73,10 +73,7 @@ export class DefinitionBuilder implements DefinitionBuilderInterface {
 		this.#id = options?.id ?? seed.id
 		const seeded: Definition = { ...seed, id: this.#id }
 		this.#envelope = this.#strip(seeded)
-		this.#emitter = new Emitter<DefinitionBuilderEventMap>({
-			on: options?.on,
-			error: options?.error,
-		})
+		this.#emitter = new Emitter<DefinitionBuilderEventMap>(options)
 
 		this.groups =
 			options?.groups ??

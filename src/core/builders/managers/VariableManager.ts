@@ -29,10 +29,7 @@ export class VariableManager implements VariableManagerInterface {
 
 	constructor(options?: VariableManagerOptions) {
 		this.#variables = options?.variables ?? {}
-		this.#emitter = new Emitter<VariableManagerEventMap>({
-			on: options?.on,
-			error: options?.error,
-		})
+		this.#emitter = new Emitter<VariableManagerEventMap>(options)
 	}
 
 	get emitter(): EmitterInterface<VariableManagerEventMap> {

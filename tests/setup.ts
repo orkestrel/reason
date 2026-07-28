@@ -538,3 +538,9 @@ export const ADVERSARIAL_VALUE_SUBJECT: Subject = Object.freeze({
 export function buildSubjects(count: number): readonly Subject[] {
 	return sequence(count).map((index) => ({ id: `s${index}`, value: index }))
 }
+
+/** Whether a repository-relative Vue SFC path belongs to the private browser application. */
+export function isBrowserVuePath(path: string): boolean {
+	const normalized = path.replaceAll('\\', '/')
+	return normalized.startsWith('app/browser/')
+}

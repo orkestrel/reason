@@ -24,7 +24,7 @@ export class ReasonError extends Error {
 		super(message)
 		this.name = 'ReasonError'
 		this.code = code
-		this.context = context
+		if (context !== undefined) this.context = context
 	}
 }
 

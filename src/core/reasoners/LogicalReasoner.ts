@@ -270,62 +270,18 @@ export class LogicalReasoner implements ReasonerInterface {
 			if (rule.enabled === false) trace.push(`Skipped rule "${rule.id}" (disabled)`)
 		}
 
-		const prove = (rule: Rule, depth: number, visited: ReadonlySet<string>): boolean => {
-			if (depth > maxDepth) return false
-			if (visited.has(rule.id)) return false
-
-			const nextVisited = new Set(visited)
-			nextVisited.add(rule.id)
-
-			const currentSubject: Subject = { ...subject, ...derived }
-			const premiseResults: boolean[] = []
-
-			for (const premise of rule.premises) {
-				premiseResults.push(
-					this.#establish(
-						premise,
-						currentSubject,
-						sortedRules,
-						depth + 1,
-						nextVisited,
-						derived,
-						subject,
-						trace,
-						ruleResults,
-						maxDepth,
-					),
-				)
-			}
-
-			const allMet = premiseResults.every(Boolean)
-
-			ruleResults.set(rule.id, {
-				id: rule.id,
-				applied: allMet,
-				premises: premiseResults,
-				conclusion: allMet,
-			})
-
-			if (allMet) {
-				const conclusions = extractConclusions(rule.conclusion)
-				for (const [key, value] of Object.entries(conclusions)) {
-					// SameValueZero — a NaN conclusion derives (and traces) once.
-					if (!equalValues(derived[key], value)) {
-						derived[key] = value
-						trace.push(
-							`Rule "${rule.id}" derived: ${key}=${String(value)} (backward, depth ${depth})`,
-						)
-					}
-				}
-			} else {
-				trace.push(`Rule "${rule.id}": does not hold (backward, depth ${depth})`)
-			}
-
-			return allMet
-		}
-
 		for (const rule of sortedRules) {
-			prove(rule, 0, new Set())
+			this.#proveRule(
+				rule,
+				0,
+				new Set(),
+				sortedRules,
+				derived,
+				subject,
+				trace,
+				ruleResults,
+				maxDepth,
+			)
 		}
 
 		const finalResults: RuleResult[] = []
@@ -342,6 +298,71 @@ export class LogicalReasoner implements ReasonerInterface {
 			finalResults.length > 0 ? (finalResults[finalResults.length - 1]?.conclusion ?? false) : false
 
 		return { conclusion, rules: finalResults }
+	}
+
+	// Prove one rule against the shared backward-chaining overlay.
+	#proveRule(
+		rule: Rule,
+		depth: number,
+		visited: ReadonlySet<string>,
+		rules: readonly Rule[],
+		derived: Record<string, unknown>,
+		subject: Subject,
+		trace: string[],
+		ruleResults: Map<string, RuleResult>,
+		maxDepth: number,
+	): boolean {
+		if (depth > maxDepth) return false
+		if (visited.has(rule.id)) return false
+
+		const nextVisited = new Set(visited)
+		nextVisited.add(rule.id)
+
+		const currentSubject: Subject = { ...subject, ...derived }
+		const premiseResults: boolean[] = []
+
+		for (const premise of rule.premises) {
+			premiseResults.push(
+				this.#establish(
+					premise,
+					currentSubject,
+					rules,
+					depth + 1,
+					nextVisited,
+					derived,
+					subject,
+					trace,
+					ruleResults,
+					maxDepth,
+				),
+			)
+		}
+
+		const allMet = premiseResults.every(Boolean)
+
+		ruleResults.set(rule.id, {
+			id: rule.id,
+			applied: allMet,
+			premises: premiseResults,
+			conclusion: allMet,
+		})
+
+		if (allMet) {
+			const conclusions = extractConclusions(rule.conclusion)
+			for (const [key, value] of Object.entries(conclusions)) {
+				// SameValueZero — a NaN conclusion derives (and traces) once.
+				if (!equalValues(derived[key], value)) {
+					derived[key] = value
+					trace.push(
+						`Rule "${rule.id}" derived: ${key}=${String(value)} (backward, depth ${depth})`,
+					)
+				}
+			}
+		} else {
+			trace.push(`Rule "${rule.id}": does not hold (backward, depth ${depth})`)
+		}
+
+		return allMet
 	}
 
 	// Evaluate an expression against a settled overlay, then fall back to

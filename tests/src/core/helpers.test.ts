@@ -538,8 +538,11 @@ describe('sortByPriority — hole & junk tolerance (total, not throwing)', () =>
 		const items = [{ id: 'a', priority: 2 }, null, { id: 'b', priority: 1 }]
 		const sortByPriorityRaw = (
 			...args: never[]
-		): readonly { readonly id: string; readonly priority?: number }[] =>
-			sortByPriority<{ readonly id: string; readonly priority?: number }>(args[0])
+		): readonly { readonly id: string; readonly priority?: number }[] => {
+			const value = args[0]
+			if (value === undefined) throw new Error('expected items')
+			return sortByPriority<{ readonly id: string; readonly priority?: number }>(value)
+		}
 		const sorted = invokeRaw<readonly { readonly id: string }[]>(undefined, sortByPriorityRaw, [
 			items,
 		])
@@ -1568,7 +1571,12 @@ describe('appendById / prependById — dedup-then-insert primitives', () => {
 
 	it('appendById over a sparse array skips holes (hostile input)', () => {
 		const items = sparse<Item>(3, [[1, { id: 'a' }]])
-		const appendByIdRaw = (...args: never[]): readonly Item[] => appendById<Item>(args[0], args[1])
+		const appendByIdRaw = (...args: never[]): readonly Item[] => {
+			const existing = args[0]
+			const item = args[1]
+			if (existing === undefined || item === undefined) throw new Error('expected items')
+			return appendById<Item>(existing, item)
+		}
 		const result = invokeRaw<readonly Item[]>(undefined, appendByIdRaw, [items, { id: 'z' }])
 		expect(result.map((item) => item.id)).toEqual(['a', 'z'])
 	})
@@ -1613,7 +1621,12 @@ describe('replaceById / removeById — position-preserving swap & filter', () =>
 			[1, { id: TRICKY_KEYS[0] ?? '__proto__' }],
 			[3, { id: 'b' }],
 		])
-		const removeByIdRaw = (...args: never[]): readonly Item[] => removeById<Item>(args[0], args[1])
+		const removeByIdRaw = (...args: never[]): readonly Item[] => {
+			const existing = args[0]
+			const id = args[1]
+			if (existing === undefined || id === undefined) throw new Error('expected items and id')
+			return removeById<Item>(existing, id)
+		}
 		expect(() => invokeRaw(undefined, removeByIdRaw, [items, 'nope'])).not.toThrow()
 	})
 })
@@ -1954,7 +1967,14 @@ describe('clear helpers — optional-field key-deletion (PROPOSAL.md §10)', () 
 
 	it('clearQuantitativeDefinition with a hostile non-listed key is total (invokeRaw)', () => {
 		const definition = deepFreeze(quantitativeDefinition('risk', 'Risk', []))
-		const clearRaw = (...args: never[]) => clearQuantitativeDefinition(args[0], args[1])
+		const clearRaw = (...args: never[]) => {
+			const current = args[0]
+			const key = args[1]
+			if (current === undefined || key === undefined) {
+				throw new Error('expected definition and key')
+			}
+			return clearQuantitativeDefinition(current, key)
+		}
 		expect(() => invokeRaw(undefined, clearRaw, [definition, '__proto__'])).not.toThrow()
 	})
 })
@@ -1994,7 +2014,12 @@ describe('subject engine — assignField / removeField / mergeSubjects / repeatS
 	it('removeField over TRICKY_KEYS values is total and never throws (invokeRaw)', () => {
 		const key = TRICKY_KEYS[0] ?? '__proto__'
 		const subject = { id: 's1', [key]: 'x' }
-		const removeFieldRaw = (...args: never[]) => removeField(args[0], args[1])
+		const removeFieldRaw = (...args: never[]) => {
+			const current = args[0]
+			const field = args[1]
+			if (current === undefined || field === undefined) throw new Error('expected subject and key')
+			return removeField(current, field)
+		}
 		expect(() => invokeRaw(undefined, removeFieldRaw, [subject, key])).not.toThrow()
 		expect(Object.hasOwn(invokeRaw(undefined, removeFieldRaw, [subject, key]), key)).toBe(false)
 	})

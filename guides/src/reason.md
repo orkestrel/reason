@@ -105,7 +105,7 @@ The definitions & subjects capability layer's stateful workspace builders (taver
 | `bounds`                 | function | a `Bounds` — absent sides omitted (unbounded).                                                  |
 | `variable`               | function | a variable `SymbolicExpression` leaf.                                                           |
 | `constant`               | function | a constant `SymbolicExpression` leaf.                                                           |
-| `operation`              | const    | an operation `SymbolicExpression` node (`right` omitted when absent — the unary form).          |
+| `operation`              | function | an operation `SymbolicExpression` node (`right` omitted when absent — the unary form).          |
 | `equation`               | function | an `Equation` — left / right solved for `target` (`name` defaults to the id).                   |
 | `fact`                   | function | a `Fact` — `confidence` ALWAYS set (`?? DEFAULT_CONFIDENCE`), the one builder that fills it in. |
 | `inference`              | function | an `Inference` from id / premise patterns / conclusion pattern.                                 |

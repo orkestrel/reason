@@ -30,7 +30,7 @@ export class GroupManager implements GroupManagerInterface {
 
 	constructor(options?: GroupManagerOptions) {
 		this.#groups = options?.groups ?? []
-		this.#emitter = new Emitter<GroupManagerEventMap>({ on: options?.on, error: options?.error })
+		this.#emitter = new Emitter<GroupManagerEventMap>(options)
 	}
 
 	get emitter(): EmitterInterface<GroupManagerEventMap> {

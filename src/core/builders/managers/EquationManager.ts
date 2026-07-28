@@ -29,10 +29,7 @@ export class EquationManager implements EquationManagerInterface {
 
 	constructor(options?: EquationManagerOptions) {
 		this.#equations = options?.equations ?? []
-		this.#emitter = new Emitter<EquationManagerEventMap>({
-			on: options?.on,
-			error: options?.error,
-		})
+		this.#emitter = new Emitter<EquationManagerEventMap>(options)
 	}
 
 	get emitter(): EmitterInterface<EquationManagerEventMap> {

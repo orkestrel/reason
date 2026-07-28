@@ -640,7 +640,9 @@ describe('SymbolicReasoner — full-operator evaluation', () => {
 		const definition = symbolicDefinition('d', 'd', [
 			equation('e1', variable('result'), expression, 'result'),
 		])
-		return expectSymbolic(reasoner.reason({}, definition)).solutions.result
+		const result = expectSymbolic(reasoner.reason({}, definition)).solutions.result
+		if (result === undefined) throw new Error('expected result solution')
+		return result
 	}
 
 	it('evaluates power, percentage, minimum, maximum and average', () => {
@@ -1122,7 +1124,11 @@ describe('SymbolicReasoner — deep invertible isolation (750-peel)', () => {
 		const definition = symbolicDefinition('d', 'd', [
 			equation('e1', deepAddition(750, variable('x'), constant(1)), constant(1000), 'x'),
 		])
-		const run = (): number => expectSymbolic(reasoner.reason({}, definition)).solutions.x
+		const run = (): number => {
+			const result = expectSymbolic(reasoner.reason({}, definition)).solutions.x
+			if (result === undefined) throw new Error('expected x solution')
+			return result
+		}
 		const first = run()
 		const second = run()
 		expect(first).toBe(250)
@@ -1159,7 +1165,11 @@ describe('SymbolicReasoner — precision drift over a long additive chain', () =
 		const definition = symbolicDefinition('d', 'd', [
 			equation('e1', deepAddition(100, variable('x'), constant(0.1)), constant(1000), 'x'),
 		])
-		const run = (): number => expectSymbolic(reasoner.reason({}, definition)).solutions.x
+		const run = (): number => {
+			const result = expectSymbolic(reasoner.reason({}, definition)).solutions.x
+			if (result === undefined) throw new Error('expected x solution')
+			return result
+		}
 		const first = run()
 		const second = run()
 		// Repeated floating-point subtraction of 0.1 across 100 peels drifts the raw

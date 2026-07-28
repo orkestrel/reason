@@ -29,7 +29,7 @@ export class RuleManager implements RuleManagerInterface {
 
 	constructor(options?: RuleManagerOptions) {
 		this.#rules = options?.rules ?? []
-		this.#emitter = new Emitter<RuleManagerEventMap>({ on: options?.on, error: options?.error })
+		this.#emitter = new Emitter<RuleManagerEventMap>(options)
 	}
 
 	get emitter(): EmitterInterface<RuleManagerEventMap> {

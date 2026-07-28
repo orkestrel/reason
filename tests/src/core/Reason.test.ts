@@ -744,8 +744,13 @@ describe('Reason — batch scale beyond 1500: 7500 subjects', () => {
 		const second = runOnce()
 
 		expect(first.results).toHaveLength(7500)
-		expect(expectQuantitative(first.results[0]).value).toBe(9)
-		expect(expectQuantitative(first.results[7499]).value).toBe(9)
+		const firstResult = first.results[0]
+		const lastResult = first.results[7499]
+		if (firstResult === undefined || lastResult === undefined) {
+			throw new Error('expected first and last batch results')
+		}
+		expect(expectQuantitative(firstResult).value).toBe(9)
+		expect(expectQuantitative(lastResult).value).toBe(9)
 		expect(first.results.every((result) => expectQuantitative(result).success)).toBe(true)
 		// Order preservation: the emitted 'reason' payloads are the exact result
 		// objects in subject order (identity), at the first/mid/last positions.

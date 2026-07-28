@@ -54,10 +54,7 @@ export class SubjectBuilder implements SubjectBuilderInterface {
 			const { id: _id, ...rest } = seed
 			this.#subject = rest
 		}
-		this.#emitter = new Emitter<SubjectBuilderEventMap>({
-			on: options?.on,
-			error: options?.error,
-		})
+		this.#emitter = new Emitter<SubjectBuilderEventMap>(options)
 	}
 
 	get id(): string | undefined {

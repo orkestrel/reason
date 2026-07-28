@@ -29,7 +29,7 @@ export class FactManager implements FactManagerInterface {
 
 	constructor(options?: FactManagerOptions) {
 		this.#facts = options?.facts ?? []
-		this.#emitter = new Emitter<FactManagerEventMap>({ on: options?.on, error: options?.error })
+		this.#emitter = new Emitter<FactManagerEventMap>(options)
 	}
 
 	get emitter(): EmitterInterface<FactManagerEventMap> {

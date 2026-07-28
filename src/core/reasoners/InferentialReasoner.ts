@@ -171,7 +171,7 @@ export class InferentialReasoner implements ReasonerInterface {
 		return {
 			reasoning: 'inferential',
 			derived: result.derived,
-			proof: result.proof,
+			...(result.proof === undefined ? {} : { proof: result.proof }),
 			success: errors.length === 0,
 			trace,
 			errors,

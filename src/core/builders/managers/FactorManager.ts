@@ -33,7 +33,7 @@ export class FactorManager implements FactorManagerInterface {
 
 	constructor(groups: GroupManagerInterface, options?: FactorManagerOptions) {
 		this.#groups = groups
-		this.#emitter = new Emitter<FactorManagerEventMap>({ on: options?.on, error: options?.error })
+		this.#emitter = new Emitter<FactorManagerEventMap>(options)
 	}
 
 	get emitter(): EmitterInterface<FactorManagerEventMap> {

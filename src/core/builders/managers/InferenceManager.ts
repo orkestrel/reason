@@ -29,10 +29,7 @@ export class InferenceManager implements InferenceManagerInterface {
 
 	constructor(options?: InferenceManagerOptions) {
 		this.#inferences = options?.inferences ?? []
-		this.#emitter = new Emitter<InferenceManagerEventMap>({
-			on: options?.on,
-			error: options?.error,
-		})
+		this.#emitter = new Emitter<InferenceManagerEventMap>(options)
 	}
 
 	get emitter(): EmitterInterface<InferenceManagerEventMap> {

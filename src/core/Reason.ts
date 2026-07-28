@@ -44,7 +44,7 @@ export class Reason implements ReasonInterface {
 	constructor(options?: ReasonOptions) {
 		this.#bail = options?.bail ?? DEFAULT_REASON_BAIL
 		this.#validate = options?.validate ?? DEFAULT_VALIDATE
-		this.#emitter = new Emitter<ReasonEventMap>({ on: options?.on, error: options?.error })
+		this.#emitter = new Emitter<ReasonEventMap>(options)
 		// A later entry of the same reasoning replaces an earlier one.
 		for (const reasoner of options?.reasoners ?? []) {
 			this.#reasoners.set(reasoner.reasoning, reasoner)

@@ -159,7 +159,7 @@ export function rule(
  * transform stays exact-record valid; the transformer then applies its
  * per-operation default (`1` for `multiply` / `divide` / `power`, `0` otherwise).
  *
- * @param operation - The math operation to apply
+ * @param operator - The math operation to apply
  * @param operand - The operand (ignored by the unary operations)
  * @returns A fresh transform
  *
@@ -171,8 +171,8 @@ export function rule(
  * transform('round')       // { operation: 'round' }
  * ```
  */
-export function transform(operation: MathOperation, operand?: number): Transform {
-	return operand === undefined ? { operation } : { operation, operand }
+export function transform(operator: MathOperation, operand?: number): Transform {
+	return operand === undefined ? { operation: operator } : { operation: operator, operand }
 }
 
 /**
@@ -258,13 +258,11 @@ export function constant(value: number): SymbolicExpression {
  * operation('abs', variable('x')) // unary — no right operand
  * ```
  */
-// A const (not a hoisted function declaration) so `transform`'s `operation`
-// parameter above — named for the Transform key it fills — does not shadow it.
-export const operation = (
+export function operation(
 	operator: MathOperation,
 	left: SymbolicExpression,
 	right?: SymbolicExpression,
-): SymbolicExpression => {
+): SymbolicExpression {
 	return right === undefined
 		? { form: 'operation', operator, left }
 		: { form: 'operation', operator, left, right }
@@ -1404,7 +1402,8 @@ export function extractAtoms(expression: Expression): readonly Atom[] {
 		}
 		const operands = node.operands
 		for (let index = operands.length - 1; index >= 0; index--) {
-			if (index in operands) stack.push(operands[index])
+			const operand = operands[index]
+			if (operand !== undefined) stack.push(operand)
 		}
 	}
 
