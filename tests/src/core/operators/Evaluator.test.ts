@@ -570,26 +570,26 @@ describe('Evaluator — array-of-arrays and string-index paths', () => {
 })
 
 describe('Evaluator — prototype-pollution-safe key resolution', () => {
-	it('reads inherited prototype members off a plain object without throwing', () => {
+	it('resolves no inherited prototype member off a plain object', () => {
 		const subject = { own: 1 }
-		// resolveField uses Reflect.get, so inherited accessors/methods DO resolve —
-		// but only as read values; this is documented, safe, read-only behavior.
-		const proto = evaluator.evaluate(check('__proto__', 'equals', Object.prototype), subject)
+		// resolveField walks own properties only, so an inherited member reads as an
+		// absent field rather than as the prototype's value.
+		const proto = evaluator.evaluate(check('__proto__', 'equals', undefined), subject)
 		expect(proto.met).toBe(true)
-		expect(proto.actual).toBe(Object.prototype)
-		const ctor = evaluator.evaluate(check('constructor', 'equals', Object), subject)
+		expect(proto.actual).toBeUndefined()
+		const ctor = evaluator.evaluate(check('constructor', 'equals', undefined), subject)
 		expect(ctor.met).toBe(true)
-		expect(ctor.actual).toBe(Object)
-		expect(
-			evaluator.evaluate(check('toString', 'equals', Object.prototype.toString), subject).met,
-		).toBe(true)
-		// A plain object has no own or inherited 'prototype' property.
+		expect(ctor.actual).toBeUndefined()
+		expect(evaluator.evaluate(check('toString', 'equals', undefined), subject).met).toBe(true)
 		expect(evaluator.evaluate(check('prototype', 'equals', undefined), subject).met).toBe(true)
+		// An own field on the same subject still resolves, so the walk is narrowed
+		// rather than broken.
+		expect(evaluator.evaluate(check('own', 'equals', 1), subject).met).toBe(true)
 	})
 
 	it('cannot descend through a function value (constructor.prototype is undefined)', () => {
-		// constructor resolves to the Object function, but isObject rejects functions,
-		// so the walk stops — Object.prototype is NOT reachable via constructor.prototype.
+		// `constructor` is inherited, so the first segment already resolves to
+		// undefined and Object.prototype is unreachable through it.
 		const result = evaluator.evaluate(check(['constructor', 'prototype'], 'equals', undefined), {
 			own: 1,
 		})
