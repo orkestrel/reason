@@ -400,13 +400,13 @@ export class InferentialReasoner implements ReasonerInterface {
 	#findAllBindings(
 		premises: readonly Fact[],
 		byArity: ReadonlyMap<string, Fact[]>,
-	): Record<string, unknown>[] {
+	): Array<Record<string, unknown>> {
 		if (premises.length === 0) return [{}]
 
-		let currentBindings: Record<string, unknown>[] = [{}]
+		let currentBindings: Array<Record<string, unknown>> = [{}]
 
 		for (const premise of premises) {
-			const nextBindings: Record<string, unknown>[] = []
+			const nextBindings: Array<Record<string, unknown>> = []
 			const candidates = byArity.get(factToArityKey(premise)) ?? []
 
 			for (const existing of currentBindings) {

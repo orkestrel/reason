@@ -509,7 +509,9 @@ describe('sortByPriority — stable ascending copy sort', () => {
 
 	it('handles empty and single-item lists', () => {
 		expect(sortByPriority([])).toEqual([])
-		const only: readonly { readonly id: string; readonly priority?: number }[] = [{ id: 'only' }]
+		const only: ReadonlyArray<{ readonly id: string; readonly priority?: number }> = [
+			{ id: 'only' },
+		]
 		expect(sortByPriority(only)).toEqual([{ id: 'only' }])
 	})
 
@@ -538,12 +540,12 @@ describe('sortByPriority — hole & junk tolerance (total, not throwing)', () =>
 		const items = [{ id: 'a', priority: 2 }, null, { id: 'b', priority: 1 }]
 		const sortByPriorityRaw = (
 			...args: never[]
-		): readonly { readonly id: string; readonly priority?: number }[] => {
+		): ReadonlyArray<{ readonly id: string; readonly priority?: number }> => {
 			const value = args[0]
 			if (value === undefined) throw new Error('expected items')
 			return sortByPriority<{ readonly id: string; readonly priority?: number }>(value)
 		}
-		const sorted = invokeRaw<readonly { readonly id: string }[]>(undefined, sortByPriorityRaw, [
+		const sorted = invokeRaw<ReadonlyArray<{ readonly id: string }>>(undefined, sortByPriorityRaw, [
 			items,
 		])
 		expect(sorted.map((item) => item.id)).toEqual(['b', 'a'])

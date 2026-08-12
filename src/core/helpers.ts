@@ -852,7 +852,7 @@ export function sortByPriority<T extends { readonly priority?: number }>(
  * findDuplicates([{ id: 'a' }, { id: 'b' }, { id: 'a' }, { id: 'a' }]) // ['a']
  * ```
  */
-export function findDuplicates(items: readonly { readonly id: string }[]): readonly string[] {
+export function findDuplicates(items: ReadonlyArray<{ readonly id: string }>): readonly string[] {
 	const counts = new Map<string, number>()
 	for (const item of items) counts.set(item.id, (counts.get(item.id) ?? 0) + 1)
 	return [...counts.entries()].filter(([, count]) => count > 1).map(([id]) => id)

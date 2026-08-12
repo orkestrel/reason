@@ -1,6 +1,6 @@
 import type { FieldPath } from '@orkestrel/contract'
 import type { EmitterErrorHandler, EmitterHooks, EmitterInterface } from '@orkestrel/emitter'
-import { DEFINITION_BUILDER_BRAND, SUBJECT_BUILDER_BRAND } from './constants.js'
+import type { DEFINITION_BUILDER_BRAND, SUBJECT_BUILDER_BRAND } from './constants.js'
 
 // Reasons — a zero-dependency, synchronous, deterministic reasoning engine.
 // Declarative, JSON-serializable DEFINITIONS are evaluated against SUBJECTS

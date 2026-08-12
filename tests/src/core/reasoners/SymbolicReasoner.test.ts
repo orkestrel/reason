@@ -120,7 +120,7 @@ describe('SymbolicReasoner — reason (evaluation)', () => {
 	})
 
 	it('evaluates the four arithmetic operations', () => {
-		const cases: readonly (readonly [SymbolicExpression, number])[] = [
+		const cases: ReadonlyArray<readonly [SymbolicExpression, number]> = [
 			[operation('add', constant(10), constant(5)), 15],
 			[operation('subtract', constant(10), constant(3)), 7],
 			[operation('multiply', constant(6), constant(7)), 42],
