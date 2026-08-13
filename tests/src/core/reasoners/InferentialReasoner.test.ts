@@ -11,9 +11,9 @@ import {
 	quantitativeDefinition,
 } from '@src/core'
 import { describe, expect, it } from 'vitest'
+import { captureError } from '@orkestrel/test'
 import {
 	ADVERSARIAL_VALUE_SUBJECT,
-	captureError,
 	EXTREME_NUMBERS,
 	expectInferential,
 	INTEGER_KEY_SUBJECT,

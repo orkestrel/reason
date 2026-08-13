@@ -17,9 +17,9 @@ import {
 	transform,
 } from '@src/core'
 import { describe, expect, it } from 'vitest'
+import { captureError } from '@orkestrel/test'
 import {
 	BASIC_SUBJECT,
-	captureError,
 	DRIVER_SUBJECT,
 	EXTREME_NUMBERS,
 	expectQuantitative,

@@ -12,8 +12,8 @@ import {
 	rule,
 } from '@src/core'
 import { describe, expect, it } from 'vitest'
+import { captureError } from '@orkestrel/test'
 import {
-	captureError,
 	deepCompound,
 	EXTREME_NUMBERS,
 	expectLogical,

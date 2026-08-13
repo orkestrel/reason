@@ -18,60 +18,31 @@ import type {
 	SymbolicResult,
 } from '@src/core'
 import { compound, factorGroup, operation, quantitativeDefinition, staticFactor } from '@src/core'
+import type { RecorderInterface } from '@orkestrel/test'
+import { createRecorder } from '@orkestrel/test'
 import { afterEach, vi } from 'vitest'
 
 afterEach(() => {
 	vi.restoreAllMocks()
 })
 
-// A real callback that records its calls — use instead of a mock when a test
-// only needs to count invocations or inspect arguments.
-export interface TestRecorderInterface<TArgs extends readonly unknown[]> {
-	readonly calls: readonly TArgs[]
-	readonly count: number
-	readonly handler: (...args: TArgs) => void
-	clear(): void
-}
-
-export function createRecorder<
-	TArgs extends readonly unknown[] = readonly unknown[],
->(): TestRecorderInterface<TArgs> {
-	const calls: TArgs[] = []
-	return {
-		get calls() {
-			return calls
-		},
-		get count() {
-			return calls.length
-		},
-		handler: (...args: TArgs) => {
-			calls.push(args)
-		},
-		clear() {
-			calls.length = 0
-		},
-	}
-}
-
 /**
  * Create a recorder for an {@link import('@src/core').EmitterErrorHandler} — the emitter's
- * own listener-error channel (AGENTS §13): a `TestRecorderInterface<[error, event]>` whose
+ * own listener-error channel (AGENTS §13): a `RecorderInterface<[error, event]>` whose
  * `handler` is wired as the `error` option, so an emit-safety test asserts a buggy listener's
  * throw was routed here (with the offending event name) instead of corrupting the entity.
  * Argument order is `(error, event)`, matching `EmitterErrorHandler`. A thin alias over
- * {@link createRecorder} (AGENTS §16.1 — extract-once over the per-entity emit-safety blocks).
+ * `createRecorder` (AGENTS §16.1 — extract-once over the per-entity emit-safety blocks).
  *
  * @returns A recorder of `[error: unknown, event: string]` calls
  */
-export function createErrorRecorder(): TestRecorderInterface<
-	readonly [error: unknown, event: string]
-> {
+export function createErrorRecorder(): RecorderInterface<readonly [error: unknown, event: string]> {
 	return createRecorder<readonly [error: unknown, event: string]>()
 }
 
 /** A {@link createRecorder} per listed event of an `EmitterInterface`, keyed by event name. */
 export type EmitterRecorders<TMap extends EventMap, TName extends keyof TMap> = {
-	readonly [K in TName]: TestRecorderInterface<TMap[K]>
+	readonly [K in TName]: RecorderInterface<TMap[K]>
 }
 
 /**
@@ -126,25 +97,6 @@ export function isTotal<TMap extends EventMap, TName extends keyof TMap>(
 	events: readonly TName[],
 ): recorders is EmitterRecorders<TMap, TName> {
 	return events.every((name) => recorders[name] !== undefined)
-}
-
-/**
- * Run `thunk` and return the value it threw, or `undefined` if it returned normally — the
- * one shared form of the `try { …; return undefined } catch (error) { return error }` IIFE
- * the error-path tests repeat (AGENTS §16.1). Lets a caller assert on the captured fault
- * unconditionally, never inside a conditional `expect`. For a synchronous throw site; an
- * async rejection is asserted with `await expect(…).rejects` instead.
- *
- * @param thunk - The (synchronous) operation to run and capture the throw of
- * @returns The thrown value, or `undefined` when `thunk` did not throw
- */
-export function captureError(thunk: () => unknown): unknown {
-	try {
-		thunk()
-		return undefined
-	} catch (error) {
-		return error
-	}
 }
 
 /**

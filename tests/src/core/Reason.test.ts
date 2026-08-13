@@ -20,12 +20,11 @@ import {
 	symbolicDefinition,
 } from '@src/core'
 import { describe, expect, it } from 'vitest'
+import { captureError, createRecorder } from '@orkestrel/test'
 import {
 	buildStaticDefinition,
 	buildSubjects,
-	captureError,
 	createErrorRecorder,
-	createRecorder,
 	createThrowingReasoner,
 	deepFreeze,
 	expectLogical,

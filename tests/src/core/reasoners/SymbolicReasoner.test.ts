@@ -14,8 +14,8 @@ import {
 	variable,
 } from '@src/core'
 import { describe, expect, it } from 'vitest'
+import { captureError } from '@orkestrel/test'
 import {
-	captureError,
 	deepAddition,
 	EXTREME_NUMBERS,
 	expectSymbolic,

@@ -19,7 +19,8 @@ import {
 	variable,
 } from '@src/core'
 import { describe, expect, it } from 'vitest'
-import { captureError, deepFreeze, recordEmitterEvents, runTwice } from '../../../setup.js'
+import { captureError } from '@orkestrel/test'
+import { deepFreeze, recordEmitterEvents, runTwice } from '../../../setup.js'
 
 // `DefinitionBuilder` — the definitions & subjects capability layer's stateful
 // builder (PROPOSAL.md §13): seven always-present SELF-OWNING manager

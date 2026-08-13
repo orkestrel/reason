@@ -93,12 +93,12 @@ import {
 	variable,
 } from '@src/core'
 import { describe, expect, it } from 'vitest'
+import { captureError } from '@orkestrel/test'
 import {
 	ADVERSARIAL_VALUE_SUBJECT,
 	EXTREME_NUMBERS,
 	INTEGER_KEY_SUBJECT,
 	TRICKY_KEYS,
-	captureError,
 	deepAddition,
 	deepCompound,
 	deepFreeze,
