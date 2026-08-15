@@ -67,6 +67,12 @@ Brainstorm privately; show higher-confidence directions.
 
 **Rendered proof.** A claim about a screen is settled by what the browser paints, never by the markup that was supposed to paint it — source-reading review passes a component that renders nothing. The review input is captures at both viewports and both themes plus an accessibility snapshot; source only corroborates the mechanism. For the full review-round campaign built on that evidence, use the `orkestrel-polish-surface` skill instead of improvising one here.
 
+**Mechanical proof.** Three instruments settle what a capture cannot. Each ships a negative control — an input it must report as failing — and a run whose control passes has measured nothing:
+
+- **Contrast, composited.** Read every pairing through a reader that composites the painted layers, in both themes ([bootstrap-reference.md](references/bootstrap-reference.md) → Measuring the bars).
+- **Authored classes against the shipped cascade.** Extract every class authored in the templates and components, and fail the run on one that has no rule in the compiled CSS the page loads — that is what catches an invented or misspelled utility, which otherwise ships as a silent no-op. Assert a population floor so an extractor that quietly matched nothing cannot pass, and control it with a class you know is absent.
+- **One glyph, one meaning.** Register each status glyph against the meaning it carries. No meaning takes two glyphs, no glyph serves two meanings, and every registered glyph resolves in the icon set actually shipped.
+
 ---
 
 ## Design principles
@@ -99,7 +105,7 @@ Brainstorm privately; show higher-confidence directions.
 2. **Semantic HTML** — `nav`, `main`, `section`, heading order
 3. **Work down the styling ladder below** — component classes, then utilities, then Bootstrap's own extension points
 4. **Test responsiveness** — every breakpoint you claim
-5. **Verify against the shipped cascade** — resolve every treatment in the CSS actually loaded (Bootstrap plus every skin and dependency stylesheet the page pulls in), never against docs memory. A class with no rule of its own may still inherit one, and a token pair that passes in stock Bootstrap can fail under a compatible skin. Measure, don't assume — including the `*-subtle` / `*-emphasis` recipes, once per theme.
+5. **Verify against the shipped cascade** — resolve every treatment in the CSS actually loaded (Bootstrap plus every skin and dependency stylesheet the page pulls in), never against docs memory. A class with no rule of its own may still inherit one, and a token pair that passes in stock Bootstrap can fail under a compatible skin. Measure, don't assume — including the `*-subtle` / `*-emphasis` recipes, once per theme, with a reader that composites the translucent layers ([bootstrap-reference.md](references/bootstrap-reference.md) → Measuring the bars).
 
 ### The styling ladder
 
@@ -120,20 +126,25 @@ Each of those ends the cascade for that element: it outranks the utilities, it i
 
 ### Hierarchy & actions
 
-| Intent      | Typical choice                                           |
-| ----------- | -------------------------------------------------------- |
-| Primary     | `btn btn-primary` — **one** clear primary per region     |
-| Secondary   | `btn-outline-*` matching the surface                     |
-| Destructive | `btn-danger` + the confirmation ladder below             |
-| Tertiary    | `btn-link` or text links                                 |
-| Status      | `badge` / `alert` / `*-emphasis` — **never color alone** |
+| Intent      | Typical choice                                                      |
+| ----------- | ------------------------------------------------------------------- |
+| Primary     | `btn btn-primary` — **one** clear primary per region                |
+| Secondary   | `btn-secondary` — solid, so the surface underneath cannot change it |
+| Destructive | `btn-danger` + the confirmation ladder below                        |
+| Tertiary    | `btn-link` or text links                                            |
+| Status      | `badge` / `alert` / `*-emphasis` — **icon + color + word**          |
+
+**Outline buttons are the decorative tier.** They paint no background of their own, so they borrow whatever surface they sit on and their contrast is surface- and theme-dependent by construction: measured against stock Bootstrap, the whole `btn-outline-*` family misses 4.5:1 across the dark theme and on light tinted surfaces — cards, subtle alerts. An action that carries information or consequence takes the solid variant. Solid variants paint their own background and measure identically on every surface, which is what makes them the safe choice — but the stock danger fill clears the bar by hundredths, so anything layered over a solid button (an `opacity-*` utility, a translucent overlay, a skin's own tint) puts it back under measurement.
 
 A status mark with **no text** is an icon glyph, never a `badge`: stock Bootstrap ships `.badge:empty { display: none }`, so an empty badge used as a dot never renders at all ([components.md](references/components.md) → Badge).
 
 ### Surfaces, color, contrast
 
-- **Contrast bars, measured in both themes:** **≥ 4.5:1** for anything information-bearing — `small`, captions, and meta text included — and **≥ 3:1** for textless marks, state indicators, and the hover/focus chrome that carries state. Verify even Bootstrap's own palette; the docs admit some defaults fall short.
-- `text-body-tertiary` fails the AA bar for information-bearing small text — tier such text `text-body-secondary` or better, and keep tertiary for genuinely decorative marks.
+- **Contrast bars, measured in both themes:** **≥ 4.5:1** for anything information-bearing — `small`, captions, and meta text included — and **≥ 3:1** for textless marks, state indicators, and the hover/focus chrome that carries state. Verify even Bootstrap's own palette; the docs admit some defaults fall short. A pairing that passes light routinely fails dark, so one theme's reading settles nothing.
+- **Information-bearing status text takes the `-emphasis` pair.** Plain `text-success` and `text-danger` miss the bar across the dark theme and on light tinted surfaces, and `text-warning` is theme-asymmetric — unreadable on light, comfortable on dark. A plain semantic color is decoration beside an encoding that already passes; it is never the encoding.
+- `text-body-tertiary` carries no information anywhere: it measures under 4.5:1 on every surface in both themes. Tier text a user must read `text-body-secondary` or better, and keep tertiary for genuinely decorative marks.
+- **A subtle fill degrades everything inside it one notch.** Inside `alert-*` and the `*-subtle` backgrounds, outline buttons and plain semantic text fail even in light — so information-bearing text there is `-emphasis` and every button is solid.
+- **A primary fill destroys every semantic color.** On `.active`, `.bg-primary`, and `text-bg-*` surfaces every tone class measured lands under the bar in both themes, the `-emphasis` family included, because the fill supplies its own contrast color and the tone class overrides it with one tuned for a different background. Carry no tone class inside such a fill; let the surface's contrast color take the text, and keep the status encoded by icon and word.
 - Disabled controls are exempt from the bars, but a disabled **destructive** control must not keep full danger saturation — at full strength it still reads as armed. Neutralize the variant while it is disabled and carry the reason on the control with `aria-describedby` (plus `title` for pointer users), never `title` alone.
 - Prefer `bg-body`, `bg-body-secondary`, `bg-body-tertiary` over raw `bg-white`/`bg-light` — they track `data-bs-theme`.
 - Pairings: `text-bg-*`, `*-subtle`, `*-emphasis`, `text-body` / `text-body-secondary`. (`text-muted` is deprecated — use `text-body-secondary`.)
@@ -142,7 +153,8 @@ A status mark with **no text** is an icon glyph, never a `badge`: stock Bootstra
 
 ### Density, layout, responsive
 
-- Enterprise density: `table-sm`, `btn-sm` / `btn-group-sm`, compact toolbars — but keep every interactive target **≥ 24×24px** (WCAG 2.2); pad hit areas rather than shrinking them.
+- Enterprise density: `table-sm`, `btn-sm` / `btn-group-sm`, compact toolbars — but keep every interactive target **≥ 24×24px**, measured on the rendered box rather than assumed from the class (WCAG 2.2); pad hit areas rather than shrinking them.
+- Where information density is the screen's job, take the `-sm` family across a control row together — `btn-sm` with `form-control-sm`, `form-select-sm`, `input-group-sm` — so the row shares one height. Mixed sizes in one row are the tell of per-element shrinking.
 - Offer density (comfortable/compact) as a user toggle driven by one token, not ad-hoc `-sm` sprinkling.
 - Cards earn their keep: `.card` when grouping helps; otherwise spacing + type.
 - Prefer `gap-*` on parents over margin spam on every child.
@@ -159,13 +171,14 @@ A status mark with **no text** is an icon glyph, never a `badge`: stock Bootstra
 - **Empty:** no-data-yet invites the first action; no-results-for-filters offers "Clear filters." Never one generic "nothing here."
 - **Errors:** what failed + how to fix + a keyboard-reachable retry, in place — never a toast, never a wiped layout.
 - **Channel rule:** toast = transient success; inline alert = contextual; banner = persistent page-level condition; modal = blocking decision. Full matrix: [bootstrap-reference.md](references/bootstrap-reference.md) → Feedback discipline.
+- **Build a blocking decision on the native `<dialog>`.** `showModal()` brings focus containment, Esc, an inert background, and top-layer stacking from the platform, with no instance to construct and none to leak when the view unmounts. Dress it with Bootstrap chrome inside ([components.md](references/components.md) → Modal). Reach for `.modal` and its JS when the project already drives its dialogs that way.
 - **Destructive ladder:** undo > confirm dialog (verb-labeled buttons, consequence restated) > type-to-confirm (only high blast radius). Prefer undoable over interrupting.
 
 ### Views & navigation
 
 - In-page view switching → real **tabs** (`nav-tabs` / `nav-pills` / `nav-underline` + tab panes / equivalent state), not scroll-only hash links dressed as tabs.
 - Active items: `aria-current="page"` or `aria-selected`. Exactly **one** `aria-current` per selection — per nav, per list, per table; two is no selection at all.
-- A mark laid on a selected/active fill must survive it: a `text-bg-*`-family mark on a `.active` fill of the same color is overridden and vanishes, while `text-body-emphasis` keeps reading. Same trap for `btn-check` filter labels ([components.md](references/components.md) → Selection fills).
+- A mark laid on a selected/active fill must survive it: a `text-bg-*`-family mark on a `.active` fill of the same color is overridden and vanishes. Drop the tone class inside the fill (Surfaces, color, contrast above) and verify by capturing the selected row. Same trap for `btn-check` filter labels ([components.md](references/components.md) → Selection fills).
 - Icon-only controls: `aria-label` (and `title` when helpful).
 - Breadcrumbs only for real hierarchy; command palette only on top of visible nav.
 
@@ -219,8 +232,11 @@ When the developer does authorize it:
 - An empty `.badge` used as a dot — `.badge:empty { display: none }` means it never rendered
 - Assuming an unfilled `.badge` is transparent — compatible skins may give it a default background; a muted badge states its fill (`bg-*-subtle`, `bg-transparent`)
 - A colored mark dropped onto a selected/active fill of the same family — the fill wins and the mark disappears
+- An outline button carrying a real action — it borrows the surface, so it reads on a plain light panel and fails in dark and on tinted surfaces
+- A tone class inside a primary fill — the fill supplies the contrast color and the class overrides it with a worse one
 - Disabled destructive controls left at full danger saturation
 - Treatments accepted from docs memory instead of the compiled cascade
+- A contrast reading taken from the first painted ancestor — a 3% tint read as full paint passes unreadable pairs and fails readable ones
 - Layout-shifting conditional chrome (bulk bars or alerts that shove the toolbar — swap in place)
 - Nested bordered divs instead of real `card` structure
 - Hard-coded hex that ignores `data-bs-theme`
@@ -245,7 +261,7 @@ When the developer does authorize it:
 - Focus not obscured by sticky chrome (`scroll-margin-top`); focus moved deliberately on SPA route change, failed submit, and row delete
 - Meaning not by color alone; contrast verified
 - Drag interactions have a non-drag alternative
-- Modals: `aria-labelledby`; let Bootstrap trap/restore focus; dispose instances in SPAs on unmount
+- Dialogs: `aria-labelledby`; let the platform or Bootstrap trap and restore focus rather than scripting it; dispose Bootstrap instances in SPAs on unmount
 
 WCAG 2.2 deltas, APG pattern contracts, reduced motion, and SPA focus recipes: [bootstrap-reference.md](references/bootstrap-reference.md) → Accessibility.
 
@@ -263,8 +279,10 @@ Progress:
 - [ ] Plan tokens mapped to theme / --bs-* (no hex scatter); light/dark if both ship
 - [ ] Copy: user language, consistent verbs, useful empty/error/loading
 - [ ] Five states per data surface: ideal / empty / loading / partial / error
-- [ ] Contrast measured in both themes: ≥ 4.5:1 information-bearing (small included), ≥ 3:1 marks and state chrome; meaning not color-alone
+- [ ] Contrast composited and measured in both themes: ≥ 4.5:1 information-bearing (small included), ≥ 3:1 marks and state chrome; meaning not color-alone
+- [ ] Tiers held: `-emphasis` for information-bearing status, solid buttons for real actions, no tone class inside a filled surface
 - [ ] Every treatment resolved in the shipped cascade, not from docs memory
+- [ ] Authored classes checked against that cascade; one glyph per meaning; every instrument's control fails
 - [ ] Keyboard: focus visible, not obscured, targets ≥ 24px, icon labels
 - [ ] Reduced motion respected; drag has non-drag alternative
 - [ ] Forms: labels visible, blur validation, error summary + inline, submit enabled
