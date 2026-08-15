@@ -68,5 +68,9 @@ unpublished.
 
 ## Status
 
-Raised, not implemented. Implementing it is a change to `reason`, which was outside the
-campaign's scope.
+Implemented here in `reason`: all ten result guards are public, open on result objects, total on
+hostile input, and covered by failing-first tests.
+
+Successor obligation on `brief`: re-pin `@orkestrel/reason`, import `isLogicalResult` and
+`isRuleResult`, and delete its local `isLogicalVerdict` / `isRuleVerdict` implementations as
+required by `.claude/rules/patterns.md`.

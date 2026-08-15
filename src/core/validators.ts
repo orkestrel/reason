@@ -4,6 +4,7 @@ import type {
 	Bounds,
 	ChainingStrategy,
 	Check,
+	CheckResult,
 	Comparison,
 	Definition,
 	DefinitionBuilderInterface,
@@ -13,25 +14,37 @@ import type {
 	Factor,
 	FactorGroup,
 	FactorRange,
+	FactorResult,
+	GroupResult,
 	Inference,
 	InferentialDefinition,
+	InferentialResult,
 	LogicalDefinition,
 	LogicalOperator,
+	LogicalResult,
 	MathOperation,
+	ProofNode,
 	QuantitativeDefinition,
+	QuantitativeResult,
+	ReasonResult,
 	Reasoning,
 	Rule,
+	RuleResult,
 	Source,
 	SubjectBuilderInterface,
 	SymbolicDefinition,
 	SymbolicExpression,
+	SymbolicResult,
 	Transform,
 } from './types.js'
 import {
 	arrayOf,
+	GUARD_DEPTH_LIMIT,
+	holds,
 	isArray,
 	isBoolean,
 	isFiniteNumber,
+	isNumber,
 	isObject,
 	isRecord,
 	isString,
@@ -39,6 +52,7 @@ import {
 	literalOf,
 	notOf,
 	orOf,
+	readArrayEntries,
 	recordOf,
 	unionOf,
 	whereOf,
@@ -47,12 +61,16 @@ import { DEFINITION_BUILDER_BRAND, SUBJECT_BUILDER_BRAND } from './constants.js'
 
 // AGENTS §14: every guard here is a TOTAL function — adversarial input (junk,
 // hostile prototypes, deep nesting) returns `false`, never throws. All guards
-// compose the contracts combinators; the two recursive shapes (`isExpression`,
-// `isSymbolicExpression`) recurse through `lazyOf`, the sanctioned recursion
-// entry point (a pathologically deep or cyclic input is contained, reporting a
-// non-match). Record guards are EXACT (`recordOf`): an extra key fails, so a
-// definition that drifted from its declared shape is rejected loudly. Numeric
-// definition fields guard with `isFiniteNumber` — JSON cannot carry `NaN` /
+// compose the contracts combinators. Of the three recursive shapes,
+// `isExpression` and `isSymbolicExpression` recurse through `lazyOf`, while
+// `isProofNode` uses a depth-bounded iterative worklist. Both sanctioned
+// mechanisms contain pathologically deep or cyclic input as a non-match.
+// Input record guards are EXACT (`recordOf`): an extra key fails, so a
+// definition that drifted from its declared shape is rejected loudly. Result
+// guards are OPEN: exactness follows who produces the value, not who declares
+// the type — caller-supplied inputs are exact, while package or
+// foreign-interface outputs may carry extra members. Numeric definition
+// fields guard with `isFiniteNumber` — JSON cannot carry `NaN` /
 // `±Infinity`, so a non-finite number marks a corrupted definition. The one
 // unconstrained field (`Check.value`, legitimately ANY value including `null`)
 // uses the trivially-true guard `notOf(unionOf())` — `unionOf()` of zero guards
@@ -764,6 +782,328 @@ export function isDefinition(value: unknown): value is Definition {
 		isLogicalDefinition(value) ||
 		isSymbolicDefinition(value) ||
 		isInferentialDefinition(value)
+	)
+}
+
+/**
+ * Determine whether a value is a {@link CheckResult}.
+ *
+ * @param value - The value to test
+ * @returns `true` when every published check-result member is valid
+ *
+ * @example
+ * ```ts
+ * import { isCheckResult } from '@src/core'
+ *
+ * isCheckResult({ field: 'age', met: true, actual: 30 }) // true
+ * isCheckResult({ field: 'age', met: 'yes', actual: 30 }) // false
+ * ```
+ */
+export function isCheckResult(value: unknown): value is CheckResult {
+	return whereOf(isObject, (result): result is CheckResult => {
+		if (isArray(result)) return false
+		const error = Reflect.get(result, 'error')
+		return (
+			isFieldPath(Reflect.get(result, 'field')) &&
+			isBoolean(Reflect.get(result, 'met')) &&
+			Reflect.has(result, 'actual') &&
+			(error === undefined || isString(error))
+		)
+	})(value)
+}
+
+/**
+ * Determine whether a value is a {@link FactorResult}.
+ *
+ * @param value - The value to test
+ * @returns `true` when every published factor-result member is valid
+ *
+ * @example
+ * ```ts
+ * import { isFactorResult } from '@src/core'
+ *
+ * isFactorResult({ id: 'age', applied: true, value: 5 }) // true
+ * isFactorResult({ id: 'age', applied: true, value: '5' }) // false
+ * ```
+ */
+export function isFactorResult(value: unknown): value is FactorResult {
+	return whereOf(isObject, (result): result is FactorResult => {
+		if (isArray(result)) return false
+		const raw = Reflect.get(result, 'raw')
+		const checks = Reflect.get(result, 'checks')
+		return (
+			isString(Reflect.get(result, 'id')) &&
+			isBoolean(Reflect.get(result, 'applied')) &&
+			isNumber(Reflect.get(result, 'value')) &&
+			(raw === undefined || isNumber(raw)) &&
+			(checks === undefined || arrayOf(isCheckResult)(checks))
+		)
+	})(value)
+}
+
+/**
+ * Determine whether a value is a {@link GroupResult}.
+ *
+ * @param value - The value to test
+ * @returns `true` when every published group-result member is valid
+ *
+ * @example
+ * ```ts
+ * import { isGroupResult } from '@src/core'
+ *
+ * isGroupResult({ id: 'risk', applied: true, value: 5, factors: [] }) // true
+ * isGroupResult({ id: 'risk', applied: true, value: 5 }) // false
+ * ```
+ */
+export function isGroupResult(value: unknown): value is GroupResult {
+	return whereOf(isObject, (result): result is GroupResult => {
+		return (
+			!isArray(result) &&
+			isString(Reflect.get(result, 'id')) &&
+			isBoolean(Reflect.get(result, 'applied')) &&
+			isNumber(Reflect.get(result, 'value')) &&
+			arrayOf(isFactorResult)(Reflect.get(result, 'factors'))
+		)
+	})(value)
+}
+
+/**
+ * Determine whether a value is a {@link RuleResult}.
+ *
+ * @param value - The value to test
+ * @returns `true` when every published rule-result member is valid
+ *
+ * @example
+ * ```ts
+ * import { isRuleResult } from '@src/core'
+ *
+ * isRuleResult({ id: 'adult', applied: true, premises: [true], conclusion: true }) // true
+ * isRuleResult({ id: 'adult', applied: true, premises: [1], conclusion: true }) // false
+ * ```
+ */
+export function isRuleResult(value: unknown): value is RuleResult {
+	return whereOf(isObject, (result): result is RuleResult => {
+		return (
+			!isArray(result) &&
+			isString(Reflect.get(result, 'id')) &&
+			isBoolean(Reflect.get(result, 'applied')) &&
+			arrayOf(isBoolean)(Reflect.get(result, 'premises')) &&
+			isBoolean(Reflect.get(result, 'conclusion'))
+		)
+	})(value)
+}
+
+/**
+ * Determine whether a value is a depth-bounded, acyclic {@link ProofNode} tree.
+ *
+ * @remarks
+ * Traversal is iterative and reuses `GUARD_DEPTH_LIMIT`. Active ancestors refuse cycles, and a
+ * settled-depth record prevents repeated validation of shared subtrees while keeping the bound
+ * exact: a node revisited no deeper than its validated depth is skipped, and one reached deeper
+ * is walked again. The traversal accepts an acyclic graph only when every reachable node is
+ * valid and every root-to-node path contains at most `GUARD_DEPTH_LIMIT` nodes; shared aliases
+ * and sibling order do not affect the verdict.
+ *
+ * @param value - The value to test
+ * @returns `true` when every proof node is valid within the runtime guard bound
+ *
+ * @example
+ * ```ts
+ * import { isProofNode } from '@src/core'
+ *
+ * isProofNode({ fact: 'bird', depth: 0, children: [{ fact: 'feathers', depth: 1 }] }) // true
+ * isProofNode({ fact: 'bird', children: [] }) // false
+ * ```
+ */
+export function isProofNode(value: unknown): value is ProofNode {
+	return holds(() => {
+		if (!isObject(value) || isArray(value)) return false
+		const active = new WeakSet<object>()
+		const settled = new WeakMap<object, number>()
+		const worklist: Array<[object, number, boolean]> = [[value, 1, false]]
+		while (worklist.length > 0) {
+			const frame = worklist.pop()
+			if (frame === undefined) continue
+			const node = frame[0]
+			const depth = frame[1]
+			if (frame[2]) {
+				active.delete(node)
+				const known = settled.get(node)
+				settled.set(node, known === undefined || depth > known ? depth : known)
+				continue
+			}
+			if (depth > GUARD_DEPTH_LIMIT || active.has(node)) return false
+			const known = settled.get(node)
+			if (known !== undefined && depth <= known) continue
+			active.add(node)
+			worklist.push([node, depth, true])
+			const inference = Reflect.get(node, 'inference')
+			const children = Reflect.get(node, 'children')
+			if (
+				!isString(Reflect.get(node, 'fact')) ||
+				!isNumber(Reflect.get(node, 'depth')) ||
+				(inference !== undefined && !isString(inference))
+			) {
+				return false
+			}
+			if (children === undefined) continue
+			if (!isArray(children)) return false
+			const entries = readArrayEntries(children)
+			if (!entries.success || !entries.value.dense) return false
+			for (let index = entries.value.entries.length - 1; index >= 0; index -= 1) {
+				const child = entries.value.entries[index]
+				if (!isObject(child) || isArray(child)) return false
+				worklist.push([child, depth + 1, false])
+			}
+		}
+		return true
+	})
+}
+
+/**
+ * Determine whether a value is a {@link QuantitativeResult}.
+ *
+ * @param value - The value to test
+ * @returns `true` when every published quantitative-result member is valid
+ *
+ * @example
+ * ```ts
+ * import { isQuantitativeResult } from '@src/core'
+ *
+ * isQuantitativeResult({ reasoning: 'quantitative', value: 0, groups: [], count: 0, success: true, trace: [], errors: [] }) // true
+ * isQuantitativeResult({ reasoning: 'quantitative' }) // false
+ * ```
+ */
+export function isQuantitativeResult(value: unknown): value is QuantitativeResult {
+	return whereOf(isObject, (result): result is QuantitativeResult => {
+		return (
+			!isArray(result) &&
+			Reflect.get(result, 'reasoning') === 'quantitative' &&
+			isNumber(Reflect.get(result, 'value')) &&
+			arrayOf(isGroupResult)(Reflect.get(result, 'groups')) &&
+			isNumber(Reflect.get(result, 'count')) &&
+			isBoolean(Reflect.get(result, 'success')) &&
+			arrayOf(isString)(Reflect.get(result, 'trace')) &&
+			arrayOf(isString)(Reflect.get(result, 'errors'))
+		)
+	})(value)
+}
+
+/**
+ * Determine whether a value is a {@link LogicalResult}.
+ *
+ * @param value - The value to test
+ * @returns `true` when every published logical-result member is valid
+ *
+ * @example
+ * ```ts
+ * import { isLogicalResult } from '@src/core'
+ *
+ * isLogicalResult({ reasoning: 'logical', conclusion: false, rules: [], count: 0, success: true, trace: [], errors: [] }) // true
+ * isLogicalResult({ reasoning: 'logical', rules: [] }) // false
+ * ```
+ */
+export function isLogicalResult(value: unknown): value is LogicalResult {
+	return whereOf(isObject, (result): result is LogicalResult => {
+		return (
+			!isArray(result) &&
+			Reflect.get(result, 'reasoning') === 'logical' &&
+			isBoolean(Reflect.get(result, 'conclusion')) &&
+			arrayOf(isRuleResult)(Reflect.get(result, 'rules')) &&
+			isNumber(Reflect.get(result, 'count')) &&
+			isBoolean(Reflect.get(result, 'success')) &&
+			arrayOf(isString)(Reflect.get(result, 'trace')) &&
+			arrayOf(isString)(Reflect.get(result, 'errors'))
+		)
+	})(value)
+}
+
+/**
+ * Determine whether a value is a {@link SymbolicResult}.
+ *
+ * @param value - The value to test
+ * @returns `true` when every published symbolic-result member is valid
+ *
+ * @example
+ * ```ts
+ * import { isSymbolicResult } from '@src/core'
+ *
+ * isSymbolicResult({ reasoning: 'symbolic', solutions: { x: 4 }, success: true, trace: [], errors: [] }) // true
+ * isSymbolicResult({ reasoning: 'symbolic', solutions: { x: '4' }, success: true, trace: [], errors: [] }) // false
+ * ```
+ */
+export function isSymbolicResult(value: unknown): value is SymbolicResult {
+	return whereOf(isObject, (result): result is SymbolicResult => {
+		return (
+			!isArray(result) &&
+			Reflect.get(result, 'reasoning') === 'symbolic' &&
+			whereOf(
+				isObject,
+				(solutions) => !isArray(solutions) && Object.values(solutions).every(isNumber),
+			)(Reflect.get(result, 'solutions')) &&
+			isBoolean(Reflect.get(result, 'success')) &&
+			arrayOf(isString)(Reflect.get(result, 'trace')) &&
+			arrayOf(isString)(Reflect.get(result, 'errors'))
+		)
+	})(value)
+}
+
+/**
+ * Determine whether a value is an {@link InferentialResult}.
+ *
+ * @remarks
+ * Openness stops at `derived`: every derived fact must pass {@link isFact},
+ * which refuses extra own keys, non-plain records such as class instances, and
+ * non-finite `confidence`. An engine result derived from a base fact carrying
+ * non-finite `confidence` is therefore refused deliberately because that fact
+ * cannot round-trip as inferential input.
+ *
+ * @param value - The value to test
+ * @returns `true` when every published inferential-result member is valid
+ *
+ * @example
+ * ```ts
+ * import { isInferentialResult } from '@src/core'
+ *
+ * isInferentialResult({ reasoning: 'inferential', derived: [], success: true, trace: [], errors: [] }) // true
+ * isInferentialResult({ reasoning: 'inferential', derived: [null], success: true, trace: [], errors: [] }) // false
+ * ```
+ */
+export function isInferentialResult(value: unknown): value is InferentialResult {
+	return whereOf(isObject, (result): result is InferentialResult => {
+		if (isArray(result)) return false
+		const proof = Reflect.get(result, 'proof')
+		return (
+			Reflect.get(result, 'reasoning') === 'inferential' &&
+			arrayOf(isFact)(Reflect.get(result, 'derived')) &&
+			(proof === undefined || isProofNode(proof)) &&
+			isBoolean(Reflect.get(result, 'success')) &&
+			arrayOf(isString)(Reflect.get(result, 'trace')) &&
+			arrayOf(isString)(Reflect.get(result, 'errors'))
+		)
+	})(value)
+}
+
+/**
+ * Determine whether a value is any {@link ReasonResult} arm.
+ *
+ * @param value - The value to test
+ * @returns `true` when one complete reasoning-result guard accepts the value
+ *
+ * @example
+ * ```ts
+ * import { isReasonResult } from '@src/core'
+ *
+ * isReasonResult({ reasoning: 'symbolic', solutions: {}, success: true, trace: [], errors: [] }) // true
+ * isReasonResult({ reasoning: 'unknown' }) // false
+ * ```
+ */
+export function isReasonResult(value: unknown): value is ReasonResult {
+	return (
+		isQuantitativeResult(value) ||
+		isLogicalResult(value) ||
+		isSymbolicResult(value) ||
+		isInferentialResult(value)
 	)
 }
 

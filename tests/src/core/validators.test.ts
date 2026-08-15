@@ -4,6 +4,11 @@ import {
 	check,
 	compound,
 	constant,
+	createInferentialReasoner,
+	createLogicalReasoner,
+	createQuantitativeReasoner,
+	createReason,
+	createSymbolicReasoner,
 	DEFINITION_BUILDER_BRAND,
 	equation,
 	fact,
@@ -15,6 +20,7 @@ import {
 	isBounds,
 	isChainingStrategy,
 	isCheck,
+	isCheckResult,
 	isComparison,
 	isDefinition,
 	isEquation,
@@ -23,22 +29,31 @@ import {
 	isFactor,
 	isFactorGroup,
 	isFactorRange,
+	isFactorResult,
 	isFieldPath,
+	isGroupResult,
 	isInference,
 	isInferentialDefinition,
+	isInferentialResult,
 	isLogicalDefinition,
+	isLogicalResult,
 	isLogicalOperator,
 	isMathOperation,
 	isNumberRecord,
+	isProofNode,
 	isQuantitativeDefinition,
+	isQuantitativeResult,
+	isReasonResult,
 	isReasoning,
 	isDefinitionBuilder,
+	isRuleResult,
 	isSubjectBuilder,
 	isRule,
 	isSource,
 	isSubject,
 	isSymbolicDefinition,
 	isSymbolicExpression,
+	isSymbolicResult,
 	isTransform,
 	logicalDefinition,
 	lookupSource,
@@ -56,7 +71,7 @@ import {
 import { parseJSON } from '@orkestrel/contract'
 import { describe, expect, it } from 'vitest'
 import { captureError } from '@orkestrel/test'
-import { TRICKY_KEYS, sequence } from '../../setup.js'
+import { ADVERSARIAL_VALUE_SUBJECT, EXTREME_NUMBERS, TRICKY_KEYS, sequence } from '../../setup.js'
 
 // The reasons validators — deep TOTAL guards (AGENTS §14): every guard accepts
 // its builder's output (builder ↔ guard round-trip), rejects off-shape input,
@@ -575,6 +590,512 @@ describe('definition guards', () => {
 // literal (JSON has no symbol keys), so plain data can never forge either
 // entity, and the two brands are distinct symbols so neither entity can match
 // the other's guard.
+
+describe('isCheckResult', () => {
+	const sound = { field: 'age', met: true, actual: 42 }
+
+	it('accepts the whole open result and checks every required member', () => {
+		expect(isCheckResult(sound)).toBe(true)
+		expect(isCheckResult({ ...sound, note: 'richer' })).toBe(true)
+		expect(isCheckResult(Object.assign(Object.create({ inherited: true }), sound))).toBe(true)
+		expect(isCheckResult({ met: true, actual: 42 })).toBe(false)
+		expect(isCheckResult({ field: 'age', actual: 42 })).toBe(false)
+		expect(isCheckResult({ field: 'age', met: true })).toBe(false)
+		expect(isCheckResult({ ...sound, field: 1 })).toBe(false)
+		expect(isCheckResult({ ...sound, met: 'yes' })).toBe(false)
+		expect(isCheckResult(Object.assign([], sound))).toBe(false)
+	})
+
+	it('accepts unrestricted actual values and absent-or-valid error', () => {
+		for (const actual of [...EXTREME_NUMBERS, Number.NaN, Number.POSITIVE_INFINITY]) {
+			expect(isCheckResult({ ...sound, actual })).toBe(true)
+		}
+		expect(isCheckResult({ ...sound, actual: undefined })).toBe(true)
+		expect(isCheckResult({ ...sound, error: 'unknown operator' })).toBe(true)
+		expect(isCheckResult({ ...sound, error: undefined })).toBe(true)
+		expect(isCheckResult({ ...sound, error: 1 })).toBe(false)
+	})
+})
+
+describe('isFactorResult', () => {
+	const sound = { id: 'factor', applied: true, value: 4 }
+
+	it('accepts open literal and prototype-carrying results and refuses every required-member fault', () => {
+		expect(isFactorResult(sound)).toBe(true)
+		expect(isFactorResult({ ...sound, note: 'richer' })).toBe(true)
+		expect(isFactorResult(Object.assign(Object.create({ inherited: true }), sound))).toBe(true)
+		expect(isFactorResult({ applied: true, value: 4 })).toBe(false)
+		expect(isFactorResult({ id: 'factor', value: 4 })).toBe(false)
+		expect(isFactorResult({ id: 'factor', applied: true })).toBe(false)
+		expect(isFactorResult({ ...sound, id: 1 })).toBe(false)
+		expect(isFactorResult({ ...sound, applied: 'yes' })).toBe(false)
+		expect(isFactorResult({ ...sound, value: '4' })).toBe(false)
+		expect(isFactorResult(Object.assign([], sound))).toBe(false)
+	})
+
+	it('accepts every number value and absent-or-valid raw and checks', () => {
+		for (const value of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+			expect(isFactorResult({ ...sound, value })).toBe(true)
+			expect(isFactorResult({ ...sound, raw: value })).toBe(true)
+		}
+		expect(isFactorResult({ ...sound, raw: undefined, checks: undefined })).toBe(true)
+		expect(isFactorResult({ ...sound, raw: 2, checks: [] })).toBe(true)
+		expect(isFactorResult({ ...sound, raw: '2' })).toBe(false)
+		expect(isFactorResult({ ...sound, checks: [1] })).toBe(false)
+		expect(
+			isFactorResult({
+				...sound,
+				checks: [{ field: 'age', met: true, actual: 42, note: 'nested-extra' }],
+			}),
+		).toBe(true)
+	})
+})
+
+describe('isGroupResult', () => {
+	const sound = {
+		id: 'group',
+		applied: true,
+		value: 4,
+		factors: [{ id: 'factor', applied: true, value: 4 }],
+	}
+
+	it('accepts open nested results and refuses every required-member fault', () => {
+		expect(isGroupResult(sound)).toBe(true)
+		expect(isGroupResult({ ...sound, note: 'richer' })).toBe(true)
+		expect(
+			isGroupResult({ ...sound, factors: [{ ...sound.factors[0], note: 'nested-extra' }] }),
+		).toBe(true)
+		expect(isGroupResult(Object.assign(Object.create({ inherited: true }), sound))).toBe(true)
+		expect(isGroupResult({ applied: true, value: 4, factors: [] })).toBe(false)
+		expect(isGroupResult({ id: 'group', value: 4, factors: [] })).toBe(false)
+		expect(isGroupResult({ id: 'group', applied: true, factors: [] })).toBe(false)
+		expect(isGroupResult({ id: 'group', applied: true, value: 4 })).toBe(false)
+		expect(isGroupResult({ ...sound, factors: [1] })).toBe(false)
+		expect(isGroupResult(Object.assign([], sound))).toBe(false)
+	})
+
+	it('accepts non-finite numeric values', () => {
+		for (const value of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+			expect(isGroupResult({ ...sound, value })).toBe(true)
+		}
+	})
+})
+
+describe('isRuleResult', () => {
+	const sound = { id: 'rule', applied: true, premises: [true, false], conclusion: true }
+
+	it('accepts open literal and prototype-carrying results and refuses every required-member fault', () => {
+		expect(isRuleResult(sound)).toBe(true)
+		expect(isRuleResult({ ...sound, note: 'richer' })).toBe(true)
+		expect(isRuleResult(Object.assign(Object.create({ inherited: true }), sound))).toBe(true)
+		expect(isRuleResult({ applied: true, premises: [], conclusion: true })).toBe(false)
+		expect(isRuleResult({ id: 'rule', premises: [], conclusion: true })).toBe(false)
+		expect(isRuleResult({ id: 'rule', applied: true, conclusion: true })).toBe(false)
+		expect(isRuleResult({ id: 'rule', applied: true, premises: [] })).toBe(false)
+		expect(isRuleResult({ ...sound, premises: [true, 1] })).toBe(false)
+		expect(isRuleResult(Object.assign([], sound))).toBe(false)
+	})
+})
+
+describe('isProofNode', () => {
+	const sound = {
+		fact: 'goal',
+		depth: 0,
+		children: [{ fact: 'premise', inference: 'rule', depth: 1 }],
+	}
+
+	it('accepts open recursive results and every optional-member posture', () => {
+		expect(isProofNode({ fact: 'goal', depth: 0 })).toBe(true)
+		expect(isProofNode(sound)).toBe(true)
+		expect(isProofNode({ fact: 'goal', depth: 0, inference: undefined, children: undefined })).toBe(
+			true,
+		)
+		expect(
+			isProofNode({
+				...sound,
+				note: 'richer',
+				children: [{ ...sound.children[0], note: 'nested-extra' }],
+			}),
+		).toBe(true)
+		expect(isProofNode(Object.assign(Object.create({ inherited: true }), sound))).toBe(true)
+		expect(isProofNode({ depth: 0 })).toBe(false)
+		expect(isProofNode({ fact: 'goal' })).toBe(false)
+		expect(isProofNode({ ...sound, inference: 1 })).toBe(false)
+		expect(isProofNode({ ...sound, children: [1] })).toBe(false)
+		expect(isProofNode(Object.assign([], sound))).toBe(false)
+	})
+
+	it('accepts every numeric depth and rejects cycles without recursion', () => {
+		for (const depth of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+			expect(isProofNode({ fact: 'goal', depth })).toBe(true)
+		}
+		const cyclic: Record<string, unknown> = { fact: 'goal', depth: 0 }
+		cyclic.children = [cyclic]
+		expect(isProofNode(cyclic)).toBe(false)
+		expect(captureError(() => isProofNode(cyclic))).toBeUndefined()
+	})
+
+	it('accepts shared DAGs in linear work and still rejects a shared defective node', () => {
+		const nodeCount = 41
+		const wrapperCount = 20
+		const inspectionLimit = (nodeCount + wrapperCount) * 4
+		let inspections = 0
+		let shared: object | undefined
+		for (let depth = nodeCount - 1; depth >= 0; depth -= 1) {
+			const node: Record<string, unknown> = { fact: `node-${depth}`, depth }
+			if (shared !== undefined) node.children = [shared, shared]
+			shared =
+				depth < nodeCount - 1 && depth % 2 === 0
+					? new Proxy(node, {
+							get(target, key, receiver) {
+								inspections += 1
+								if (inspections > inspectionLimit)
+									throw new Error('proof traversal exceeded linear work')
+								return Reflect.get(target, key, receiver)
+							},
+						})
+					: node
+		}
+		expect(isProofNode(shared)).toBe(true)
+		expect(inspections).toBeLessThanOrEqual(wrapperCount * 4)
+
+		let defective: object | undefined
+		for (let depth = nodeCount - 1; depth >= 0; depth -= 1) {
+			const node: Record<string, unknown> = {
+				fact: depth === 20 ? 20 : `node-${depth}`,
+				depth,
+			}
+			if (defective !== undefined) node.children = [defective, defective]
+			defective = node
+		}
+		expect(isProofNode(defective)).toBe(false)
+	})
+
+	it('answers by the value, not the sibling order, at the depth bound', () => {
+		// A 511-node chain fits the bound on its own; the shared leaf overflows only when
+		// reached through it. A memo that skips the settled leaf on the deep re-reach would
+		// accept one sibling order and refuse the other for the same value.
+		const sharedLeaf = { fact: 'leaf', depth: 0 }
+		let chain: Record<string, unknown> = sharedLeaf
+		for (let index = 0; index < 511; index += 1) {
+			chain = { fact: `chain-${index}`, depth: 0, children: [chain] }
+		}
+		expect(isProofNode({ fact: 'root', depth: 0, children: [sharedLeaf, chain] })).toBe(false)
+		expect(isProofNode({ fact: 'root', depth: 0, children: [chain, sharedLeaf] })).toBe(false)
+		const okLeaf = { fact: 'leaf', depth: 0 }
+		let okChain: Record<string, unknown> = okLeaf
+		for (let index = 0; index < 100; index += 1) {
+			okChain = { fact: `ok-${index}`, depth: 0, children: [okChain] }
+		}
+		expect(isProofNode({ fact: 'root', depth: 0, children: [okLeaf, okChain] })).toBe(true)
+		expect(isProofNode({ fact: 'root', depth: 0, children: [okChain, okLeaf] })).toBe(true)
+	})
+
+	it('bounds a 10,001-node chain without a RangeError', () => {
+		let deep: Record<string, unknown> = { fact: 'leaf', depth: 10000 }
+		for (let depth = 9999; depth >= 0; depth -= 1) {
+			deep = { fact: `node-${depth}`, depth, children: [deep] }
+		}
+		expect(isProofNode(deep)).toBe(false)
+		expect(captureError(() => isProofNode(deep))).toBeUndefined()
+	})
+})
+
+describe('isQuantitativeResult', () => {
+	const sound = {
+		reasoning: 'quantitative',
+		value: 4,
+		groups: [
+			{
+				id: 'group',
+				applied: true,
+				value: 4,
+				factors: [{ id: 'factor', applied: true, value: 4 }],
+			},
+		],
+		count: 1,
+		success: true,
+		trace: ['factor'],
+		errors: [],
+	}
+
+	it('accepts a real engine result and its nested result objects', () => {
+		const reason = createReason({ reasoners: [createQuantitativeReasoner()] })
+		const result = reason.reason(
+			{ enabled: true },
+			quantitativeDefinition('real', 'Real', [
+				factorGroup('group', 'sum', [
+					staticFactor('factor', 4, { checks: [check('enabled', 'equals', false)] }),
+				]),
+			]),
+		)
+		expect(isQuantitativeResult(result)).toBe(true)
+		if (!isQuantitativeResult(result)) throw new Error('expected quantitative result')
+		expect(isGroupResult(result.groups[0])).toBe(true)
+		expect(isFactorResult(result.groups[0]?.factors[0])).toBe(true)
+		expect(isCheckResult(result.groups[0]?.factors[0]?.checks?.[0])).toBe(true)
+		reason.destroy()
+	})
+
+	it('accepts open nested results and refuses every required-member fault', () => {
+		expect(isQuantitativeResult(sound)).toBe(true)
+		expect(isQuantitativeResult({ ...sound, note: 'richer' })).toBe(true)
+		expect(
+			isQuantitativeResult({
+				...sound,
+				groups: [{ ...sound.groups[0], factors: [{ ...sound.groups[0].factors[0], x: 1 }] }],
+			}),
+		).toBe(true)
+		expect(isQuantitativeResult(Object.assign(Object.create({ inherited: true }), sound))).toBe(
+			true,
+		)
+		expect(isQuantitativeResult({ ...sound, reasoning: undefined })).toBe(false)
+		expect(isQuantitativeResult({ ...sound, value: undefined })).toBe(false)
+		expect(isQuantitativeResult({ ...sound, groups: undefined })).toBe(false)
+		expect(isQuantitativeResult({ ...sound, count: undefined })).toBe(false)
+		expect(isQuantitativeResult({ ...sound, success: undefined })).toBe(false)
+		expect(isQuantitativeResult({ ...sound, trace: undefined })).toBe(false)
+		expect(isQuantitativeResult({ ...sound, errors: undefined })).toBe(false)
+		expect(isQuantitativeResult(Object.assign([], sound))).toBe(false)
+	})
+
+	it('accepts non-finite numeric value and count members', () => {
+		for (const value of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+			expect(isQuantitativeResult({ ...sound, value })).toBe(true)
+			expect(isQuantitativeResult({ ...sound, count: value })).toBe(true)
+		}
+	})
+})
+
+describe('isLogicalResult', () => {
+	const sound = {
+		reasoning: 'logical',
+		conclusion: true,
+		rules: [{ id: 'adult', applied: true, premises: [true], conclusion: true }],
+		count: 1,
+		success: true,
+		trace: ['adult'],
+		errors: [],
+	}
+
+	it('accepts a real engine result and its rule result', () => {
+		const reason = createReason({ reasoners: [createLogicalReasoner()] })
+		const result = reason.reason(
+			{ age: 30 },
+			logicalDefinition('real', 'Real', [
+				rule('adult', [atom('age', 'from', 18)], atom('adult', 'equals', true)),
+			]),
+		)
+		expect(isLogicalResult(result)).toBe(true)
+		if (!isLogicalResult(result)) throw new Error('expected logical result')
+		expect(isRuleResult(result.rules[0])).toBe(true)
+		reason.destroy()
+	})
+
+	it('accepts open nested results and refuses every required-member fault', () => {
+		expect(isLogicalResult(sound)).toBe(true)
+		expect(isLogicalResult({ ...sound, note: 'richer' })).toBe(true)
+		expect(
+			isLogicalResult({ ...sound, rules: [{ ...sound.rules[0], note: 'nested-extra' }] }),
+		).toBe(true)
+		expect(isLogicalResult(Object.assign(Object.create({ inherited: true }), sound))).toBe(true)
+		expect(isLogicalResult({ ...sound, reasoning: undefined })).toBe(false)
+		expect(isLogicalResult({ ...sound, conclusion: undefined })).toBe(false)
+		expect(isLogicalResult({ ...sound, rules: undefined })).toBe(false)
+		expect(isLogicalResult({ ...sound, count: undefined })).toBe(false)
+		expect(isLogicalResult({ ...sound, success: undefined })).toBe(false)
+		expect(isLogicalResult({ ...sound, trace: undefined })).toBe(false)
+		expect(isLogicalResult({ ...sound, errors: undefined })).toBe(false)
+		expect(isLogicalResult(Object.assign([], sound))).toBe(false)
+	})
+
+	it('accepts non-finite count values', () => {
+		for (const count of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+			expect(isLogicalResult({ ...sound, count })).toBe(true)
+		}
+	})
+})
+
+describe('isSymbolicResult', () => {
+	const sound = {
+		reasoning: 'symbolic',
+		solutions: { x: 4 },
+		success: true,
+		trace: ['x'],
+		errors: [],
+	}
+
+	it('accepts a real engine result', () => {
+		const reason = createReason({ reasoners: [createSymbolicReasoner()] })
+		const result = reason.reason(
+			{},
+			symbolicDefinition('real', 'Real', [equation('x', variable('x'), constant(4), 'x')]),
+		)
+		expect(isSymbolicResult(result)).toBe(true)
+		reason.destroy()
+	})
+
+	it('accepts open prototype-carrying results and solutions with arbitrary numeric keys', () => {
+		const solutions = Object.assign(Object.create({ inherited: 'ignored' }), {
+			...Object.fromEntries(TRICKY_KEYS.map((key) => [key, 1])),
+			nan: Number.NaN,
+			infinite: Number.POSITIVE_INFINITY,
+		})
+		expect(isSymbolicResult({ ...sound, solutions })).toBe(true)
+		expect(isSymbolicResult({ ...sound, note: 'richer' })).toBe(true)
+		expect(isSymbolicResult(Object.assign(Object.create({ inherited: true }), sound))).toBe(true)
+		expect(isSymbolicResult({ ...sound, reasoning: undefined })).toBe(false)
+		expect(isSymbolicResult({ ...sound, solutions: undefined })).toBe(false)
+		expect(isSymbolicResult({ ...sound, success: undefined })).toBe(false)
+		expect(isSymbolicResult({ ...sound, trace: undefined })).toBe(false)
+		expect(isSymbolicResult({ ...sound, errors: undefined })).toBe(false)
+		expect(isSymbolicResult({ ...sound, solutions: { x: '4' } })).toBe(false)
+		expect(isSymbolicResult({ ...sound, solutions: Object.assign([], { x: 4 }) })).toBe(false)
+		expect(isSymbolicResult(Object.assign([], sound))).toBe(false)
+	})
+})
+
+describe('isInferentialResult', () => {
+	const sound = {
+		reasoning: 'inferential',
+		derived: [{ id: 'f1', predicate: 'bird', terms: ['tweety'] }],
+		success: true,
+		trace: ['bird'],
+		errors: [],
+	}
+
+	it('accepts a real engine result and proof tree', () => {
+		const reason = createReason({ reasoners: [createInferentialReasoner()] })
+		const result = reason.reason(
+			{},
+			inferentialDefinition(
+				'real',
+				'Real',
+				[fact('feathers', 'feathers', ['tweety'])],
+				[
+					inference(
+						'bird-rule',
+						[fact('premise', 'feathers', ['?x'])],
+						fact('bird', 'bird', ['?x']),
+					),
+				],
+				{ strategy: 'backward' },
+			),
+		)
+		expect(isInferentialResult(result)).toBe(true)
+		if (!isInferentialResult(result)) throw new Error('expected inferential result')
+		expect(isProofNode(result.proof)).toBe(true)
+		reason.destroy()
+	})
+
+	it('accepts open results but keeps derived facts input-exact', () => {
+		expect(isInferentialResult(sound)).toBe(true)
+		expect(isInferentialResult({ ...sound, note: 'richer' })).toBe(true)
+		expect(isInferentialResult(Object.assign(Object.create({ inherited: true }), sound))).toBe(true)
+		expect(isInferentialResult({ ...sound, proof: { fact: 'goal', depth: 0 } })).toBe(true)
+		expect(isInferentialResult({ ...sound, proof: undefined })).toBe(true)
+		expect(isInferentialResult({ ...sound, reasoning: undefined })).toBe(false)
+		expect(isInferentialResult({ ...sound, derived: undefined })).toBe(false)
+		expect(isInferentialResult({ ...sound, success: undefined })).toBe(false)
+		expect(isInferentialResult({ ...sound, trace: undefined })).toBe(false)
+		expect(isInferentialResult({ ...sound, errors: undefined })).toBe(false)
+		expect(
+			isInferentialResult({ ...sound, derived: [{ ...sound.derived[0], note: 'extra' }] }),
+		).toBe(false)
+		expect(isInferentialResult({ ...sound, proof: { fact: 'goal' } })).toBe(false)
+		expect(isInferentialResult(Object.assign([], sound))).toBe(false)
+	})
+})
+
+describe('isReasonResult', () => {
+	it('accepts each complete arm with extras and rejects partial or unknown arms', () => {
+		expect(
+			isReasonResult({
+				reasoning: 'quantitative',
+				value: 0,
+				groups: [],
+				count: 0,
+				success: true,
+				trace: [],
+				errors: [],
+				note: 'richer',
+			}),
+		).toBe(true)
+		expect(
+			isReasonResult({
+				reasoning: 'logical',
+				conclusion: false,
+				rules: [],
+				count: 0,
+				success: true,
+				trace: [],
+				errors: [],
+			}),
+		).toBe(true)
+		expect(
+			isReasonResult({
+				reasoning: 'symbolic',
+				solutions: {},
+				success: true,
+				trace: [],
+				errors: [],
+			}),
+		).toBe(true)
+		expect(
+			isReasonResult({
+				reasoning: 'inferential',
+				derived: [],
+				success: true,
+				trace: [],
+				errors: [],
+			}),
+		).toBe(true)
+		expect(isReasonResult({ reasoning: 'logical' })).toBe(false)
+		expect(isReasonResult({ reasoning: 'unknown' })).toBe(false)
+		expect(isReasonResult([])).toBe(false)
+	})
+
+	it('keeps every result guard total for hostile and repository adversarial values', () => {
+		let hostileReads = 0
+		const hostile = new Proxy(
+			{},
+			{
+				get() {
+					hostileReads += 1
+					throw new Error('hostile getter')
+				},
+			},
+		)
+		const revocable = Proxy.revocable({}, {})
+		revocable.revoke()
+		for (const guard of [
+			isCheckResult,
+			isFactorResult,
+			isGroupResult,
+			isRuleResult,
+			isProofNode,
+			isQuantitativeResult,
+			isLogicalResult,
+			isSymbolicResult,
+			isInferentialResult,
+			isReasonResult,
+		]) {
+			hostileReads = 0
+			for (const value of [
+				hostile,
+				revocable.proxy,
+				ADVERSARIAL_VALUE_SUBJECT,
+				...EXTREME_NUMBERS,
+				...TRICKY_KEYS.map((key) => ({ [key]: key })),
+			]) {
+				expect(guard(value)).toBe(false)
+				expect(captureError(() => guard(value))).toBeUndefined()
+			}
+			// The trap must have run for THIS guard, or its totality was never exercised.
+			expect(hostileReads).toBeGreaterThan(0)
+		}
+	})
+})
 
 describe('isDefinitionBuilder / isSubjectBuilder — entity brand guards', () => {
 	it('isDefinitionBuilder accepts only a value carrying DEFINITION_BUILDER_BRAND === true', () => {
