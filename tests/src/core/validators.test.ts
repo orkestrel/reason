@@ -802,17 +802,12 @@ describe('isProofNode', () => {
 })
 
 describe('isQuantitativeResult', () => {
+	const soundFactor = { id: 'factor', applied: true, value: 4 }
+	const soundGroup = { id: 'group', applied: true, value: 4, factors: [soundFactor] }
 	const sound = {
 		reasoning: 'quantitative',
 		value: 4,
-		groups: [
-			{
-				id: 'group',
-				applied: true,
-				value: 4,
-				factors: [{ id: 'factor', applied: true, value: 4 }],
-			},
-		],
+		groups: [soundGroup],
 		count: 1,
 		success: true,
 		trace: ['factor'],
@@ -843,7 +838,7 @@ describe('isQuantitativeResult', () => {
 		expect(
 			isQuantitativeResult({
 				...sound,
-				groups: [{ ...sound.groups[0], factors: [{ ...sound.groups[0].factors[0], x: 1 }] }],
+				groups: [{ ...soundGroup, factors: [{ ...soundFactor, x: 1 }] }],
 			}),
 		).toBe(true)
 		expect(isQuantitativeResult(Object.assign(Object.create({ inherited: true }), sound))).toBe(
