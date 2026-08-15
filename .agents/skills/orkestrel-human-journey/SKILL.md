@@ -46,13 +46,17 @@ Read the current files in this order:
 
 ## Build or verify the journey layer
 
-- Put the layer in the workspace's browser test setup module and export every helper from there.
-  A resolver declared inside a test file is duplicated infrastructure.
-- Import what `@orkestrel/test` already publishes for the job, and write a journey helper only
-  where the package publishes none.
-- Give the layer every capability [layer.md](references/layer.md) fixes: the role-scoped resolver
-  and its distinct failure voices, region-scoped resolution, the input and traversal verbs, the
-  perception readers, and the capture hook.
+Import the generic layer from `@orkestrel/test/browser` whenever the workspace's pinned
+`@orkestrel/test` serves that entry — the resolver and its failure voices, region-scoped and
+disclosure resolution, the input and traversal verbs, the perception readers, the rendering and
+measurement readers, and the capture portfolio. Until the pin serves it, implement exactly those
+signatures and voices locally and replace them with the import when it moves. The workspace writes
+the app glue either way: mounting with real provisions, store fixtures, theme application, helpers
+coupled to its own component framework, and the capture registry and variant matrix it passes as
+options ([layer.md](references/layer.md)).
+
+- Put the workspace's half in its browser test setup module and export every helper from there. A
+  resolver declared inside a test file is duplicated infrastructure.
 - Drive every step through the browser provider's user-event API. A dispatched synthetic event
   reaches handlers a person's input would never reach, and it cannot observe focus.
 - Re-verify the layer against what the application renders now whenever markup changes. The
@@ -108,9 +112,10 @@ scope is the directory it sits in.
 
 ## Generate the portfolio
 
-Follow [captures.md](references/captures.md). What it fixes: the state registry and its placement
-rules, the theme-and-viewport variant matrix, the always-on filename proof, the capture-run
-membership proof, and how a state that exists only during an activation is captured.
+Follow [captures.md](references/captures.md). The package owns the refusals an enabled portfolio
+enforces. The workspace declares the registry, the variant matrix, the selected variant, the output
+directory, and the gate. captures.md also fixes the placement rules, the filename proof, the
+capture-gated membership proof, and how a state that exists only during an activation is captured.
 
 Reviewing the portfolio is the `orkestrel-polish-surface` campaign. This skill only generates it.
 
@@ -123,8 +128,10 @@ Completion requires all of:
 - keyboard-only reachability proven on every surface the journeys cover;
 - a refusal family per surface, each asserting one exact failure voice;
 - the transport family declared separately, driven through real implementations, and convergent;
-- the registry-times-variants filename proof and the state-placement proof green in an ordinary run;
-- one capture run per variant writing every registered file, each read back non-empty;
+- the registry-times-variants filename proof green in an ordinary Browser Mode run with capture
+  disabled;
+- one capture run per variant writing every registered file, each read back non-empty, with the
+  state-placement proof green in that run;
 - perception assertions quoting rendered text, and the vocabulary sweep green on the whole page;
 - the repository gates green, run by someone who did not write the journeys.
 
