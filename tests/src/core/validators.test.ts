@@ -111,6 +111,10 @@ class DerivedFactResult {
 }
 
 class ResultGuardFixture {
+	// An own member beyond the seed, so every class control also proves
+	// extra-member acceptance; its initializer keeps the class non-extraneous.
+	readonly fixture: boolean = true
+
 	constructor(seed: object) {
 		Object.assign(this, seed)
 	}
@@ -1212,6 +1216,27 @@ describe('isReasonValidationResult', () => {
 		expect(isReasonValidationResult({ ...sound, errors: [1] })).toBe(false)
 		expect(isReasonValidationResult({ ...sound, warnings: [1] })).toBe(false)
 		expect(isReasonValidationResult(Object.assign([], sound))).toBe(false)
+	})
+
+	it('accepts a real engine validation result', () => {
+		const reason = createReason({ reasoners: [createInferentialReasoner()] })
+		const result = reason.validate(
+			inferentialDefinition(
+				'real',
+				'Real',
+				[fact('feathers', 'feathers', ['tweety'])],
+				[
+					inference(
+						'bird-rule',
+						[fact('premise', 'feathers', ['?x'])],
+						fact('bird', 'bird', ['?x']),
+					),
+				],
+				{ strategy: 'backward' },
+			),
+		)
+		expect(isReasonValidationResult(result)).toBe(true)
+		reason.destroy()
 	})
 
 	it('rejects adversarial values', () => {

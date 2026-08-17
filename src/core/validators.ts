@@ -61,13 +61,13 @@ import {
 import { DEFINITION_BUILDER_BRAND, SUBJECT_BUILDER_BRAND } from './constants.js'
 
 // AGENTS §14: every guard here is a TOTAL function — adversarial input (junk,
-// hostile prototypes, deep nesting) returns `false`, never throws. Input guards
-// compose the contracts combinators. Result guards use bespoke
-// open member checks, with the combinators retained for nested values. Of the
-// three recursive shapes,
-// `isExpression` and `isSymbolicExpression` recurse through `lazyOf`, while
-// `isProofNode` uses a depth-bounded iterative worklist. Both sanctioned
-// mechanisms contain pathologically deep or cyclic input as a non-match.
+// hostile prototypes, deep nesting) returns `false`, never throws. Input
+// guards compose the contracts combinators; result guards use bespoke open
+// member checks, with the combinators retained for nested values. Of the
+// three recursive shapes, `isExpression` and `isSymbolicExpression` recurse
+// through `lazyOf`, while `isProofNode` uses a depth-bounded iterative
+// worklist. Both sanctioned mechanisms contain pathologically deep or cyclic
+// input as a non-match.
 // Input record guards are EXACT (`recordOf`): an extra key fails, so a
 // definition that drifted from its declared shape is rejected loudly. Result
 // guards are OPEN: exactness follows who produces the value, not who declares
@@ -1054,6 +1054,11 @@ export function isLogicalResult(value: unknown): value is LogicalResult {
 
 /**
  * Determine whether a value is a {@link SymbolicResult}.
+ *
+ * @remarks
+ * `solutions` is checked across its OWN string-named members, enumerable or
+ * not. Inherited members are deliberately unread: they belong to the
+ * accepted-prototype property, not to the record this guard certifies.
  *
  * @param value - The value to test
  * @returns `true` when every published symbolic-result member is valid
