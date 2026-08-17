@@ -1,6 +1,6 @@
 {
 	"name": "@orkestrel/reason",
-	"version": "0.0.6",
+	"version": "0.0.7",
 	"description": "A typed reasoning engine: definitions, subjects, and quantitative/logical/symbolic/inferential reasoners. Part of the @orkestrel line.",
 	"keywords": [
 		"decision-engine",
@@ -65,8 +65,8 @@
 		"prepublishOnly": "npm run format:check && npm run lint:check && npm run check && npm run build && npm test"
 	},
 	"dependencies": {
-		"@orkestrel/contract": "^0.0.11",
-		"@orkestrel/emitter": "^0.0.6"
+		"@orkestrel/contract": "^0.0.12",
+		"@orkestrel/emitter": "^0.0.7"
 	},
 	"devDependencies": {
 		"@microsoft/api-extractor": "^7.58.12",
