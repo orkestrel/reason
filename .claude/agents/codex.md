@@ -126,13 +126,6 @@ The Orchestrator verifies the finished exec with direct evidence — git status,
 scoped validation — and carries touched files, diffstat, and deviation state into
 integration and review.
 
-## Routing exclusion — `.agents/**` writes
-
-The `workspace-write` sandbox denies writes under `.agents/`, so a unit whose owned files
-include any `.agents/**` path routes to a native Claude implementer from the start. A Sol exec
-given such a unit stops at the first denied patch and reports every fix unclosed with zero file
-changes — a wasted dispatch, not a bench fault.
-
 ## Routing exclusion — defensive negative-test units
 
 The provider applies a content-safety filter that terminates a turn mid-run when the work

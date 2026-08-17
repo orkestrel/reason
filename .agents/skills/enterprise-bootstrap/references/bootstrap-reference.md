@@ -358,15 +358,6 @@ Hold the baseline in [SKILL.md](../SKILL.md) → Accessibility baseline. Its Boo
 
 Wire the reader into the suite once it has settled a question.
 
-**The instrument.** Bootstrap paints in translucent layers — a card header and footer are a 3% tint of the body color over the card's own background — and a reader that stops at the first painted ancestor and drops its alpha treats that tint as full-strength paint. It is then wrong in **both** directions: it green-lights a pairing nobody can read, and it red-flags one that reads fine. Confident wrong verdicts are worse than no reader, because the run comes back green. A reader you can rely on:
-
-- collects every painted layer from the element upward to the first opaque one, then composites them top over bottom (Porter-Duff `over`) onto that opaque base;
-- composites a translucent foreground over that result before taking the ratio, rather than reading the declared color;
-- measures both themes in one run, since the theme swap re-points the tokens under every layer;
-- carries a negative control drawn from outside the population it covers — a pairing known to fail — and voids the run if that control passes.
-
-Adopt the reader as a test once it has settled a question. A measurement that runs once is a rehearsal; the same reader wired into the suite is what keeps the answer true.
-
 ### WCAG 2.2 deltas that bite dense app UI
 
 - **Target size ≥ 24×24 CSS px (2.5.8, AA).** Icon buttons, row actions, close buttons, sort carets, checkbox hit-areas. A smaller visual target passes if a 24px spacing circle around it stays undisturbed — so in tight `table-sm` toolbars, pad the hit area rather than enlarging the glyph.
