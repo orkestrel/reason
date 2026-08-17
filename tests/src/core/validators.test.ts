@@ -44,7 +44,9 @@ import {
 	isQuantitativeDefinition,
 	isQuantitativeResult,
 	isReasonResult,
+	isReasonValidationResult,
 	isReasoning,
+	isResultFact,
 	isDefinitionBuilder,
 	isRuleResult,
 	isSubjectBuilder,
@@ -73,14 +75,13 @@ import { describe, expect, it } from 'vitest'
 import { captureError } from '@orkestrel/test'
 import { ADVERSARIAL_VALUE_SUBJECT, EXTREME_NUMBERS, TRICKY_KEYS, sequence } from '../../setup.js'
 
-// The reasons validators — deep TOTAL guards (AGENTS §14): every guard accepts
-// its builder's output (builder ↔ guard round-trip), rejects off-shape input,
-// enforces EXACT records (an extra key fails), guards numeric fields with
-// finite-only semantics (JSON cannot carry NaN / Infinity), and survives
-// adversarial junk — including CYCLIC and pathologically deep expression trees,
-// contained by `lazyOf` (false, never a throw). `Check.value` must be PRESENT
-// but may be anything (null / undefined included); `Fact.terms` elements are
-// unrestricted.
+// The reasons validators are deep TOTAL guards (AGENTS §14). Input records are
+// exact and use finite-only numeric checks because definitions must survive
+// JSON. Result records are open, accept class instances, and follow published
+// member types exactly. Every guard survives adversarial junk, including cyclic
+// and pathologically deep expression trees contained by `lazyOf` as false,
+// never a throw. `Check.value` must be present but may be anything, including
+// null or undefined. `Fact.terms` elements are unrestricted.
 
 // The shared adversarial spread — none of these is any reasons shape except
 // the empty array, which ONLY isFieldPath accepts (an empty key path); every
@@ -102,6 +103,18 @@ const ADVERSARIAL: readonly unknown[] = [
 	[],
 	[1, 2, 3],
 ]
+
+class DerivedFactResult {
+	readonly id = 'f1'
+	readonly predicate = 'bird'
+	readonly terms: readonly unknown[] = ['tweety']
+}
+
+class ResultGuardFixture {
+	constructor(seed: object) {
+		Object.assign(this, seed)
+	}
+}
 
 // The subset of the adversarial values a guard accepts (empty = rejects all).
 function accepted(guard: (value: unknown) => boolean): readonly unknown[] {
@@ -591,8 +604,31 @@ describe('definition guards', () => {
 // entity, and the two brands are distinct symbols so neither entity can match
 // the other's guard.
 
+describe('isResultFact', () => {
+	const sound = { id: 'fact', predicate: 'bird', terms: ['tweety'] }
+
+	it('accepts open facts and follows every published member type', () => {
+		expect(isResultFact(sound)).toBe(true)
+		expect(isResultFact({ ...sound, note: 'richer' })).toBe(true)
+		expect(isResultFact({ ...sound, confidence: Number.POSITIVE_INFINITY })).toBe(true)
+		expect(isResultFact({ predicate: 'bird', terms: [] })).toBe(false)
+		expect(isResultFact({ id: 'fact', terms: [] })).toBe(false)
+		expect(isResultFact({ id: 'fact', predicate: 'bird' })).toBe(false)
+		expect(isResultFact({ ...sound, confidence: 'certain' })).toBe(false)
+		expect(isResultFact(Object.assign([], sound))).toBe(false)
+	})
+
+	it('accepts a class instance satisfying Fact as a result', () => {
+		expect(isResultFact(new DerivedFactResult())).toBe(true)
+	})
+})
+
 describe('isCheckResult', () => {
 	const sound = { field: 'age', met: true, actual: 42 }
+
+	it('accepts a class instance satisfying CheckResult', () => {
+		expect(isCheckResult(new ResultGuardFixture(sound))).toBe(true)
+	})
 
 	it('accepts the whole open result and checks every required member', () => {
 		expect(isCheckResult(sound)).toBe(true)
@@ -619,6 +655,10 @@ describe('isCheckResult', () => {
 
 describe('isFactorResult', () => {
 	const sound = { id: 'factor', applied: true, value: 4 }
+
+	it('accepts a class instance satisfying FactorResult', () => {
+		expect(isFactorResult(new ResultGuardFixture(sound))).toBe(true)
+	})
 
 	it('accepts open literal and prototype-carrying results and refuses every required-member fault', () => {
 		expect(isFactorResult(sound)).toBe(true)
@@ -659,6 +699,10 @@ describe('isGroupResult', () => {
 		factors: [{ id: 'factor', applied: true, value: 4 }],
 	}
 
+	it('accepts a class instance satisfying GroupResult', () => {
+		expect(isGroupResult(new ResultGuardFixture(sound))).toBe(true)
+	})
+
 	it('accepts open nested results and refuses every required-member fault', () => {
 		expect(isGroupResult(sound)).toBe(true)
 		expect(isGroupResult({ ...sound, note: 'richer' })).toBe(true)
@@ -684,6 +728,14 @@ describe('isGroupResult', () => {
 describe('isRuleResult', () => {
 	const sound = { id: 'rule', applied: true, premises: [true, false], conclusion: true }
 
+	it('accepts a class instance satisfying RuleResult', () => {
+		expect(isRuleResult(new ResultGuardFixture(sound))).toBe(true)
+	})
+
+	it('accepts an empty id because RuleResult publishes string, not non-empty string', () => {
+		expect(isRuleResult({ ...sound, id: '' })).toBe(true)
+	})
+
 	it('accepts open literal and prototype-carrying results and refuses every required-member fault', () => {
 		expect(isRuleResult(sound)).toBe(true)
 		expect(isRuleResult({ ...sound, note: 'richer' })).toBe(true)
@@ -703,6 +755,10 @@ describe('isProofNode', () => {
 		depth: 0,
 		children: [{ fact: 'premise', inference: 'rule', depth: 1 }],
 	}
+
+	it('accepts a class instance satisfying ProofNode', () => {
+		expect(isProofNode(new ResultGuardFixture(sound))).toBe(true)
+	})
 
 	it('accepts open recursive results and every optional-member posture', () => {
 		expect(isProofNode({ fact: 'goal', depth: 0 })).toBe(true)
@@ -814,6 +870,10 @@ describe('isQuantitativeResult', () => {
 		errors: [],
 	}
 
+	it('accepts a class instance satisfying QuantitativeResult', () => {
+		expect(isQuantitativeResult(new ResultGuardFixture(sound))).toBe(true)
+	})
+
 	it('accepts a real engine result and its nested result objects', () => {
 		const reason = createReason({ reasoners: [createQuantitativeReasoner()] })
 		const result = reason.reason(
@@ -873,6 +933,10 @@ describe('isLogicalResult', () => {
 		errors: [],
 	}
 
+	it('accepts a class instance satisfying LogicalResult', () => {
+		expect(isLogicalResult(new ResultGuardFixture(sound))).toBe(true)
+	})
+
 	it('accepts a real engine result and its rule result', () => {
 		const reason = createReason({ reasoners: [createLogicalReasoner()] })
 		const result = reason.reason(
@@ -920,6 +984,10 @@ describe('isSymbolicResult', () => {
 		errors: [],
 	}
 
+	it('accepts a class instance satisfying SymbolicResult', () => {
+		expect(isSymbolicResult(new ResultGuardFixture(sound))).toBe(true)
+	})
+
 	it('accepts a real engine result', () => {
 		const reason = createReason({ reasoners: [createSymbolicReasoner()] })
 		const result = reason.reason(
@@ -948,6 +1016,11 @@ describe('isSymbolicResult', () => {
 		expect(isSymbolicResult({ ...sound, solutions: Object.assign([], { x: 4 }) })).toBe(false)
 		expect(isSymbolicResult(Object.assign([], sound))).toBe(false)
 	})
+
+	it('rejects a non-enumerable non-number solution member', () => {
+		const solutions = Object.defineProperty({}, 'bad', { value: 'not-a-number' })
+		expect(isSymbolicResult({ ...sound, solutions })).toBe(false)
+	})
 })
 
 describe('isInferentialResult', () => {
@@ -958,6 +1031,10 @@ describe('isInferentialResult', () => {
 		trace: ['bird'],
 		errors: [],
 	}
+
+	it('accepts a class instance satisfying InferentialResult', () => {
+		expect(isInferentialResult(new ResultGuardFixture(sound))).toBe(true)
+	})
 
 	it('accepts a real engine result and proof tree', () => {
 		const reason = createReason({ reasoners: [createInferentialReasoner()] })
@@ -983,26 +1060,47 @@ describe('isInferentialResult', () => {
 		reason.destroy()
 	})
 
-	it('accepts open results but keeps derived facts input-exact', () => {
+	it('accepts open derived facts, class instances, and every numeric confidence', () => {
 		expect(isInferentialResult(sound)).toBe(true)
 		expect(isInferentialResult({ ...sound, note: 'richer' })).toBe(true)
 		expect(isInferentialResult(Object.assign(Object.create({ inherited: true }), sound))).toBe(true)
 		expect(isInferentialResult({ ...sound, proof: { fact: 'goal', depth: 0 } })).toBe(true)
 		expect(isInferentialResult({ ...sound, proof: undefined })).toBe(true)
+		expect(
+			isInferentialResult({ ...sound, derived: [{ ...sound.derived[0], note: 'extra' }] }),
+		).toBe(true)
+		expect(isInferentialResult({ ...sound, derived: [new DerivedFactResult()] })).toBe(true)
+		expect(
+			isInferentialResult({
+				...sound,
+				derived: [{ ...sound.derived[0], confidence: Number.POSITIVE_INFINITY }],
+			}),
+		).toBe(true)
 		expect(isInferentialResult({ ...sound, reasoning: undefined })).toBe(false)
 		expect(isInferentialResult({ ...sound, derived: undefined })).toBe(false)
 		expect(isInferentialResult({ ...sound, success: undefined })).toBe(false)
 		expect(isInferentialResult({ ...sound, trace: undefined })).toBe(false)
 		expect(isInferentialResult({ ...sound, errors: undefined })).toBe(false)
-		expect(
-			isInferentialResult({ ...sound, derived: [{ ...sound.derived[0], note: 'extra' }] }),
-		).toBe(false)
 		expect(isInferentialResult({ ...sound, proof: { fact: 'goal' } })).toBe(false)
 		expect(isInferentialResult(Object.assign([], sound))).toBe(false)
 	})
 })
 
 describe('isReasonResult', () => {
+	it('accepts a class instance satisfying ReasonResult', () => {
+		expect(
+			isReasonResult(
+				new ResultGuardFixture({
+					reasoning: 'symbolic',
+					solutions: {},
+					success: true,
+					trace: [],
+					errors: [],
+				}),
+			),
+		).toBe(true)
+	})
+
 	it('accepts each complete arm with extras and rejects partial or unknown arms', () => {
 		expect(
 			isReasonResult({
@@ -1064,6 +1162,7 @@ describe('isReasonResult', () => {
 		const revocable = Proxy.revocable({}, {})
 		revocable.revoke()
 		for (const guard of [
+			isResultFact,
 			isCheckResult,
 			isFactorResult,
 			isGroupResult,
@@ -1074,6 +1173,7 @@ describe('isReasonResult', () => {
 			isSymbolicResult,
 			isInferentialResult,
 			isReasonResult,
+			isReasonValidationResult,
 		]) {
 			hostileReads = 0
 			for (const value of [
@@ -1088,6 +1188,35 @@ describe('isReasonResult', () => {
 			}
 			// The trap must have run for THIS guard, or its totality was never exercised.
 			expect(hostileReads).toBeGreaterThan(0)
+		}
+	})
+})
+
+describe('isReasonValidationResult', () => {
+	const sound = { valid: true, errors: [], warnings: [] }
+
+	it('accepts an open ReasonValidationResult', () => {
+		expect(isReasonValidationResult(sound)).toBe(true)
+		expect(isReasonValidationResult({ ...sound, note: 'richer' })).toBe(true)
+	})
+
+	it('accepts a class instance satisfying ReasonValidationResult', () => {
+		expect(isReasonValidationResult(new ResultGuardFixture(sound))).toBe(true)
+	})
+
+	it('rejects every required-member fault', () => {
+		expect(isReasonValidationResult({ errors: [], warnings: [] })).toBe(false)
+		expect(isReasonValidationResult({ valid: true, warnings: [] })).toBe(false)
+		expect(isReasonValidationResult({ valid: true, errors: [] })).toBe(false)
+		expect(isReasonValidationResult({ ...sound, valid: 'yes' })).toBe(false)
+		expect(isReasonValidationResult({ ...sound, errors: [1] })).toBe(false)
+		expect(isReasonValidationResult({ ...sound, warnings: [1] })).toBe(false)
+		expect(isReasonValidationResult(Object.assign([], sound))).toBe(false)
+	})
+
+	it('rejects adversarial values', () => {
+		for (const value of [...ADVERSARIAL, ADVERSARIAL_VALUE_SUBJECT]) {
+			expect(isReasonValidationResult(value)).toBe(false)
 		}
 	})
 })

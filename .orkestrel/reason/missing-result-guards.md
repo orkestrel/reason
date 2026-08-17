@@ -68,9 +68,14 @@ unpublished.
 
 ## Status
 
-Implemented here in `reason`: all ten result guards are public, open on result objects, total on
-hostile input, and covered by failing-first tests.
+The first implementation published ten result guards. Nine were open throughout and all ten were
+total on hostile input. `isInferentialResult` incorrectly reused the exact input-side `isFact`
+guard for `derived`, and that defect was fenced in as intended behavior rather than proved
+failing-first. Fix round R2 replaced it with the open `isResultFact`, repaired the regression test,
+strengthened `isSymbolicResult`, and published `isReasonValidationResult`.
 
 Successor obligation on `brief`: re-pin `@orkestrel/reason`, import `isLogicalResult` and
 `isRuleResult`, and delete its local `isLogicalVerdict` / `isRuleVerdict` implementations as
-required by `.claude/rules/patterns.md`.
+required by `.claude/rules/patterns.md`. `isRuleResult` accepts an empty `id` because `RuleResult.id`
+is `string`; `brief`'s `isRuleVerdict` rejects it as non-empty, so the consumer must decide whether
+to keep that narrower assertion at its own boundary.

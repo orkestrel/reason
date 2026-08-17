@@ -27,6 +27,7 @@ import type {
 	QuantitativeDefinition,
 	QuantitativeResult,
 	ReasonResult,
+	ReasonValidationResult,
 	Reasoning,
 	Rule,
 	RuleResult,
@@ -60,8 +61,10 @@ import {
 import { DEFINITION_BUILDER_BRAND, SUBJECT_BUILDER_BRAND } from './constants.js'
 
 // AGENTS §14: every guard here is a TOTAL function — adversarial input (junk,
-// hostile prototypes, deep nesting) returns `false`, never throws. All guards
-// compose the contracts combinators. Of the three recursive shapes,
+// hostile prototypes, deep nesting) returns `false`, never throws. Input guards
+// compose the contracts combinators. Result guards use bespoke
+// open member checks, with the combinators retained for nested values. Of the
+// three recursive shapes,
 // `isExpression` and `isSymbolicExpression` recurse through `lazyOf`, while
 // `isProofNode` uses a depth-bounded iterative worklist. Both sanctioned
 // mechanisms contain pathologically deep or cyclic input as a non-match.
@@ -786,6 +789,37 @@ export function isDefinition(value: unknown): value is Definition {
 }
 
 /**
+ * Determine whether a value is a result-side {@link Fact}.
+ *
+ * @remarks
+ * Unlike the exact input guard {@link isFact}, this guard accepts unknown
+ * members, class instances, and every JavaScript `number` confidence.
+ *
+ * @param value - The value to test
+ * @returns `true` when every published fact member is valid for a result
+ *
+ * @example
+ * ```ts
+ * import { isResultFact } from '@src/core'
+ *
+ * isResultFact({ id: 'f1', predicate: 'bird', terms: ['tweety'], note: 'derived' }) // true
+ * isResultFact({ id: 'f1', predicate: 'bird' }) // false
+ * ```
+ */
+export function isResultFact(value: unknown): value is Fact {
+	return whereOf(isObject, (result): result is Fact => {
+		if (isArray(result)) return false
+		const confidence = Reflect.get(result, 'confidence')
+		return (
+			isString(Reflect.get(result, 'id')) &&
+			isString(Reflect.get(result, 'predicate')) &&
+			isArray(Reflect.get(result, 'terms')) &&
+			(confidence === undefined || isNumber(confidence))
+		)
+	})(value)
+}
+
+/**
  * Determine whether a value is a {@link CheckResult}.
  *
  * @param value - The value to test
@@ -1039,7 +1073,11 @@ export function isSymbolicResult(value: unknown): value is SymbolicResult {
 			Reflect.get(result, 'reasoning') === 'symbolic' &&
 			whereOf(
 				isObject,
-				(solutions) => !isArray(solutions) && Object.values(solutions).every(isNumber),
+				(solutions) =>
+					!isArray(solutions) &&
+					Object.getOwnPropertyNames(solutions).every((key) =>
+						isNumber(Reflect.get(solutions, key)),
+					),
 			)(Reflect.get(result, 'solutions')) &&
 			isBoolean(Reflect.get(result, 'success')) &&
 			arrayOf(isString)(Reflect.get(result, 'trace')) &&
@@ -1050,13 +1088,6 @@ export function isSymbolicResult(value: unknown): value is SymbolicResult {
 
 /**
  * Determine whether a value is an {@link InferentialResult}.
- *
- * @remarks
- * Openness stops at `derived`: every derived fact must pass {@link isFact},
- * which refuses extra own keys, non-plain records such as class instances, and
- * non-finite `confidence`. An engine result derived from a base fact carrying
- * non-finite `confidence` is therefore refused deliberately because that fact
- * cannot round-trip as inferential input.
  *
  * @param value - The value to test
  * @returns `true` when every published inferential-result member is valid
@@ -1075,7 +1106,7 @@ export function isInferentialResult(value: unknown): value is InferentialResult 
 		const proof = Reflect.get(result, 'proof')
 		return (
 			Reflect.get(result, 'reasoning') === 'inferential' &&
-			arrayOf(isFact)(Reflect.get(result, 'derived')) &&
+			arrayOf(isResultFact)(Reflect.get(result, 'derived')) &&
 			(proof === undefined || isProofNode(proof)) &&
 			isBoolean(Reflect.get(result, 'success')) &&
 			arrayOf(isString)(Reflect.get(result, 'trace')) &&
@@ -1105,6 +1136,31 @@ export function isReasonResult(value: unknown): value is ReasonResult {
 		isSymbolicResult(value) ||
 		isInferentialResult(value)
 	)
+}
+
+/**
+ * Determine whether a value is a {@link ReasonValidationResult}.
+ *
+ * @param value - The value to test
+ * @returns `true` when every published validation-result member is valid
+ *
+ * @example
+ * ```ts
+ * import { isReasonValidationResult } from '@src/core'
+ *
+ * isReasonValidationResult({ valid: true, errors: [], warnings: [] }) // true
+ * isReasonValidationResult({ valid: true, errors: [] }) // false
+ * ```
+ */
+export function isReasonValidationResult(value: unknown): value is ReasonValidationResult {
+	return whereOf(isObject, (result): result is ReasonValidationResult => {
+		return (
+			!isArray(result) &&
+			isBoolean(Reflect.get(result, 'valid')) &&
+			arrayOf(isString)(Reflect.get(result, 'errors')) &&
+			arrayOf(isString)(Reflect.get(result, 'warnings'))
+		)
+	})(value)
 }
 
 /**
