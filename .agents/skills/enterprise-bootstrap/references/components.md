@@ -112,7 +112,7 @@ Variants: `.accordion-flush` (edge-to-edge, no outer borders); omit `data-bs-par
 
 `role="alert"` announces immediately when the element is injected into the DOM — right for errors and warnings. For calm status messages injected dynamically, prefer a polite live region (`role="status"`). Anything that _looks_ like an alert carries the alert role: styling and semantics disagree the moment a notice wears `.alert` chrome with no role, and an accessibility snapshot is what catches it. When to use alert vs toast vs banner: [bootstrap-reference.md](bootstrap-reference.md) → Feedback discipline.
 
-An alert is a subtle fill, and a subtle fill degrades everything inside it one contrast notch ([SKILL.md](../SKILL.md) → Surfaces, color, contrast).
+An alert is a subtle fill — apply the subtle-fill degradation rule to everything inside it ([SKILL.md](../SKILL.md) → Surfaces, color, contrast).
 
 ### Badge
 
@@ -188,7 +188,7 @@ The current page is `aria-current="page"` and not a link. Use breadcrumbs only f
 
 Icon-only buttons need `aria-label` and a ≥24×24 px target (WCAG 2.2) — `btn-sm` icon clusters in toolbars are the common violation; pad rather than shrink.
 
-Which variant an action takes is a contrast decision, not a taste one: the outline family borrows the surface it sits on and the solid family paints its own ([SKILL.md](../SKILL.md) → Hierarchy & actions).
+Choose the variant by contrast rather than by taste ([SKILL.md](../SKILL.md) → Hierarchy & actions).
 
 ### Button Group
 
@@ -1004,7 +1004,7 @@ The textless mark that survives both themes — dots, ticks, rings, pulses — i
 
 A selected row, pill, or filter chip repaints everything inside it — marks included. Two traps, both invisible until the selected state is captured in both themes:
 
-- **A mark on an active fill of the same family disappears.** `.active` on a `list-group-item`, `nav-pill`, or `page-item` sets the item's own color, and a `text-bg-primary`-family mark inside it inherits or loses to that fill — the mark is there in the markup and gone on screen. Carry no tone class inside the fill: the fill's own contrast color is the one measured against it, and every tone class laid over it lands lower ([SKILL.md](../SKILL.md) → Surfaces, color, contrast). Verify by capturing the selected row, not by reading the class list.
+- **A mark on an active fill of the same family disappears.** `.active` on a `list-group-item`, `nav-pill`, or `page-item` sets the item's own color, and a `text-bg-primary`-family mark inside it inherits or loses to that fill — present in the markup, gone on screen. Carry no tone class inside the fill ([SKILL.md](../SKILL.md) → Surfaces, color, contrast). Verify by capturing the selected row, not by reading the class list.
 - **`btn-check` filter labels invert in dark.** A `btn-outline-secondary` label reads as "chosen" in light and as "muted" in dark, because the checked fill and the surface swap relative weight. Give chosen filters an accent variant (a real theme color) rather than the neutral outline, so "chosen" reads the same way in both modes.
 
 Exactly one item in a selection carries `aria-current` — the visual fill and the announced state must be the same item.

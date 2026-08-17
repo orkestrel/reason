@@ -20,11 +20,10 @@ import {
 	symbolicDefinition,
 } from '@src/core'
 import { describe, expect, it } from 'vitest'
-import { captureError, createRecorder } from '@orkestrel/test'
+import { captureError, createRecorder, roundTripJSON } from '@orkestrel/test'
 import {
 	buildStaticDefinition,
 	buildSubjects,
-	createErrorRecorder,
 	createThrowingReasoner,
 	deepFreeze,
 	expectLogical,
@@ -448,7 +447,7 @@ describe('Reason — emitter (push observation surface)', () => {
 	})
 
 	it('EMIT SAFETY: a throwing listener is isolated and routed to the error option', () => {
-		const listenerErrors = createErrorRecorder()
+		const listenerErrors = createRecorder<readonly [error: unknown, event: string]>()
 		const reason = createReason({ error: listenerErrors.handler })
 		const sibling = createRecorder<readonly [Reasoning]>()
 		reason.emitter.on('register', () => {
@@ -692,7 +691,7 @@ describe('Reason — no input mutation', () => {
 		const definition = deepFreeze(buildStaticDefinition('frozen-def', 7))
 		const subject = deepFreeze({ age: 5, nested: { detail: { value: 1 } } })
 		const definitionSnapshot = JSON.parse(JSON.stringify(definition))
-		const subjectSnapshot = JSON.parse(JSON.stringify(subject))
+		const subjectSnapshot = roundTripJSON(subject)
 
 		let result: QuantitativeResult | undefined
 		expect(() => {
