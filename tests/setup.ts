@@ -26,20 +26,6 @@ afterEach(() => {
 	vi.restoreAllMocks()
 })
 
-/**
- * Create a recorder for an {@link import('@src/core').EmitterErrorHandler} — the emitter's
- * own listener-error channel (AGENTS §13): a `RecorderInterface<[error, event]>` whose
- * `handler` is wired as the `error` option, so an emit-safety test asserts a buggy listener's
- * throw was routed here (with the offending event name) instead of corrupting the entity.
- * Argument order is `(error, event)`, matching `EmitterErrorHandler`. A thin alias over
- * `createRecorder` (AGENTS §16.1 — extract-once over the per-entity emit-safety blocks).
- *
- * @returns A recorder of `[error: unknown, event: string]` calls
- */
-export function createErrorRecorder(): RecorderInterface<readonly [error: unknown, event: string]> {
-	return createRecorder<readonly [error: unknown, event: string]>()
-}
-
 /** A {@link createRecorder} per listed event of an `EmitterInterface`, keyed by event name. */
 export type EmitterRecorders<TMap extends EventMap, TName extends keyof TMap> = {
 	readonly [K in TName]: RecorderInterface<TMap[K]>
@@ -489,10 +475,4 @@ export const ADVERSARIAL_VALUE_SUBJECT: Subject = Object.freeze({
  */
 export function buildSubjects(count: number): readonly Subject[] {
 	return sequence(count).map((index) => ({ id: `s${index}`, value: index }))
-}
-
-/** Whether a repository-relative Vue SFC path belongs to the private browser application. */
-export function isBrowserVuePath(path: string): boolean {
-	const normalized = path.replaceAll('\\', '/')
-	return normalized.startsWith('app/browser/')
 }
