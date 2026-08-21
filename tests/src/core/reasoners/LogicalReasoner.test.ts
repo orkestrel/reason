@@ -12,12 +12,11 @@ import {
 	rule,
 } from '@src/core'
 import { describe, expect, it } from 'vitest'
-import { captureError } from '@orkestrel/test'
+import { captureError, invokeUnchecked } from '@orkestrel/test'
 import {
 	deepCompound,
 	EXTREME_NUMBERS,
 	expectLogical,
-	invokeRaw,
 	sequence,
 	sparse,
 	TRICKY_KEYS,
@@ -98,7 +97,7 @@ describe('LogicalReasoner — validate', () => {
 		expect(warned.valid).toBe(true)
 		expect(warned.warnings).toContain('Rule "r1" has no premises')
 
-		const errored = invokeRaw<ReasonValidationResult>(reasoner, reasoner.validate, [
+		const errored = invokeUnchecked<ReasonValidationResult>(reasoner, reasoner.validate, [
 			{
 				reasoning: 'logical',
 				id: 'd',
@@ -566,7 +565,7 @@ describe('LogicalReasoner — backward chaining', () => {
 
 	it('a MISSING-premises rule errors and is excluded backward (graceful, no crash)', () => {
 		const result = expectLogical(
-			invokeRaw<ReasonResult>(reasoner, reasoner.reason, [
+			invokeUnchecked<ReasonResult>(reasoner, reasoner.reason, [
 				{ a: true },
 				{
 					reasoning: 'logical',
@@ -618,7 +617,7 @@ describe('LogicalReasoner — degenerate rules & malformed shapes', () => {
 			rules: [{ id: 'r1', name: 'r1', premises: [atom('a', 'equals', true)] }],
 		}
 		const forward = expectLogical(
-			invokeRaw<ReasonResult>(reasoner, reasoner.reason, [
+			invokeUnchecked<ReasonResult>(reasoner, reasoner.reason, [
 				{ a: true },
 				{ ...malformed, strategy: 'forward' },
 			]),
@@ -626,7 +625,7 @@ describe('LogicalReasoner — degenerate rules & malformed shapes', () => {
 		expect(forward.errors).toContain('Rule "r1" has no conclusion — skipped')
 
 		const backward = expectLogical(
-			invokeRaw<ReasonResult>(reasoner, reasoner.reason, [
+			invokeUnchecked<ReasonResult>(reasoner, reasoner.reason, [
 				{ a: true },
 				{ ...malformed, strategy: 'backward' },
 			]),
@@ -646,7 +645,7 @@ describe('LogicalReasoner — degenerate rules & malformed shapes', () => {
 
 	it('a malformed shape (missing rules) is a FAILURE RESULT, not a throw', () => {
 		const result = expectLogical(
-			invokeRaw<ReasonResult>(reasoner, reasoner.reason, [
+			invokeUnchecked<ReasonResult>(reasoner, reasoner.reason, [
 				{},
 				{ reasoning: 'logical', id: 'd', name: 'd', strategy: 'forward' },
 			]),
@@ -1023,7 +1022,7 @@ describe('LogicalReasoner — sparse / junk rules array', () => {
 		}
 
 		const result = expectLogical(
-			invokeRaw<ReasonResult>(reasoner, reasoner.reason, [{ a: true, b: true }, definition]),
+			invokeUnchecked<ReasonResult>(reasoner, reasoner.reason, [{ a: true, b: true }, definition]),
 		)
 		expect(result.success).toBe(true)
 		expect(result.count).toBe(2)
@@ -1045,7 +1044,7 @@ describe('LogicalReasoner — sparse / junk rules array', () => {
 		}
 
 		const result = expectLogical(
-			invokeRaw<ReasonResult>(reasoner, reasoner.reason, [{ a: true, b: true }, definition]),
+			invokeUnchecked<ReasonResult>(reasoner, reasoner.reason, [{ a: true, b: true }, definition]),
 		)
 		expect(result.success).toBe(true)
 		expect(result.count).toBe(2)

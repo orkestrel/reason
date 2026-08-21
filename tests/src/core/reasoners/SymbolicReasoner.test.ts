@@ -14,13 +14,12 @@ import {
 	variable,
 } from '@src/core'
 import { describe, expect, it } from 'vitest'
-import { captureError } from '@orkestrel/test'
+import { captureError, invokeUnchecked } from '@orkestrel/test'
 import {
 	deepAddition,
 	EXTREME_NUMBERS,
 	expectSymbolic,
 	INTEGER_KEY_SUBJECT,
-	invokeRaw,
 	sequence,
 	sparse,
 	TRICKY_KEYS,
@@ -412,7 +411,7 @@ describe('SymbolicReasoner — error containment & precision', () => {
 
 	it('an unknown operator fails only that equation (contained internally)', () => {
 		const result = expectSymbolic(
-			invokeRaw<ReasonResult>(reasoner, reasoner.reason, [
+			invokeUnchecked<ReasonResult>(reasoner, reasoner.reason, [
 				{},
 				{
 					reasoning: 'symbolic',
@@ -528,7 +527,7 @@ describe('SymbolicReasoner — mismatch vs malformed shape', () => {
 
 	it('a malformed shape (missing equations) is a FAILURE RESULT, not a throw', () => {
 		const result = expectSymbolic(
-			invokeRaw<ReasonResult>(reasoner, reasoner.reason, [
+			invokeUnchecked<ReasonResult>(reasoner, reasoner.reason, [
 				{},
 				{ reasoning: 'symbolic', id: 'd', name: 'd', variables: {} },
 			]),

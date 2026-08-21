@@ -1,11 +1,11 @@
 import type { CheckResult, Subject } from '@src/core'
 import { check, createEvaluator, Evaluator } from '@src/core'
 import { describe, expect, it } from 'vitest'
+import { invokeUnchecked } from '@orkestrel/test'
 import {
 	BASIC_SUBJECT,
 	DRIVER_SUBJECT,
 	EXTREME_NUMBERS,
-	invokeRaw,
 	NESTED_SUBJECT,
 	repeatValue,
 	sequence,
@@ -319,7 +319,7 @@ describe('Evaluator — error handling', () => {
 	})
 
 	it('an unknown operator is caught: met false, error names the operator', () => {
-		const result = invokeRaw<CheckResult>(evaluator, evaluator.evaluate, [
+		const result = invokeUnchecked<CheckResult>(evaluator, evaluator.evaluate, [
 			{ field: 'age', operator: 'invalid', value: 1 },
 			BASIC_SUBJECT,
 		])
@@ -358,7 +358,7 @@ describe('Evaluator — batch', () => {
 	})
 
 	it('isolates an invalid-operator item — siblings are unaffected', () => {
-		const results = invokeRaw<readonly CheckResult[]>(evaluator, evaluator.batch, [
+		const results = invokeUnchecked<readonly CheckResult[]>(evaluator, evaluator.batch, [
 			[check('age', 'above', 0), { field: 'age', operator: 'bogus', value: 1 }, nameEqualsAlice],
 			BASIC_SUBJECT,
 		])

@@ -1,3 +1,4 @@
+import type { Subject } from '@src/core'
 import {
 	addVariable,
 	appendById,
@@ -93,7 +94,7 @@ import {
 	variable,
 } from '@src/core'
 import { describe, expect, it } from 'vitest'
-import { captureError } from '@orkestrel/test'
+import { captureError, invokeUnchecked } from '@orkestrel/test'
 import {
 	ADVERSARIAL_VALUE_SUBJECT,
 	EXTREME_NUMBERS,
@@ -102,7 +103,6 @@ import {
 	deepAddition,
 	deepCompound,
 	deepFreeze,
-	invokeRaw,
 	sequence,
 	sparse,
 } from '../../setup.js'
@@ -545,9 +545,11 @@ describe('sortByPriority — hole & junk tolerance (total, not throwing)', () =>
 			if (value === undefined) throw new Error('expected items')
 			return sortByPriority<{ readonly id: string; readonly priority?: number }>(value)
 		}
-		const sorted = invokeRaw<ReadonlyArray<{ readonly id: string }>>(undefined, sortByPriorityRaw, [
-			items,
-		])
+		const sorted = invokeUnchecked<ReadonlyArray<{ readonly id: string }>>(
+			undefined,
+			sortByPriorityRaw,
+			[items],
+		)
 		expect(sorted.map((item) => item.id)).toEqual(['b', 'a'])
 	})
 })
@@ -1579,7 +1581,7 @@ describe('appendById / prependById — dedup-then-insert primitives', () => {
 			if (existing === undefined || item === undefined) throw new Error('expected items')
 			return appendById<Item>(existing, item)
 		}
-		const result = invokeRaw<readonly Item[]>(undefined, appendByIdRaw, [items, { id: 'z' }])
+		const result = invokeUnchecked<readonly Item[]>(undefined, appendByIdRaw, [items, { id: 'z' }])
 		expect(result.map((item) => item.id)).toEqual(['a', 'z'])
 	})
 })
@@ -1629,7 +1631,7 @@ describe('replaceById / removeById — position-preserving swap & filter', () =>
 			if (existing === undefined || id === undefined) throw new Error('expected items and id')
 			return removeById<Item>(existing, id)
 		}
-		expect(() => invokeRaw(undefined, removeByIdRaw, [items, 'nope'])).not.toThrow()
+		expect(() => invokeUnchecked(undefined, removeByIdRaw, [items, 'nope'])).not.toThrow()
 	})
 })
 
@@ -1967,7 +1969,7 @@ describe('clear helpers — optional-field key-deletion (PROPOSAL.md §10)', () 
 		expect(run()).not.toBe(definition)
 	})
 
-	it('clearQuantitativeDefinition with a hostile non-listed key is total (invokeRaw)', () => {
+	it('clearQuantitativeDefinition with a hostile non-listed key is total (invokeUnchecked)', () => {
 		const definition = deepFreeze(quantitativeDefinition('risk', 'Risk', []))
 		const clearRaw = (...args: never[]) => {
 			const current = args[0]
@@ -1977,7 +1979,7 @@ describe('clear helpers — optional-field key-deletion (PROPOSAL.md §10)', () 
 			}
 			return clearQuantitativeDefinition(current, key)
 		}
-		expect(() => invokeRaw(undefined, clearRaw, [definition, '__proto__'])).not.toThrow()
+		expect(() => invokeUnchecked(undefined, clearRaw, [definition, '__proto__'])).not.toThrow()
 	})
 })
 
@@ -2013,7 +2015,7 @@ describe('subject engine — assignField / removeField / mergeSubjects / repeatS
 		expect(cleared).toEqual({ id: 's1' })
 	})
 
-	it('removeField over TRICKY_KEYS values is total and never throws (invokeRaw)', () => {
+	it('removeField over TRICKY_KEYS values is total and never throws (invokeUnchecked)', () => {
 		const key = TRICKY_KEYS[0] ?? '__proto__'
 		const subject = { id: 's1', [key]: 'x' }
 		const removeFieldRaw = (...args: never[]) => {
@@ -2022,8 +2024,10 @@ describe('subject engine — assignField / removeField / mergeSubjects / repeatS
 			if (current === undefined || field === undefined) throw new Error('expected subject and key')
 			return removeField(current, field)
 		}
-		expect(() => invokeRaw(undefined, removeFieldRaw, [subject, key])).not.toThrow()
-		expect(Object.hasOwn(invokeRaw(undefined, removeFieldRaw, [subject, key]), key)).toBe(false)
+		expect(() => invokeUnchecked(undefined, removeFieldRaw, [subject, key])).not.toThrow()
+		expect(
+			Object.hasOwn(invokeUnchecked<Subject>(undefined, removeFieldRaw, [subject, key]), key),
+		).toBe(false)
 	})
 
 	it('mergeSubjects is incoming-wins per key, base id preserved when present', () => {

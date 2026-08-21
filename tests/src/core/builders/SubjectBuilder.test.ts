@@ -1,8 +1,8 @@
-import type { SubjectBuilderInterface, Subject } from '@src/core'
+import type { SubjectBuilderEventMap, SubjectBuilderInterface, Subject } from '@src/core'
 import { createSubjectBuilder, isReasonError, isSubjectBuilder } from '@src/core'
 import { describe, expect, it } from 'vitest'
-import { captureError } from '@orkestrel/test'
-import { deepFreeze, recordEmitterEvents, runTwice } from '../../../setup.js'
+import { captureError, createRecorders } from '@orkestrel/test'
+import { deepFreeze, runTwice } from '../../../setup.js'
 
 // `SubjectBuilder` — the definitions & subjects capability layer's stateful
 // subject builder (PROPOSAL.md §14): a flat single-collection workspace
@@ -89,7 +89,7 @@ describe('SubjectBuilder — merge', () => {
 
 		const scenario = () => {
 			const subject = createSubjectBuilder(base)
-			const events = recordEmitterEvents(subject.emitter, ['merge'] as const)
+			const events = createRecorders<SubjectBuilderEventMap, 'merge'>(subject.emitter, ['merge'])
 			subject.merge(incoming)
 			return { built: subject.build(), mergeCalls: events.merge.calls }
 		}
@@ -105,7 +105,7 @@ describe('SubjectBuilder — merge', () => {
 describe('SubjectBuilder — clear', () => {
 	it('removes every non-id field and emits clear()', () => {
 		const subject = createSubjectBuilder({ id: 's1', age: 30, name: 'Alice' })
-		const events = recordEmitterEvents(subject.emitter, ['clear'] as const)
+		const events = createRecorders<SubjectBuilderEventMap, 'clear'>(subject.emitter, ['clear'])
 
 		subject.clear()
 
@@ -117,12 +117,10 @@ describe('SubjectBuilder — clear', () => {
 describe('SubjectBuilder — repeat', () => {
 	it('mints deterministic baseId-index ids and returns plain payloads without emitting', () => {
 		const subject = createSubjectBuilder({ id: 's1', age: 30 })
-		const events = recordEmitterEvents(subject.emitter, [
-			'set',
-			'remove',
-			'merge',
-			'clear',
-		] as const)
+		const events = createRecorders<SubjectBuilderEventMap, 'set' | 'remove' | 'merge' | 'clear'>(
+			subject.emitter,
+			['set', 'remove', 'merge', 'clear'],
+		)
 
 		const [first, second] = runTwice(() => subject.repeat(3))
 
@@ -143,12 +141,10 @@ describe('SubjectBuilder — repeat', () => {
 describe('SubjectBuilder — emitter event pins per verb', () => {
 	it('set / remove / merge / clear each carry the documented payload', () => {
 		const subject = createSubjectBuilder({ id: 's1', age: 30 })
-		const events = recordEmitterEvents(subject.emitter, [
-			'set',
-			'remove',
-			'merge',
-			'clear',
-		] as const)
+		const events = createRecorders<SubjectBuilderEventMap, 'set' | 'remove' | 'merge' | 'clear'>(
+			subject.emitter,
+			['set', 'remove', 'merge', 'clear'],
+		)
 
 		subject.set('age', 31)
 		subject.remove('age')
@@ -185,7 +181,7 @@ describe('SubjectBuilder — destroy', () => {
 
 	it('is idempotent and destroys the emitter LAST (a destroy listener still fires)', () => {
 		const subject = createSubjectBuilder({ id: 's1', age: 30 })
-		const events = recordEmitterEvents(subject.emitter, ['destroy'] as const)
+		const events = createRecorders<SubjectBuilderEventMap, 'destroy'>(subject.emitter, ['destroy'])
 
 		subject.destroy()
 		expect(() => subject.destroy()).not.toThrow()

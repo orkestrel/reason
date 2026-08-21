@@ -1,4 +1,4 @@
-import type { QuantitativeResult, ReasonerInterface, Reasoning } from '@src/core'
+import type { QuantitativeResult, ReasonerInterface, ReasonEventMap, Reasoning } from '@src/core'
 import {
 	atom,
 	createInferentialReasoner,
@@ -20,7 +20,7 @@ import {
 	symbolicDefinition,
 } from '@src/core'
 import { describe, expect, it } from 'vitest'
-import { captureError, createRecorder, roundTripJSON } from '@orkestrel/test'
+import { captureError, createRecorder, createRecorders, roundTripJSON } from '@orkestrel/test'
 import {
 	buildStaticDefinition,
 	buildSubjects,
@@ -28,7 +28,6 @@ import {
 	deepFreeze,
 	expectLogical,
 	expectQuantitative,
-	recordEmitterEvents,
 	sequence,
 } from '../../setup.js'
 
@@ -56,8 +55,10 @@ const LOGICAL_DEFINITION = logicalDefinition('activation', 'Activation', [
 	rule('activate', [atom('active', 'equals', true)], atom('result', 'equals', true)),
 ])
 
-// The ReasonEventMap names recorded across the emitter tests.
+// The ReasonEventMap names recorded across the emitter tests. `createRecorders` takes
+// its event union as an explicit type argument, so the list carries a matching alias.
 const REASON_EVENTS = ['register', 'reason', 'error', 'destroy'] as const
+type ReasonEvent = (typeof REASON_EVENTS)[number]
 
 describe('Reason — constructor', () => {
 	it('starts empty with no options', () => {
@@ -145,7 +146,7 @@ describe('Reason — reason (dispatch)', () => {
 
 	it('an EMPTY batch returns [] — bypassing even the MISSING throw and every event', () => {
 		const reason = createReason() // empty registry — a single dispatch would throw MISSING
-		const events = recordEmitterEvents(reason.emitter, REASON_EVENTS)
+		const events = createRecorders<ReasonEventMap, ReasonEvent>(reason.emitter, REASON_EVENTS)
 		const results = reason.reason([], buildStaticDefinition())
 		expect(results).toEqual([])
 		expect(events.reason.count).toBe(0)
@@ -258,7 +259,7 @@ describe('Reason — options (validate / bail)', () => {
 			},
 		}
 		const reason = createReason({ reasoners: [thrower], bail: false })
-		const events = recordEmitterEvents(reason.emitter, REASON_EVENTS)
+		const events = createRecorders<ReasonEventMap, ReasonEvent>(reason.emitter, REASON_EVENTS)
 		const result = expectQuantitative(reason.reason({}, buildStaticDefinition()))
 		expect(result.errors).toEqual(['string-throw'])
 		expect(events.error.calls[0]?.[0]).toBe('string-throw')
@@ -346,7 +347,7 @@ describe('Reason — errors (isReasonError narrowing)', () => {
 describe('Reason — emitter (push observation surface)', () => {
 	it('register fires with the reasoner reasoning', () => {
 		const reason = createReason()
-		const events = recordEmitterEvents(reason.emitter, REASON_EVENTS)
+		const events = createRecorders<ReasonEventMap, ReasonEvent>(reason.emitter, REASON_EVENTS)
 		reason.register(createQuantitativeReasoner())
 		expect(events.register.calls).toEqual([['quantitative']])
 	})
@@ -362,7 +363,7 @@ describe('Reason — emitter (push observation surface)', () => {
 
 	it('reason fires once with the EXACT produced result (identity)', () => {
 		const reason = createReason({ reasoners: [createQuantitativeReasoner()] })
-		const events = recordEmitterEvents(reason.emitter, REASON_EVENTS)
+		const events = createRecorders<ReasonEventMap, ReasonEvent>(reason.emitter, REASON_EVENTS)
 		const result = reason.reason({}, buildStaticDefinition())
 		expect(events.reason.count).toBe(1)
 		expect(events.reason.calls[0]?.[0]).toBe(result)
@@ -370,7 +371,7 @@ describe('Reason — emitter (push observation surface)', () => {
 
 	it('a batch fires reason once per subject, in subject order (identity per result)', () => {
 		const reason = createReason({ reasoners: [createQuantitativeReasoner()] })
-		const events = recordEmitterEvents(reason.emitter, REASON_EVENTS)
+		const events = createRecorders<ReasonEventMap, ReasonEvent>(reason.emitter, REASON_EVENTS)
 		const results = reason.reason([{}, {}, {}], buildStaticDefinition())
 		expect(events.reason.count).toBe(3)
 		expect(events.reason.calls.map((call) => call[0])).toEqual([...results])
@@ -380,7 +381,7 @@ describe('Reason — emitter (push observation surface)', () => {
 
 	it('re-registering the same reasoning fires register AGAIN (replacement still emits)', () => {
 		const reason = createReason()
-		const events = recordEmitterEvents(reason.emitter, REASON_EVENTS)
+		const events = createRecorders<ReasonEventMap, ReasonEvent>(reason.emitter, REASON_EVENTS)
 		reason.register(createQuantitativeReasoner({ id: 'first' }))
 		reason.register(createQuantitativeReasoner({ id: 'second' }))
 		expect(events.register.calls).toEqual([['quantitative'], ['quantitative']])
@@ -388,7 +389,7 @@ describe('Reason — emitter (push observation surface)', () => {
 
 	it('error fires once under bail false — and reason does NOT fire for the failure result', () => {
 		const reason = createReason({ reasoners: [createThrowingReasoner()], bail: false })
-		const events = recordEmitterEvents(reason.emitter, REASON_EVENTS)
+		const events = createRecorders<ReasonEventMap, ReasonEvent>(reason.emitter, REASON_EVENTS)
 		reason.reason({}, buildStaticDefinition())
 		expect(events.error.count).toBe(1)
 		expect(events.error.calls[0]?.[0]).toBeInstanceOf(Error)
@@ -397,14 +398,17 @@ describe('Reason — emitter (push observation surface)', () => {
 
 	it('error fires BEFORE the rethrow under default bail too', () => {
 		const reason = createReason({ reasoners: [createThrowingReasoner()] })
-		const events = recordEmitterEvents(reason.emitter, REASON_EVENTS)
+		const events = createRecorders<ReasonEventMap, ReasonEvent>(reason.emitter, REASON_EVENTS)
 		expect(captureError(() => reason.reason({}, buildStaticDefinition()))).toBeInstanceOf(Error)
 		expect(events.error.count).toBe(1)
 	})
 
 	it('MISSING and INVALID bypass bail and emit NOTHING', () => {
 		const missing = createReason({ bail: false })
-		const missingEvents = recordEmitterEvents(missing.emitter, REASON_EVENTS)
+		const missingEvents = createRecorders<ReasonEventMap, ReasonEvent>(
+			missing.emitter,
+			REASON_EVENTS,
+		)
 		expect(captureError(() => missing.reason({}, buildStaticDefinition()))).toBeInstanceOf(Error)
 		expect(missingEvents.error.count).toBe(0)
 		expect(missingEvents.reason.count).toBe(0)
@@ -414,7 +418,10 @@ describe('Reason — emitter (push observation surface)', () => {
 			validate: true,
 			bail: false,
 		})
-		const invalidEvents = recordEmitterEvents(invalid.emitter, REASON_EVENTS)
+		const invalidEvents = createRecorders<ReasonEventMap, ReasonEvent>(
+			invalid.emitter,
+			REASON_EVENTS,
+		)
 		expect(
 			captureError(() => invalid.reason({}, quantitativeDefinition('bad', 'Bad', []))),
 		).toBeInstanceOf(Error)
@@ -424,7 +431,7 @@ describe('Reason — emitter (push observation surface)', () => {
 
 	it('destroy fires exactly once, even across a repeated destroy', () => {
 		const reason = createReason()
-		const events = recordEmitterEvents(reason.emitter, REASON_EVENTS)
+		const events = createRecorders<ReasonEventMap, ReasonEvent>(reason.emitter, REASON_EVENTS)
 		reason.destroy()
 		reason.destroy()
 		expect(events.destroy.count).toBe(1)
@@ -493,7 +500,7 @@ describe('Reason — large-batch orchestration & event ordering at scale', () =>
 	// per-subject emission at a batch size beyond trivial fixtures.
 	it('preserves order and fires one reason per subject over a 1500-subject batch', () => {
 		const reason = createReason({ reasoners: [createQuantitativeReasoner()] })
-		const events = recordEmitterEvents(reason.emitter, REASON_EVENTS)
+		const events = createRecorders<ReasonEventMap, ReasonEvent>(reason.emitter, REASON_EVENTS)
 		const subjects = sequence(1500).map((n) => ({ age: n }))
 		const results = reason.reason(subjects, AGE_DEFINITION)
 
@@ -513,7 +520,7 @@ describe('Reason — large-batch orchestration & event ordering at scale', () =>
 
 	it('interleaves reason / error emits positionally across a mixed batch (bail false)', () => {
 		const reason = createReason({ reasoners: [conditional], bail: false })
-		const events = recordEmitterEvents(reason.emitter, REASON_EVENTS)
+		const events = createRecorders<ReasonEventMap, ReasonEvent>(reason.emitter, REASON_EVENTS)
 		// 300 subjects; every 5th (n % 5 === 0) drives the reasoner to throw → 60
 		// failures, 240 successes.
 		const subjects = sequence(300).map((n) => ({ n, fail: n % 5 === 0 }))
@@ -542,7 +549,7 @@ describe('Reason — large-batch orchestration & event ordering at scale', () =>
 
 	it('bail true rethrows on the first failing subject after emitting the prior successes', () => {
 		const reason = createReason({ reasoners: [conditional], bail: true })
-		const events = recordEmitterEvents(reason.emitter, REASON_EVENTS)
+		const events = createRecorders<ReasonEventMap, ReasonEvent>(reason.emitter, REASON_EVENTS)
 		// 50 successes, then a failing subject, then a trailing subject that is
 		// never reached because the throw escapes the batch map.
 		const subjects = [
@@ -583,7 +590,7 @@ describe('Reason — event semantics (post-guide-correction pins)', () => {
 
 	it('a RETURNED success:false result fires reason exactly once (never error)', () => {
 		const reason = createReason({ reasoners: [REAL_FAILURE_REASONER] })
-		const events = recordEmitterEvents(reason.emitter, REASON_EVENTS)
+		const events = createRecorders<ReasonEventMap, ReasonEvent>(reason.emitter, REASON_EVENTS)
 		const result = expectQuantitative(reason.reason({}, buildStaticDefinition()))
 		expect(result.success).toBe(false)
 		expect(events.reason.count).toBe(1)
@@ -593,7 +600,7 @@ describe('Reason — event semantics (post-guide-correction pins)', () => {
 
 	it('createThrowingReasoner under bail false: error fires once, a failure result returns, NO reason fires', () => {
 		const reason = createReason({ reasoners: [createThrowingReasoner('boom')], bail: false })
-		const events = recordEmitterEvents(reason.emitter, REASON_EVENTS)
+		const events = createRecorders<ReasonEventMap, ReasonEvent>(reason.emitter, REASON_EVENTS)
 		const result = expectQuantitative(reason.reason({}, buildStaticDefinition()))
 		expect(result.success).toBe(false)
 		expect(result.errors).toEqual(['boom'])
@@ -604,7 +611,7 @@ describe('Reason — event semantics (post-guide-correction pins)', () => {
 
 	it('createThrowingReasoner under bail true: error fires then the throw propagates', () => {
 		const reason = createReason({ reasoners: [createThrowingReasoner('boom')], bail: true })
-		const events = recordEmitterEvents(reason.emitter, REASON_EVENTS)
+		const events = createRecorders<ReasonEventMap, ReasonEvent>(reason.emitter, REASON_EVENTS)
 		const error = captureError(() => reason.reason({}, buildStaticDefinition()))
 		expect(error).toBeInstanceOf(Error)
 		if (!(error instanceof Error)) throw new Error('expected an Error')
@@ -617,7 +624,7 @@ describe('Reason — event semantics (post-guide-correction pins)', () => {
 describe('Reason — error taxonomy exactness', () => {
 	it('MISSING: no reasoner registered — context carries definition and reasoning, bypasses bail, emits nothing', () => {
 		const reason = createReason({ bail: false })
-		const events = recordEmitterEvents(reason.emitter, REASON_EVENTS)
+		const events = createRecorders<ReasonEventMap, ReasonEvent>(reason.emitter, REASON_EVENTS)
 		const error = captureError(() => reason.reason({}, buildStaticDefinition('orphan-2')))
 		if (!isReasonError(error)) throw new Error('expected a ReasonError')
 		expect(error.code).toBe('MISSING')
@@ -633,7 +640,7 @@ describe('Reason — error taxonomy exactness', () => {
 			validate: true,
 			bail: false,
 		})
-		const events = recordEmitterEvents(reason.emitter, REASON_EVENTS)
+		const events = createRecorders<ReasonEventMap, ReasonEvent>(reason.emitter, REASON_EVENTS)
 		const error = captureError(() => reason.reason({}, malformed))
 		if (!isReasonError(error)) throw new Error('expected a ReasonError')
 		expect(error.code).toBe('INVALID')
@@ -664,7 +671,7 @@ describe('Reason — error taxonomy exactness', () => {
 			},
 		}
 		const reason = createReason({ reasoners: [mismatched], bail: false })
-		const events = recordEmitterEvents(reason.emitter, REASON_EVENTS)
+		const events = createRecorders<ReasonEventMap, ReasonEvent>(reason.emitter, REASON_EVENTS)
 		const result = reason.reason({}, logicalDefinition('mismatch-def', 'Mismatch', []))
 		expect(result.success).toBe(false)
 		expect(events.error.count).toBe(1)
@@ -733,7 +740,7 @@ describe('Reason — batch scale beyond 1500: 7500 subjects', () => {
 	it('7500 subjects via buildSubjects through a static definition — exact count, values, and order', () => {
 		const runOnce = () => {
 			const reason = createReason({ reasoners: [createQuantitativeReasoner()] })
-			const events = recordEmitterEvents(reason.emitter, REASON_EVENTS)
+			const events = createRecorders<ReasonEventMap, ReasonEvent>(reason.emitter, REASON_EVENTS)
 			const subjects = buildSubjects(7500)
 			const results = reason.reason(subjects, buildStaticDefinition('scale-def', 9))
 			return { results, events }

@@ -17,13 +17,12 @@ import {
 	transform,
 } from '@src/core'
 import { describe, expect, it } from 'vitest'
-import { captureError } from '@orkestrel/test'
+import { captureError, invokeUnchecked } from '@orkestrel/test'
 import {
 	BASIC_SUBJECT,
 	DRIVER_SUBJECT,
 	EXTREME_NUMBERS,
 	expectQuantitative,
-	invokeRaw,
 	repeatValue,
 	sequence,
 	sparse,
@@ -103,7 +102,7 @@ describe('QuantitativeReasoner — validate', () => {
 	})
 
 	it('a factor without a source is an error (malformed shape past the types)', () => {
-		const validation = invokeRaw<ReasonValidationResult>(reasoner, reasoner.validate, [
+		const validation = invokeUnchecked<ReasonValidationResult>(reasoner, reasoner.validate, [
 			{
 				reasoning: 'quantitative',
 				id: 'd',
@@ -819,7 +818,7 @@ describe('QuantitativeReasoner — mismatch vs malformed shape', () => {
 
 	it('a malformed shape (missing groups) is a FAILURE RESULT, not a throw', () => {
 		const result = expectQuantitative(
-			invokeRaw<ReasonResult>(reasoner, reasoner.reason, [
+			invokeUnchecked<ReasonResult>(reasoner, reasoner.reason, [
 				{},
 				{ reasoning: 'quantitative', id: 'd', name: 'd' },
 			]),
@@ -844,7 +843,7 @@ describe('QuantitativeReasoner — mismatch vs malformed shape', () => {
 			groups: [{ id: 'g1', name: 'g1', aggregation: 'sum', factors: [{ id: 'f1', name: 'f1' }] }],
 		}
 		const result = expectQuantitative(
-			invokeRaw<ReasonResult>(reasoner, reasoner.reason, [{}, malformed]),
+			invokeUnchecked<ReasonResult>(reasoner, reasoner.reason, [{}, malformed]),
 		)
 		expect(result.success).toBe(true)
 		expect(result.trace).toContain('Factor "f1": could not resolve source')
@@ -863,7 +862,7 @@ describe('QuantitativeReasoner — mismatch vs malformed shape', () => {
 			],
 		}
 		const requiredResult = expectQuantitative(
-			invokeRaw<ReasonResult>(reasoner, reasoner.reason, [{}, required]),
+			invokeUnchecked<ReasonResult>(reasoner, reasoner.reason, [{}, required]),
 		)
 		expect(requiredResult.success).toBe(false)
 		expect(requiredResult.errors).toContain('Required factor "f1" could not resolve source')

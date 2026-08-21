@@ -1,6 +1,7 @@
 import { Aggregator, createAggregator } from '@src/core'
 import { describe, expect, it } from 'vitest'
-import { invokeRaw, repeatValue, sequence } from '../../../setup.js'
+import { invokeUnchecked } from '@orkestrel/test'
+import { repeatValue, sequence } from '../../../setup.js'
 
 // `Aggregator` behavior — the quantitative combiner: per-aggregation reduction
 // (sum / product / average / minimum / maximum), the empty-input identities
@@ -264,8 +265,10 @@ describe('Aggregator — maximum', () => {
 
 describe('Aggregator — edge cases', () => {
 	it('an unknown aggregation returns 0 for empty and populated arrays alike (never throws)', () => {
-		expect(invokeRaw<number>(aggregator, aggregator.aggregate, [[], 'unknown'])).toBe(0)
-		expect(invokeRaw<number>(aggregator, aggregator.aggregate, [[1, 2, 3], 'unknown'])).toBe(0)
+		expect(invokeUnchecked<number>(aggregator, aggregator.aggregate, [[], 'unknown'])).toBe(0)
+		expect(invokeUnchecked<number>(aggregator, aggregator.aggregate, [[1, 2, 3], 'unknown'])).toBe(
+			0,
+		)
 	})
 
 	it('handles 10000 ones across every aggregation', () => {

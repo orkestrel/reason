@@ -11,13 +11,12 @@ import {
 	quantitativeDefinition,
 } from '@src/core'
 import { describe, expect, it } from 'vitest'
-import { captureError } from '@orkestrel/test'
+import { captureError, invokeUnchecked } from '@orkestrel/test'
 import {
 	ADVERSARIAL_VALUE_SUBJECT,
 	EXTREME_NUMBERS,
 	expectInferential,
 	INTEGER_KEY_SUBJECT,
-	invokeRaw,
 	sequence,
 	sparse,
 	TRICKY_KEYS,
@@ -101,7 +100,7 @@ describe('InferentialReasoner — validate', () => {
 		expect(warned.valid).toBe(true)
 		expect(warned.warnings).toContain('Inference "i1" has no premises')
 
-		const errored = invokeRaw<ReasonValidationResult>(reasoner, reasoner.validate, [
+		const errored = invokeUnchecked<ReasonValidationResult>(reasoner, reasoner.validate, [
 			{
 				reasoning: 'inferential',
 				id: 'd',
@@ -213,7 +212,7 @@ describe('InferentialReasoner — validate', () => {
 		const validation = reasoner.validate(definition)
 		expect(validation.warnings.filter((warning) => warning.includes('is unbound by'))).toEqual([])
 
-		const errored = invokeRaw<ReasonValidationResult>(reasoner, reasoner.validate, [
+		const errored = invokeUnchecked<ReasonValidationResult>(reasoner, reasoner.validate, [
 			{
 				reasoning: 'inferential',
 				id: 'd',
@@ -660,7 +659,7 @@ describe('InferentialReasoner — backward chaining (proof trees)', () => {
 
 	it('a candidate with MISSING premises is skipped silently — a valid sibling still proves', () => {
 		const result = expectInferential(
-			invokeRaw<ReasonResult>(reasoner, reasoner.reason, [
+			invokeUnchecked<ReasonResult>(reasoner, reasoner.reason, [
 				{},
 				{
 					reasoning: 'inferential',
@@ -741,7 +740,7 @@ describe('InferentialReasoner — backward chaining (proof trees)', () => {
 
 	it('a conclusion-less inference errors and is skipped (backward)', () => {
 		const result = expectInferential(
-			invokeRaw<ReasonResult>(reasoner, reasoner.reason, [
+			invokeUnchecked<ReasonResult>(reasoner, reasoner.reason, [
 				{},
 				{
 					reasoning: 'inferential',
@@ -762,7 +761,7 @@ describe('InferentialReasoner — backward chaining (proof trees)', () => {
 		// healthy sibling's premise — it must be stepped over, and the sibling's
 		// goal must still prove from the base fact.
 		const result = expectInferential(
-			invokeRaw<ReasonResult>(reasoner, reasoner.reason, [
+			invokeUnchecked<ReasonResult>(reasoner, reasoner.reason, [
 				{},
 				{
 					reasoning: 'inferential',
@@ -800,7 +799,7 @@ describe('InferentialReasoner — mismatch vs malformed shape', () => {
 			{ reasoning: 'inferential', id: 'd', name: 'd', facts: [] },
 		]) {
 			const result = expectInferential(
-				invokeRaw<ReasonResult>(reasoner, reasoner.reason, [{}, malformed]),
+				invokeUnchecked<ReasonResult>(reasoner, reasoner.reason, [{}, malformed]),
 			)
 			expect(result.success).toBe(false)
 			expect(result.errors).toEqual(['Definition must have "facts" and "inferences" arrays'])
@@ -1556,7 +1555,7 @@ describe('InferentialReasoner — sparse array positions are hole-tolerant', () 
 			inferences: [inference('i1', [fact('p1', 'p', ['?x'])], fact('c1', 'q', ['?x']))],
 		}
 		const result = expectInferential(
-			invokeRaw<ReasonResult>(reasoner, reasoner.reason, [{}, definition]),
+			invokeUnchecked<ReasonResult>(reasoner, reasoner.reason, [{}, definition]),
 		)
 		expect(result.success).toBe(true)
 		expect(result.errors).toEqual([])
@@ -1578,7 +1577,7 @@ describe('InferentialReasoner — sparse array positions are hole-tolerant', () 
 			inferences,
 		}
 		const result = expectInferential(
-			invokeRaw<ReasonResult>(reasoner, reasoner.reason, [{}, definition]),
+			invokeUnchecked<ReasonResult>(reasoner, reasoner.reason, [{}, definition]),
 		)
 		expect(result.success).toBe(true)
 		expect(result.errors).toEqual([])

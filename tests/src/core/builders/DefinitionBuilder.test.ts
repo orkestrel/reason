@@ -1,4 +1,12 @@
-import type { Definition, DefinitionBuilderInterface, QuantitativeDefinition } from '@src/core'
+import type {
+	Definition,
+	DefinitionBuilderEventMap,
+	DefinitionBuilderInterface,
+	FactorManagerEventMap,
+	GroupManagerEventMap,
+	QuantitativeDefinition,
+	VariableManagerEventMap,
+} from '@src/core'
 import {
 	atom,
 	constant,
@@ -19,8 +27,8 @@ import {
 	variable,
 } from '@src/core'
 import { describe, expect, it } from 'vitest'
-import { captureError } from '@orkestrel/test'
-import { deepFreeze, recordEmitterEvents, runTwice } from '../../../setup.js'
+import { captureError, createRecorders } from '@orkestrel/test'
+import { deepFreeze, runTwice } from '../../../setup.js'
 
 // `DefinitionBuilder` — the definitions & subjects capability layer's stateful
 // builder (PROPOSAL.md §13): seven always-present SELF-OWNING manager
@@ -251,7 +259,9 @@ describe('DefinitionBuilder — merge', () => {
 
 		const scenario = () => {
 			const definition = createDefinitionBuilder(base)
-			const events = recordEmitterEvents(definition.emitter, ['merge'] as const)
+			const events = createRecorders<DefinitionBuilderEventMap, 'merge'>(definition.emitter, [
+				'merge',
+			])
 			definition.merge(incoming)
 			const built = definition.build()
 			if (built.reasoning !== 'quantitative') throw new Error('expected quantitative')
@@ -279,7 +289,9 @@ describe('DefinitionBuilder — clear', () => {
 	it('deletes an optional field per reasoning, uniformly, and emits clear(key)', () => {
 		const seed = quantitativeDefinition('risk', 'Risk', [], { description: 'd', precision: 2 })
 		const definition = createDefinitionBuilder(seed)
-		const events = recordEmitterEvents(definition.emitter, ['clear'] as const)
+		const events = createRecorders<DefinitionBuilderEventMap, 'clear'>(definition.emitter, [
+			'clear',
+		])
 
 		definition.clear('precision')
 		const built = definition.build()
@@ -300,12 +312,10 @@ describe('DefinitionBuilder — clear', () => {
 describe('DefinitionBuilder — per-manager emitter event pins', () => {
 	it('group append / prepend / replace / remove fire on the groups manager emitter', () => {
 		const definition = createDefinitionBuilder(quantitativeDefinition('risk', 'Risk', []))
-		const events = recordEmitterEvents(definition.groups.emitter, [
-			'append',
-			'prepend',
-			'replace',
-			'remove',
-		] as const)
+		const events = createRecorders<
+			GroupManagerEventMap,
+			'append' | 'prepend' | 'replace' | 'remove'
+		>(definition.groups.emitter, ['append', 'prepend', 'replace', 'remove'])
 
 		definition.groups.append(factorGroup('g1', 'sum', []))
 		definition.groups.prepend(factorGroup('g0', 'sum', []))
@@ -321,12 +331,10 @@ describe('DefinitionBuilder — per-manager emitter event pins', () => {
 	it('factor mutations fire on the factors manager emitter with the factor id', () => {
 		const definition = createDefinitionBuilder(quantitativeDefinition('risk', 'Risk', []))
 		definition.groups.append(factorGroup('g1', 'sum', []))
-		const events = recordEmitterEvents(definition.factors.emitter, [
-			'append',
-			'prepend',
-			'replace',
-			'remove',
-		] as const)
+		const events = createRecorders<
+			FactorManagerEventMap,
+			'append' | 'prepend' | 'replace' | 'remove'
+		>(definition.factors.emitter, ['append', 'prepend', 'replace', 'remove'])
 
 		definition.factors.append('g1', staticFactor('f1', 10))
 		definition.factors.prepend('g1', staticFactor('f0', 5))
@@ -341,7 +349,10 @@ describe('DefinitionBuilder — per-manager emitter event pins', () => {
 
 	it('variables.add emits add(name) and variables.remove emits remove(name) on the variables emitter', () => {
 		const definition = createDefinitionBuilder(symbolicDefinition('calc', 'Calc', []))
-		const events = recordEmitterEvents(definition.variables.emitter, ['add', 'remove'] as const)
+		const events = createRecorders<VariableManagerEventMap, 'add' | 'remove'>(
+			definition.variables.emitter,
+			['add', 'remove'],
+		)
 
 		definition.variables.add('x', 1)
 		definition.variables.remove('x')
@@ -354,7 +365,9 @@ describe('DefinitionBuilder — per-manager emitter event pins', () => {
 describe('DefinitionBuilder — manager lifecycle', () => {
 	it('a manager destroy emits destroy on its OWN emitter, then throws DESTROYED', () => {
 		const definition = createDefinitionBuilder(quantitativeDefinition('risk', 'Risk', []))
-		const events = recordEmitterEvents(definition.groups.emitter, ['destroy'] as const)
+		const events = createRecorders<GroupManagerEventMap, 'destroy'>(definition.groups.emitter, [
+			'destroy',
+		])
 
 		definition.groups.destroy()
 		expect(() => definition.groups.destroy()).not.toThrow()
@@ -393,7 +406,9 @@ describe('DefinitionBuilder — manager lifecycle', () => {
 
 	it('is idempotent and destroys the builder emitter LAST (a destroy listener still fires)', () => {
 		const definition = createDefinitionBuilder(quantitativeDefinition('risk', 'Risk', []))
-		const events = recordEmitterEvents(definition.emitter, ['destroy'] as const)
+		const events = createRecorders<DefinitionBuilderEventMap, 'destroy'>(definition.emitter, [
+			'destroy',
+		])
 
 		definition.destroy()
 		expect(() => definition.destroy()).not.toThrow()
@@ -417,7 +432,7 @@ describe('DefinitionBuilder — bring-your-own managers', () => {
 		if (built.reasoning !== 'quantitative') throw new Error('expected quantitative')
 		expect(built.groups.map((group) => group.id)).toEqual(['g1'])
 
-		const events = recordEmitterEvents(groups.emitter, ['append'] as const)
+		const events = createRecorders<GroupManagerEventMap, 'append'>(groups.emitter, ['append'])
 		definition.groups.append(factorGroup('g2', 'sum', []))
 		expect(events.append.calls).toEqual([['g2']])
 		const rebuilt = definition.build()

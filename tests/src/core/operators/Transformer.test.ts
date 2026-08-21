@@ -1,6 +1,7 @@
 import { createTransformer, transform, Transformer } from '@src/core'
 import { describe, expect, it } from 'vitest'
-import { EXTREME_NUMBERS, invokeRaw, repeatValue } from '../../../setup.js'
+import { invokeUnchecked } from '@orkestrel/test'
+import { EXTREME_NUMBERS, repeatValue } from '../../../setup.js'
 
 // `Transformer` behavior — the quantitative per-factor math stage: every
 // operation with its default operand (identity-preserving 1 for multiply /
@@ -149,7 +150,10 @@ describe('Transformer — apply (propagation & unknown operation)', () => {
 
 	it('an unknown operation returns the value unchanged (never throws)', () => {
 		expect(
-			invokeRaw<number>(transformer, transformer.apply, [42, { operation: 'unknown', operand: 7 }]),
+			invokeUnchecked<number>(transformer, transformer.apply, [
+				42,
+				{ operation: 'unknown', operand: 7 },
+			]),
 		).toBe(42)
 	})
 })
