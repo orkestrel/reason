@@ -259,10 +259,11 @@ export const EXTREME_NUMBERS: readonly number[] = Object.freeze([
 /**
  * The curated adversarial / unicode object keys the field-path, subject-key, id, and
  * lookup-table tests probe — the `Object.prototype` / prototype-pollution names, an empty
- * key, a surrogate-pair (astral) key, a combining-sequence key, an NFC-labile key (`Å`
- * ANGSTROM SIGN, which NFC-normalizes to `Å`), and a DOTTED key (`'a.b'`) that proves a
- * single-string `FieldPath` is ONE key, never dot-split. Frozen so a test can share it
- * without risk of mutation.
+ * key, a surrogate-pair (astral) key, a precomposed accented key (`é`, single code point
+ * `U+00E9`, already NFC-stable), a precomposed key (`Å`, single code point `U+00C5` LATIN
+ * CAPITAL LETTER A WITH RING ABOVE, already NFC-stable), and a DOTTED key (`'a.b'`) that
+ * proves a single-string `FieldPath` is ONE key, never dot-split. Frozen so a test can share
+ * it without risk of mutation.
  */
 export const TRICKY_KEYS: readonly string[] = Object.freeze([
 	'__proto__',
@@ -346,7 +347,7 @@ export function deepAddition(
  * (`"1"`, `"2"`, `"10"`) always enumerate ascending numerically FIRST,
  * regardless of authoring order, followed by the ordinary string keys in
  * insertion order: `Object.keys(INTEGER_KEY_SUBJECT)` yields
- * `['1', '2', '10', 'id', 'zeta', 'alpha']`. Every non-`id` value is a
+ * `['1', '2', '10', 'zeta', 'id', 'alpha']`. Every non-`id` value is a
  * NUMBER so the fixture serves `subjectToFacts` and symbolic binding alike.
  * Frozen so a test can share it without risk of mutation.
  */
