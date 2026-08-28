@@ -6,29 +6,28 @@ import type {
 	FactManagerOptions,
 } from '../../types.js'
 import { Emitter } from '@orkestrel/emitter'
-import { appendById, prependById, removeById, replaceById } from '../../helpers.js'
-import { ReasonError } from '../../errors.js'
+import { Collection } from './Collection.js'
 
 /**
  * The {@link FactManagerInterface} implementation — a self-owning, kind-free
  * manager over an inferential definition's `facts`.
  *
  * @remarks
- * OWNS its `#facts` collection as private copy-on-write state and its own
- * {@link Emitter} over {@link FactManagerEventMap}. `Fact.id` is an AUTHORING
- * label — the runtime content-dedups facts by predicate+arity+terms,
- * independently of this manager's id-keyed dedup. The write-only `collection`
- * setter is the owning builder's silent bulk re-seat channel (used by `merge`).
- * `destroy()` is idempotent and tears the emitter down LAST; any other call
- * after it throws `ReasonError('DESTROYED', …)`.
+ * OWNS its `facts` as a private {@link Collection} — copy-on-write state shared
+ * by composition with the other list managers — plus its own {@link Emitter}
+ * over {@link FactManagerEventMap}. `Fact.id` is an AUTHORING label — the
+ * runtime content-dedups facts by predicate+arity+terms, independently of this
+ * manager's id-keyed dedup. The write-only `collection` setter is the owning
+ * builder's silent bulk re-seat channel (used by `merge`). `destroy()` is
+ * idempotent and tears the emitter down LAST; any other call after it throws
+ * `ReasonError('DESTROYED', …)`.
  */
 export class FactManager implements FactManagerInterface {
-	#facts: readonly Fact[]
+	readonly #facts: Collection<Fact>
 	readonly #emitter: Emitter<FactManagerEventMap>
-	#destroyed = false
 
 	constructor(options?: FactManagerOptions) {
-		this.#facts = options?.facts ?? []
+		this.#facts = new Collection('FactManager', options?.facts ?? [])
 		this.#emitter = new Emitter<FactManagerEventMap>(options)
 	}
 
@@ -37,53 +36,42 @@ export class FactManager implements FactManagerInterface {
 	}
 
 	set collection(value: readonly Fact[]) {
-		this.#ensureAlive()
-		this.#facts = value
+		this.#facts.seat(value)
 	}
 
 	fact(id: string): Fact | undefined {
-		this.#ensureAlive()
-		return this.#facts.find((fact) => fact.id === id)
+		return this.#facts.item(id)
 	}
 
 	facts(): readonly Fact[] {
-		this.#ensureAlive()
-		return this.#facts
+		return this.#facts.items()
 	}
 
 	append(fact: Fact, target?: string): void {
-		this.#ensureAlive()
-		this.#facts = appendById(this.#facts, fact, target)
+		this.#facts.append(fact, target)
 		this.#emitter.emit('append', fact.id)
 	}
 
 	prepend(fact: Fact, target?: string): void {
-		this.#ensureAlive()
-		this.#facts = prependById(this.#facts, fact, target)
+		this.#facts.prepend(fact, target)
 		this.#emitter.emit('prepend', fact.id)
 	}
 
 	replace(fact: Fact): void {
-		this.#ensureAlive()
-		this.#facts = replaceById(this.#facts, fact)
+		this.#facts.replace(fact)
 		this.#emitter.emit('replace', fact.id)
 	}
 
 	remove(id: string): void {
-		this.#ensureAlive()
-		this.#facts = removeById(this.#facts, id)
+		this.#facts.remove(id)
 		this.#emitter.emit('remove', id)
 	}
 
 	destroy(): void {
-		this.#destroyed = true
+		// Idempotent: a second call re-flags an already-destroyed collection and
+		// emits into an already-destroyed emitter (a no-op).
+		this.#facts.destroy()
 		this.#emitter.emit('destroy')
 		this.#emitter.destroy()
-	}
-
-	#ensureAlive(): void {
-		if (this.#destroyed) {
-			throw new ReasonError('DESTROYED', 'FactManager has been destroyed')
-		}
 	}
 }

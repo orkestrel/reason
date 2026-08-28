@@ -38,7 +38,7 @@ import { ReasonError } from '../errors.js'
  * A solved value is rounded to `precision` BEFORE binding, so later equations
  * see the rounded value; `solutions` reads FINAL bindings keyed by each
  * equation's target (a failed equation's target still appears when bound
- * elsewhere). Nothing mutates its inputs; fully deterministic (AGENTS §11).
+ * elsewhere). Nothing mutates its inputs; fully deterministic.
  */
 export class SymbolicReasoner implements ReasonerInterface {
 	readonly #id: string

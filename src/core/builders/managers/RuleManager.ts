@@ -6,29 +6,28 @@ import type {
 	RuleManagerOptions,
 } from '../../types.js'
 import { Emitter } from '@orkestrel/emitter'
-import { appendById, prependById, removeById, replaceById } from '../../helpers.js'
-import { ReasonError } from '../../errors.js'
+import { Collection } from './Collection.js'
 
 /**
  * The {@link RuleManagerInterface} implementation — a self-owning, kind-free
  * manager over a logical definition's `rules`.
  *
  * @remarks
- * OWNS its `#rules` collection as private copy-on-write state and its own
- * {@link Emitter} over {@link RuleManagerEventMap}. Rule order is LOAD-BEARING —
- * the forward conclusion is the LAST declared non-disabled rule, so `append`
- * without a `target` makes the new rule the conclusion. The write-only
- * `collection` setter is the owning builder's silent bulk re-seat channel
- * (used by `merge`). `destroy()` is idempotent and tears the emitter down LAST;
- * any other call after it throws `ReasonError('DESTROYED', …)`.
+ * OWNS its `rules` as a private {@link Collection} — copy-on-write state shared
+ * by composition with the other list managers — plus its own {@link Emitter}
+ * over {@link RuleManagerEventMap}. Rule order is LOAD-BEARING — the forward
+ * conclusion is the LAST declared non-disabled rule, so `append` without a
+ * `target` makes the new rule the conclusion. The write-only `collection`
+ * setter is the owning builder's silent bulk re-seat channel (used by `merge`).
+ * `destroy()` is idempotent and tears the emitter down LAST; any other call
+ * after it throws `ReasonError('DESTROYED', …)`.
  */
 export class RuleManager implements RuleManagerInterface {
-	#rules: readonly Rule[]
+	readonly #rules: Collection<Rule>
 	readonly #emitter: Emitter<RuleManagerEventMap>
-	#destroyed = false
 
 	constructor(options?: RuleManagerOptions) {
-		this.#rules = options?.rules ?? []
+		this.#rules = new Collection('RuleManager', options?.rules ?? [])
 		this.#emitter = new Emitter<RuleManagerEventMap>(options)
 	}
 
@@ -37,53 +36,42 @@ export class RuleManager implements RuleManagerInterface {
 	}
 
 	set collection(value: readonly Rule[]) {
-		this.#ensureAlive()
-		this.#rules = value
+		this.#rules.seat(value)
 	}
 
 	rule(id: string): Rule | undefined {
-		this.#ensureAlive()
-		return this.#rules.find((rule) => rule.id === id)
+		return this.#rules.item(id)
 	}
 
 	rules(): readonly Rule[] {
-		this.#ensureAlive()
-		return this.#rules
+		return this.#rules.items()
 	}
 
 	append(rule: Rule, target?: string): void {
-		this.#ensureAlive()
-		this.#rules = appendById(this.#rules, rule, target)
+		this.#rules.append(rule, target)
 		this.#emitter.emit('append', rule.id)
 	}
 
 	prepend(rule: Rule, target?: string): void {
-		this.#ensureAlive()
-		this.#rules = prependById(this.#rules, rule, target)
+		this.#rules.prepend(rule, target)
 		this.#emitter.emit('prepend', rule.id)
 	}
 
 	replace(rule: Rule): void {
-		this.#ensureAlive()
-		this.#rules = replaceById(this.#rules, rule)
+		this.#rules.replace(rule)
 		this.#emitter.emit('replace', rule.id)
 	}
 
 	remove(id: string): void {
-		this.#ensureAlive()
-		this.#rules = removeById(this.#rules, id)
+		this.#rules.remove(id)
 		this.#emitter.emit('remove', id)
 	}
 
 	destroy(): void {
-		this.#destroyed = true
+		// Idempotent: a second call re-flags an already-destroyed collection and
+		// emits into an already-destroyed emitter (a no-op).
+		this.#rules.destroy()
 		this.#emitter.emit('destroy')
 		this.#emitter.destroy()
-	}
-
-	#ensureAlive(): void {
-		if (this.#destroyed) {
-			throw new ReasonError('DESTROYED', 'RuleManager has been destroyed')
-		}
 	}
 }

@@ -9,9 +9,9 @@ import type { DEFINITION_BUILDER_BRAND, SUBJECT_BUILDER_BRAND } from './constant
 // logical / symbolic / inferential), and three injectable operators (Evaluator /
 // Transformer / Aggregator). Nothing mutates its inputs; every result is a fresh
 // object carrying `success`, a human-readable `trace`, and `errors`. Types are
-// the source of truth (AGENTS §2); every discriminant names its axis, never
-// `kind` / `type` (AGENTS §4.4): `reasoning` splits definitions and results,
-// `form` splits expression nodes, `origin` splits factor sources.
+// the source of truth; every discriminant names its axis, never `kind` /
+// `type`: `reasoning` splits definitions and results, `form` splits expression
+// nodes, `origin` splits factor sources.
 
 // === Vocabulary
 
@@ -785,16 +785,28 @@ export interface ReasonerInterface {
  * @remarks
  * `MISSING` — no reasoner registered for the definition's reasoning.
  * `INVALID` — pre-run validation failed (`validate: true`). `MISMATCH` — a
- * reasoner was handed a definition of a different reasoning. `DESTROYED` — the
- * orchestrator was used after `destroy()`. `TARGET` — a locator id names no
- * element that exists in the collection it addresses: an optional `target` id
- * passed to `appendById` / `prependById` (and the per-kind `append*` /
- * `prepend*` helpers built on them) that names no existing element.
+ * cross-reasoning definition handed to a reasoner or to a
+ * {@link DefinitionBuilderInterface}'s `merge`, a `clear` key that is not
+ * clearable for the builder's reasoning, or a write to a
+ * {@link SubjectBuilderInterface}'s immutable `id`. `DESTROYED` — any use of a
+ * destroyed orchestrator, builder, or manager. `TARGET` — any locator id
+ * naming no existing element: the optional `target` id passed to `appendById` /
+ * `prependById` (and the per-kind `append*` / `prepend*` helpers built on
+ * them), or the required `groupId` every {@link FactorManagerInterface} verb
+ * threads. `OPERATOR` — a math operator outside the accepted vocabulary: one
+ * the {@link MathOperation} union does not name, or one outside the invertible
+ * subset the symbolic isolation step can undo.
  */
-export type ReasonErrorCode = 'MISSING' | 'INVALID' | 'MISMATCH' | 'DESTROYED' | 'TARGET'
+export type ReasonErrorCode =
+	| 'MISSING'
+	| 'INVALID'
+	| 'MISMATCH'
+	| 'DESTROYED'
+	| 'TARGET'
+	| 'OPERATOR'
 
 /**
- * The push observation surface of a {@link ReasonInterface} (AGENTS §13).
+ * The push observation surface of a {@link ReasonInterface}.
  *
  * @remarks
  * `register` fires when a reasoner is registered (carrying its reasoning);
@@ -824,8 +836,7 @@ export type ReasonEventMap = {
  * throw is rethrown after the `error` emit; when `false` it becomes a failure
  * result. `validate` — when `true`, every `reason` call validates the
  * definition first and throws `INVALID` on failure (default `false`). `on` —
- * initial event listeners (AGENTS §8). `error` — the emitter's listener-error
- * handler (AGENTS §13).
+ * initial event listeners. `error` — the emitter's listener-error handler.
  */
 export interface ReasonOptions {
 	readonly reasoners?: readonly ReasonerInterface[]
@@ -851,7 +862,7 @@ export interface ReasonOptions {
  */
 export interface ReasonInterface {
 	readonly emitter: EmitterInterface<ReasonEventMap>
-	// Array overload first (AGENTS §9) so a list resolves to the batch form.
+	// Array overload first so a list resolves to the batch form.
 	reason(subjects: readonly Subject[], definition: Definition): readonly ReasonResult[]
 	reason(subject: Subject, definition: Definition): ReasonResult
 	register(reasoner: ReasonerInterface): void
@@ -864,9 +875,9 @@ export interface ReasonInterface {
 
 // === Definitions & subjects capability layer — entity managers
 //
-// The seven `DefinitionBuilder` manager contracts (AGENTS §4.2.2 / §4.5 /
-// §9.1): each is a SELF-OWNING manager (taverna `InstructionManager`-shaped) —
-// it OWNS its collection as private copy-on-write state, OWNS its own
+// The seven `DefinitionBuilder` manager contracts: each is a SELF-OWNING
+// manager (taverna `InstructionManager`-shaped) — it OWNS its collection as
+// private copy-on-write state, OWNS its own
 // {@link EmitterInterface} over its own verb-named event map, and takes its own
 // options record (a seed collection + `on` / `error`). Managers are KIND-FREE:
 // a `DefinitionBuilder` composes all seven regardless of `reasoning`, and an
@@ -901,7 +912,7 @@ export interface GroupManagerInterface {
 	destroy(): void
 }
 
-/** The push observation surface of a {@link GroupManagerInterface} (AGENTS §13). */
+/** The push observation surface of a {@link GroupManagerInterface}. */
 export type GroupManagerEventMap = {
 	/** A group was appended — carries its id. */
 	readonly append: readonly [id: string]
@@ -920,8 +931,7 @@ export type GroupManagerEventMap = {
  *
  * @remarks
  * `groups` — the initial collection (defaults to empty). `on` — initial event
- * listeners (AGENTS §8). `error` — the emitter's listener-error handler
- * (AGENTS §13).
+ * listeners. `error` — the emitter's listener-error handler.
  */
 export interface GroupManagerOptions {
 	readonly groups?: readonly FactorGroup[]
@@ -955,7 +965,7 @@ export interface FactorManagerInterface {
 	destroy(): void
 }
 
-/** The push observation surface of a {@link FactorManagerInterface} (AGENTS §13). */
+/** The push observation surface of a {@link FactorManagerInterface}. */
 export type FactorManagerEventMap = {
 	/** A factor was appended — carries its id. */
 	readonly append: readonly [id: string]
@@ -974,8 +984,8 @@ export type FactorManagerEventMap = {
  *
  * @remarks
  * The sibling `GroupManagerInterface` reference is a constructor argument, not
- * an option. `on` — initial event listeners (AGENTS §8). `error` — the
- * emitter's listener-error handler (AGENTS §13).
+ * an option. `on` — initial event listeners. `error` — the
+ * emitter's listener-error handler.
  */
 export interface FactorManagerOptions {
 	readonly on?: EmitterHooks<FactorManagerEventMap>
@@ -1003,7 +1013,7 @@ export interface RuleManagerInterface {
 	destroy(): void
 }
 
-/** The push observation surface of a {@link RuleManagerInterface} (AGENTS §13). */
+/** The push observation surface of a {@link RuleManagerInterface}. */
 export type RuleManagerEventMap = {
 	/** A rule was appended — carries its id. */
 	readonly append: readonly [id: string]
@@ -1022,8 +1032,7 @@ export type RuleManagerEventMap = {
  *
  * @remarks
  * `rules` — the initial collection (defaults to empty). `on` — initial event
- * listeners (AGENTS §8). `error` — the emitter's listener-error handler
- * (AGENTS §13).
+ * listeners. `error` — the emitter's listener-error handler.
  */
 export interface RuleManagerOptions {
 	readonly rules?: readonly Rule[]
@@ -1051,7 +1060,7 @@ export interface EquationManagerInterface {
 	destroy(): void
 }
 
-/** The push observation surface of an {@link EquationManagerInterface} (AGENTS §13). */
+/** The push observation surface of an {@link EquationManagerInterface}. */
 export type EquationManagerEventMap = {
 	/** An equation was appended — carries its id. */
 	readonly append: readonly [id: string]
@@ -1070,8 +1079,7 @@ export type EquationManagerEventMap = {
  *
  * @remarks
  * `equations` — the initial collection (defaults to empty). `on` — initial
- * event listeners (AGENTS §8). `error` — the emitter's listener-error handler
- * (AGENTS §13).
+ * event listeners. `error` — the emitter's listener-error handler.
  */
 export interface EquationManagerOptions {
 	readonly equations?: readonly Equation[]
@@ -1095,7 +1103,7 @@ export interface FactManagerInterface {
 	destroy(): void
 }
 
-/** The push observation surface of a {@link FactManagerInterface} (AGENTS §13). */
+/** The push observation surface of a {@link FactManagerInterface}. */
 export type FactManagerEventMap = {
 	/** A fact was appended — carries its id. */
 	readonly append: readonly [id: string]
@@ -1114,8 +1122,7 @@ export type FactManagerEventMap = {
  *
  * @remarks
  * `facts` — the initial collection (defaults to empty). `on` — initial event
- * listeners (AGENTS §8). `error` — the emitter's listener-error handler
- * (AGENTS §13).
+ * listeners. `error` — the emitter's listener-error handler.
  */
 export interface FactManagerOptions {
 	readonly facts?: readonly Fact[]
@@ -1143,7 +1150,7 @@ export interface InferenceManagerInterface {
 	destroy(): void
 }
 
-/** The push observation surface of an {@link InferenceManagerInterface} (AGENTS §13). */
+/** The push observation surface of an {@link InferenceManagerInterface}. */
 export type InferenceManagerEventMap = {
 	/** An inference was appended — carries its id. */
 	readonly append: readonly [id: string]
@@ -1162,8 +1169,7 @@ export type InferenceManagerEventMap = {
  *
  * @remarks
  * `inferences` — the initial collection (defaults to empty). `on` — initial
- * event listeners (AGENTS §8). `error` — the emitter's listener-error handler
- * (AGENTS §13).
+ * event listeners. `error` — the emitter's listener-error handler.
  */
 export interface InferenceManagerOptions {
 	readonly inferences?: readonly Inference[]
@@ -1187,8 +1193,7 @@ export interface VariableManagerInterface {
 }
 
 /**
- * The push observation surface of a {@link VariableManagerInterface}
- * (AGENTS §13).
+ * The push observation surface of a {@link VariableManagerInterface}.
  *
  * @remarks
  * `variables` is a name-keyed record with no placement, so the honest verbs
@@ -1208,8 +1213,7 @@ export type VariableManagerEventMap = {
  *
  * @remarks
  * `variables` — the initial record (defaults to empty). `on` — initial event
- * listeners (AGENTS §8). `error` — the emitter's listener-error handler
- * (AGENTS §13).
+ * listeners. `error` — the emitter's listener-error handler.
  */
 export interface VariableManagerOptions {
 	readonly variables?: Readonly<Record<string, number>>
@@ -1231,8 +1235,60 @@ export type DefinitionEnvelope =
 	| Omit<InferentialDefinition, 'facts' | 'inferences'>
 
 /**
- * The push observation surface of a {@link DefinitionBuilderInterface}
- * (AGENTS §13) — the builder-level lifecycle events; per-element mutation
+ * The optional {@link QuantitativeDefinition} fields `clearQuantitativeDefinition`
+ * (and a quantitative {@link DefinitionBuilderInterface}'s `clear`) can delete.
+ */
+export type QuantitativeClearKey = 'description' | 'base' | 'bounds' | 'precision'
+
+/**
+ * The optional {@link LogicalDefinition} fields `clearLogicalDefinition` (and a
+ * logical {@link DefinitionBuilderInterface}'s `clear`) can delete.
+ */
+export type LogicalClearKey = 'description' | 'depth'
+
+/**
+ * The optional {@link SymbolicDefinition} fields `clearSymbolicDefinition` (and
+ * a symbolic {@link DefinitionBuilderInterface}'s `clear`) can delete.
+ */
+export type SymbolicClearKey = 'description' | 'precision'
+
+/**
+ * The optional {@link InferentialDefinition} fields
+ * `clearInferentialDefinition` (and an inferential
+ * {@link DefinitionBuilderInterface}'s `clear`) can delete.
+ */
+export type InferentialClearKey = 'description' | 'depth'
+
+/**
+ * One chaining pass of the `LogicalReasoner` — the overall `conclusion` plus
+ * the per-rule results the pass produced.
+ *
+ * @remarks
+ * The shared return shape of the forward-fixpoint and backward-proving passes;
+ * `LogicalResult.count` is derived from `rules` rather than carried here.
+ */
+export interface LogicalChainingOutcome {
+	readonly conclusion: boolean
+	readonly rules: readonly RuleResult[]
+}
+
+/**
+ * One chaining pass of the `InferentialReasoner` — the facts the pass derived
+ * plus the proof tree, when the pass produced one.
+ *
+ * @remarks
+ * The shared return shape of the forward-fixpoint and backward-proving passes;
+ * `proof` is produced only by the backward pass, and only when a conclusion was
+ * proved.
+ */
+export interface InferentialChainingOutcome {
+	readonly derived: readonly Fact[]
+	readonly proof?: ProofNode
+}
+
+/**
+ * The push observation surface of a {@link DefinitionBuilderInterface} — the
+ * builder-level lifecycle events; per-element mutation
  * events live on the individual managers' own emitters.
  *
  * @remarks
@@ -1250,8 +1306,8 @@ export type DefinitionBuilderEventMap = {
 
 /**
  * A stateful workspace builder accumulating a {@link Definition} through seven
- * always-present self-owning manager properties, taverna `AgentContext`-shaped
- * (AGENTS §4.2.2): a private scalar envelope plus one manager per collection.
+ * always-present self-owning manager properties, taverna `AgentContext`-shaped:
+ * a private scalar envelope plus one manager per collection.
  *
  * @remarks
  * `build()` is TOTAL, deterministic, and returns a FRESH plain
@@ -1261,7 +1317,7 @@ export type DefinitionBuilderEventMap = {
  * distributes incoming scalars into the envelope and collections into the
  * managers via the matching `merge*` helper (a cross-reasoning `incoming`
  * throws `ReasonError('MISMATCH', …)`). `clear(key)` is the uniform
- * optional-key selector (AGENTS §4.2.4) over the scalar envelope; a `key` that
+ * optional-key selector over the scalar envelope; a `key` that
  * is not a clearable optional field for the current kind throws
  * `ReasonError('MISMATCH', …, { key, reasoning })`. `destroy()` cascades to all
  * seven managers, emits `destroy`, then tears the builder emitter down LAST;
@@ -1294,8 +1350,8 @@ export interface DefinitionBuilderInterface {
  * `id` — overrides the seed definition's `id` (defaults to `seed.id`). Each of
  * the seven manager slots is BRING-YOUR-OWN — a supplied manager is reused,
  * else one is constructed and seeded from the seed's matching collection. `on`
- * — initial event listeners (AGENTS §8). `error` — the emitter's
- * listener-error handler (AGENTS §13).
+ * — initial event listeners. `error` — the emitter's
+ * listener-error handler.
  */
 export interface DefinitionBuilderOptions {
 	readonly id?: string
@@ -1311,8 +1367,8 @@ export interface DefinitionBuilderOptions {
 }
 
 /**
- * The push observation surface of a {@link SubjectBuilderInterface} (AGENTS
- * §13) — five verb-named events, no generic `change` / `status`.
+ * The push observation surface of a {@link SubjectBuilderInterface} — five
+ * verb-named events, no generic `change` / `status`.
  */
 export type SubjectBuilderEventMap = {
 	/** A field was upserted — carries its key and new value. */
@@ -1329,17 +1385,17 @@ export type SubjectBuilderEventMap = {
 
 /**
  * A stateful workspace builder accumulating a {@link Subject}, taverna
- * `Workspace`-shaped (AGENTS §4.2.2): a single flat collection, no managers.
+ * `Workspace`-shaped: a single flat collection, no managers.
  *
  * @remarks
  * `id` is OPTIONAL on the entity (`options?.id ?? seed.id`). When present,
  * the builder is id-ful — `build()`'s output carries that `id` and `clear()`
  * restores it. When absent, the builder is ANONYMOUS — `.id` is `undefined`,
  * `build()`'s output carries NO `id` key, and `clear()` empties the record
- * entirely. `field` / `fields` are the AGENTS §9.1 accessor pair over
+ * entirely. `field` / `fields` are the singular / plural accessor pair over
  * TOP-LEVEL keys only. `set(key, value)` delegates to `assignField`;
  * `set('id', …)` throws — id is immutable via the entity, id-ful or
- * anonymous alike. `remove` is the AGENTS §9.2 batch overload, array form
+ * anonymous alike. `remove` is the batch overload, array form
  * declared FIRST. `merge(incoming)` delegates to `mergeSubjects`
  * (incoming-wins, base `id` preserved — plain {@link Subject} data only).
  * `clear()` removes every non-id field. `repeat(count)` returns `count`
@@ -1357,7 +1413,7 @@ export interface SubjectBuilderInterface {
 	field(key: string): unknown
 	fields(): Subject
 	set(key: string, value: unknown): void
-	// Array overload first (AGENTS §9) so a list resolves to the batch form.
+	// Array overload first so a list resolves to the batch form.
 	remove(keys: readonly string[]): boolean
 	remove(key: string): boolean
 	merge(incoming: Subject): void
@@ -1374,8 +1430,7 @@ export interface SubjectBuilderInterface {
  * `id` — overrides the seed subject's `id` (defaults to `seed.id`); OPTIONAL
  * — when neither `options.id` nor a string `seed.id` is present the builder
  * is ANONYMOUS (`.id` is `undefined`, `build()` emits no `id` key). `on` —
- * initial event listeners (AGENTS §8). `error` — the emitter's listener-error
- * handler (AGENTS §13).
+ * initial event listeners. `error` — the emitter's listener-error handler.
  */
 export interface SubjectBuilderOptions {
 	readonly id?: string

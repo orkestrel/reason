@@ -13,17 +13,17 @@ import { ReasonError } from '../errors.js'
 
 /**
  * A stateful workspace builder accumulating a {@link Subject}, taverna
- * `Workspace`-shaped (AGENTS §4.2.2): a single flat collection, no managers —
+ * `Workspace`-shaped: a single flat collection, no managers —
  * a flat sibling of `Reason.ts`.
  *
  * @remarks
  * `id` is OPTIONAL (`options?.id ?? seed.id`). When present, the builder is
  * id-ful and behaves as before. When absent, the builder is ANONYMOUS —
  * `.id` is `undefined` and the accumulated subject carries no `id` key.
- * `field(key)` / `fields()` are the AGENTS §9.1 accessor pair over TOP-LEVEL
- * keys only. `set(key, value)` delegates to `assignField`; `set('id', …)`
- * throws `ReasonError('MISMATCH', …)` — id is immutable via the entity,
- * id-ful or anonymous alike. `remove` is the AGENTS §9.2 batch overload
+ * `field(key)` / `fields()` are the singular / plural accessor pair over
+ * TOP-LEVEL keys only. `set(key, value)` delegates to `assignField`;
+ * `set('id', …)` throws `ReasonError('MISMATCH', …)` — id is immutable via the entity,
+ * id-ful or anonymous alike. `remove` is the batch overload
  * (array form declared first); removing `'id'` throws the same `MISMATCH`
  * for the same reason. `merge(incoming)` delegates to `mergeSubjects`
  * (incoming-wins, base `id` preserved — plain {@link Subject} data only).
@@ -34,7 +34,7 @@ import { ReasonError } from '../errors.js'
  * durable payload each call. Post-destroy mutation throws
  * `ReasonError('DESTROYED', …)` — only the `emitter` getter and `destroy`
  * itself keep working, mirroring `Reason`. `destroy()` is idempotent and
- * tears the emitter down LAST (AGENTS §13).
+ * tears the emitter down LAST.
  */
 export class SubjectBuilder implements SubjectBuilderInterface {
 	readonly [SUBJECT_BUILDER_BRAND]: true = true
@@ -49,7 +49,7 @@ export class SubjectBuilder implements SubjectBuilderInterface {
 		if (typeof this.#id === 'string') {
 			this.#subject = { ...seed, id: this.#id }
 		} else {
-			// Anonymous: strip any non-string `seed.id` (AGENTS §4.6.1 rest-omit) so
+			// Anonymous: strip any non-string `seed.id` through a rest-omit so
 			// the accumulated subject never carries an `id` key.
 			const { id: _id, ...rest } = seed
 			this.#subject = rest
@@ -82,7 +82,7 @@ export class SubjectBuilder implements SubjectBuilderInterface {
 		this.#emitter.emit('set', key, value)
 	}
 
-	// Array overload first (AGENTS §9) so a list resolves to the batch form.
+	// Array overload first so a list resolves to the batch form.
 	remove(keys: readonly string[]): boolean
 	remove(key: string): boolean
 	remove(keyOrKeys: readonly string[] | string): boolean {
@@ -103,7 +103,7 @@ export class SubjectBuilder implements SubjectBuilderInterface {
 		// `mergeSubjects` only preserves a BASE id — an anonymous base has none,
 		// so an incoming subject's own `id` key would otherwise survive into the
 		// merged result. Strip it here so an anonymous builder never carries an
-		// `id` key through this path either (AGENTS §4.6.1 rest-omit).
+		// `id` key through this path either.
 		if (typeof this.#id !== 'string' && Object.hasOwn(merged, 'id')) {
 			const { id: _id, ...rest } = merged
 			this.#subject = rest

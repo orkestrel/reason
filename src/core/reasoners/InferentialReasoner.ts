@@ -2,6 +2,7 @@ import type {
 	Definition,
 	Fact,
 	Inference,
+	InferentialChainingOutcome,
 	InferentialDefinition,
 	InferentialReasonerOptions,
 	ProofNode,
@@ -12,6 +13,7 @@ import type {
 	Subject,
 } from '../types.js'
 import {
+	computePremiseConfidence,
 	factToArityKey,
 	factToKey,
 	findDuplicates,
@@ -51,7 +53,7 @@ import { ReasonError } from '../errors.js'
  * (confidence = the inference's own — premise confidences are NOT propagated)
  * plus its {@link ProofNode} tree; recursion is guarded only by the depth cap.
  * Deriving nothing is still success. Nothing mutates its inputs; fully
- * deterministic (AGENTS §11).
+ * deterministic.
  */
 export class InferentialReasoner implements ReasonerInterface {
 	readonly #id: string
@@ -185,7 +187,7 @@ export class InferentialReasoner implements ReasonerInterface {
 		subjectFacts: readonly Fact[],
 		trace: string[],
 		errors: string[],
-	): { derived: Fact[]; proof?: ProofNode } {
+	): InferentialChainingOutcome {
 		const maxDepth = definition.depth ?? DEFAULT_DEPTH
 		const knownFacts: Fact[] = []
 		for (const known of [...definition.facts, ...subjectFacts]) {
@@ -240,11 +242,7 @@ export class InferentialReasoner implements ReasonerInterface {
 
 				for (const bindings of allBindings) {
 					const conclusion = instantiateFact(inference.conclusion, bindings)
-					const premiseConfidence = this.#calculatePremiseConfidence(
-						inference.premises,
-						byArity,
-						bindings,
-					)
+					const premiseConfidence = computePremiseConfidence(inference.premises, byArity, bindings)
 					const inferenceConfidence = inference.confidence ?? DEFAULT_CONFIDENCE
 					const finalConfidence = premiseConfidence * inferenceConfidence
 
@@ -289,7 +287,7 @@ export class InferentialReasoner implements ReasonerInterface {
 		subjectFacts: readonly Fact[],
 		trace: string[],
 		errors: string[],
-	): { derived: Fact[]; proof?: ProofNode } {
+	): InferentialChainingOutcome {
 		const maxDepth = definition.depth ?? DEFAULT_DEPTH
 		const derived: Fact[] = []
 		const allBaseFacts: Fact[] = []
@@ -422,29 +420,5 @@ export class InferentialReasoner implements ReasonerInterface {
 		}
 
 		return currentBindings
-	}
-
-	// Multiply in the FIRST matching fact's confidence per premise; a premise
-	// with no match contributes nothing. Reads the LIVE predicate+arity index
-	// (append order kept), so the FIRST bucket match is the same fact the full
-	// scan would.
-	#calculatePremiseConfidence(
-		premises: readonly Fact[],
-		byArity: ReadonlyMap<string, Fact[]>,
-		bindings: Record<string, unknown>,
-	): number {
-		let confidence = 1
-
-		for (const premise of premises) {
-			const instantiated = instantiateFact(premise, bindings)
-			for (const fact of byArity.get(factToArityKey(premise)) ?? []) {
-				if (matchFacts(instantiated, fact)) {
-					confidence *= fact.confidence ?? DEFAULT_CONFIDENCE
-					break
-				}
-			}
-		}
-
-		return confidence
 	}
 }

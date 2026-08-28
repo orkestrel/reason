@@ -1,7 +1,8 @@
 import type { MathOperation } from './types.js'
 
-// Frozen default data for the reasons module (AGENTS §5 — constants are
-// UPPER_SNAKE_CASE data, the sole home for module-scope literal defaults).
+// Frozen default data for the reasons module — constants are
+// UPPER_SNAKE_CASE data, and this is the sole home for module-scope literal
+// defaults.
 
 /**
  * Default `bail` for the `Reason` orchestrator — a reasoner throw is rethrown

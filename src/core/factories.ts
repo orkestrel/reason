@@ -229,8 +229,8 @@ export function createInferentialReasoner(options?: InferentialReasonerOptions):
  * `true` (the default) rethrows a reasoner throw after the `error` emit;
  * `false` converts it to a failure result. `validate` — validate every
  * definition before running it, throwing `INVALID` on failure (default
- * `false`). `on` — initial event listeners (AGENTS §8). `error` — the
- * emitter's listener-error handler (AGENTS §13).
+ * `false`). `on` — initial event listeners. `error` — the emitter's
+ * listener-error handler.
  *
  * @param options - Optional registry, policies, and emitter hooks
  * @returns A {@link ReasonInterface}
@@ -258,8 +258,8 @@ export function createReason(options?: ReasonOptions): ReasonInterface {
  * @remarks
  * `id` defaults to `seed.id`. Each manager slot is BRING-YOUR-OWN (a supplied
  * one is reused, else a fresh one is seeded from the seed's matching
- * collection). `on` — initial event listeners (AGENTS §8). `error` — the
- * emitter's listener-error handler (AGENTS §13). Mutate through the manager
+ * collection). `on` — initial event listeners. `error` — the emitter's
+ * listener-error handler. Mutate through the manager
  * properties (`groups` / `factors` / `rules` / `equations` / `variables` /
  * `facts` / `inferences`) and `merge` / `clear`, then call `build()` to produce
  * a fresh, plain {@link Definition} snapshot.
@@ -292,8 +292,8 @@ export function createDefinitionBuilder(
  * @remarks
  * `id` defaults to `seed.id` and is OPTIONAL — when neither `options.id` nor
  * a string `seed.id` is present the builder is ANONYMOUS (`.id` is
- * `undefined`, `build()` emits no `id` key). `on` — initial event listeners
- * (AGENTS §8). `error` — the emitter's listener-error handler (AGENTS §13).
+ * `undefined`, `build()` emits no `id` key). `on` — initial event listeners.
+ * `error` — the emitter's listener-error handler.
  * Mutate through `set` / `remove` / `merge` / `clear`, then call `build()` to
  * produce a fresh, plain {@link Subject} snapshot.
  *
@@ -324,8 +324,8 @@ export function createSubjectBuilder(
  *
  * @remarks
  * `groups` — the initial collection (defaults to empty). `on` / `error` —
- * emitter hooks (AGENTS §8 / §13). Kind-free: hand it to a
- * {@link createDefinitionBuilder} `groups` slot regardless of reasoning.
+ * emitter hooks. Kind-free: hand it to a {@link createDefinitionBuilder}
+ * `groups` slot regardless of reasoning.
  *
  * @param options - Optional seed collection and emitter hooks
  * @returns A {@link GroupManagerInterface}
@@ -349,7 +349,7 @@ export function createGroupManager(options?: GroupManagerOptions): GroupManagerI
  * @remarks
  * Holds no collection state of its own — it reads and writes factors through
  * the injected sibling {@link GroupManagerInterface}. `on` / `error` — emitter
- * hooks (AGENTS §8 / §13).
+ * hooks.
  *
  * @param groups - The sibling group manager factors are located within
  * @param options - Optional emitter hooks
@@ -377,7 +377,7 @@ export function createFactorManager(
  *
  * @remarks
  * `rules` — the initial collection (defaults to empty). `on` / `error` —
- * emitter hooks (AGENTS §8 / §13). Rule order is load-bearing.
+ * emitter hooks. Rule order is load-bearing.
  *
  * @param options - Optional seed collection and emitter hooks
  * @returns A {@link RuleManagerInterface}
@@ -400,7 +400,7 @@ export function createRuleManager(options?: RuleManagerOptions): RuleManagerInte
  *
  * @remarks
  * `equations` — the initial collection (defaults to empty). `on` / `error` —
- * emitter hooks (AGENTS §8 / §13). Equation order is strongly load-bearing.
+ * emitter hooks. Equation order is strongly load-bearing.
  *
  * @param options - Optional seed collection and emitter hooks
  * @returns An {@link EquationManagerInterface}
@@ -423,7 +423,7 @@ export function createEquationManager(options?: EquationManagerOptions): Equatio
  *
  * @remarks
  * `variables` — the initial record (defaults to empty). `on` / `error` —
- * emitter hooks (AGENTS §8 / §13).
+ * emitter hooks.
  *
  * @param options - Optional seed record and emitter hooks
  * @returns A {@link VariableManagerInterface}
@@ -446,7 +446,7 @@ export function createVariableManager(options?: VariableManagerOptions): Variabl
  *
  * @remarks
  * `facts` — the initial collection (defaults to empty). `on` / `error` —
- * emitter hooks (AGENTS §8 / §13).
+ * emitter hooks.
  *
  * @param options - Optional seed collection and emitter hooks
  * @returns A {@link FactManagerInterface}
@@ -469,7 +469,7 @@ export function createFactManager(options?: FactManagerOptions): FactManagerInte
  *
  * @remarks
  * `inferences` — the initial collection (defaults to empty). `on` / `error` —
- * emitter hooks (AGENTS §8 / §13). Inference order is load-bearing.
+ * emitter hooks. Inference order is load-bearing.
  *
  * @param options - Optional seed collection and emitter hooks
  * @returns An {@link InferenceManagerInterface}

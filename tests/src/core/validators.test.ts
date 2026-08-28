@@ -33,14 +33,17 @@ import {
 	isFieldPath,
 	isGroupResult,
 	isInference,
+	isInferentialClearKey,
 	isInferentialDefinition,
 	isInferentialResult,
+	isLogicalClearKey,
 	isLogicalDefinition,
 	isLogicalResult,
 	isLogicalOperator,
 	isMathOperation,
 	isNumberRecord,
 	isProofNode,
+	isQuantitativeClearKey,
 	isQuantitativeDefinition,
 	isQuantitativeResult,
 	isReasonResult,
@@ -53,6 +56,7 @@ import {
 	isRule,
 	isSource,
 	isSubject,
+	isSymbolicClearKey,
 	isSymbolicDefinition,
 	isSymbolicExpression,
 	isSymbolicResult,
@@ -596,6 +600,50 @@ describe('definition guards', () => {
 		expect(isDefinition(inferentialDefinition('d', 'd', [], []))).toBe(true)
 		expect(isDefinition({ reasoning: 'quantum', id: 'x', name: 'x' })).toBe(false)
 		expect(accepted(isDefinition)).toEqual([])
+	})
+})
+
+// ── Clearable-key guards ───────────────────────────────────────────────────────
+// The four `clear*Definition` signatures and `DefinitionBuilder.clear` narrow a
+// caller string through these guards, so each admits exactly its kind's
+// optional scalar fields and refuses every required field and every collection.
+
+describe('clearable-key guards', () => {
+	it('isQuantitativeClearKey admits the four optional quantitative fields', () => {
+		for (const key of ['description', 'base', 'bounds', 'precision']) {
+			expect(isQuantitativeClearKey(key)).toBe(true)
+		}
+		expect(isQuantitativeClearKey('groups')).toBe(false)
+		expect(isQuantitativeClearKey('aggregation')).toBe(false)
+		expect(isQuantitativeClearKey('depth')).toBe(false)
+		expect(accepted(isQuantitativeClearKey)).toEqual([])
+	})
+
+	it('isLogicalClearKey admits description and depth only', () => {
+		expect(isLogicalClearKey('description')).toBe(true)
+		expect(isLogicalClearKey('depth')).toBe(true)
+		expect(isLogicalClearKey('strategy')).toBe(false)
+		expect(isLogicalClearKey('rules')).toBe(false)
+		expect(isLogicalClearKey('precision')).toBe(false)
+		expect(accepted(isLogicalClearKey)).toEqual([])
+	})
+
+	it('isSymbolicClearKey admits description and precision only', () => {
+		expect(isSymbolicClearKey('description')).toBe(true)
+		expect(isSymbolicClearKey('precision')).toBe(true)
+		expect(isSymbolicClearKey('variables')).toBe(false)
+		expect(isSymbolicClearKey('equations')).toBe(false)
+		expect(isSymbolicClearKey('depth')).toBe(false)
+		expect(accepted(isSymbolicClearKey)).toEqual([])
+	})
+
+	it('isInferentialClearKey admits description and depth only', () => {
+		expect(isInferentialClearKey('description')).toBe(true)
+		expect(isInferentialClearKey('depth')).toBe(true)
+		expect(isInferentialClearKey('strategy')).toBe(false)
+		expect(isInferentialClearKey('facts')).toBe(false)
+		expect(isInferentialClearKey('precision')).toBe(false)
+		expect(accepted(isInferentialClearKey)).toEqual([])
 	})
 })
 

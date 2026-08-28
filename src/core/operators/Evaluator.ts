@@ -1,5 +1,6 @@
 import type { Check, CheckResult, EvaluatorInterface, EvaluatorOptions, Subject } from '../types.js'
 import { isArray, isNumber, resolveField } from '@orkestrel/contract'
+import { isWithinBounds } from '../helpers.js'
 import { EVALUATOR_ID } from '../constants.js'
 
 /**
@@ -63,21 +64,11 @@ export class Evaluator implements EvaluatorInterface {
 			case 'none':
 				return isArray(expected) && !expected.includes(actual)
 			case 'between':
-				return this.#isBetween(actual, expected)
+				return isWithinBounds(actual, expected)
 			case 'outside':
-				return !this.#isBetween(actual, expected)
+				return !isWithinBounds(actual, expected)
 			default:
 				throw new Error(`Unknown comparison operator: ${operator}`)
 		}
-	}
-
-	// Inclusive on both ends; only the first two array elements are read.
-	#isBetween(actual: unknown, expected: unknown): boolean {
-		if (!isNumber(actual)) return false
-		if (!isArray(expected) || expected.length < 2) return false
-		const minimum = expected[0]
-		const maximum = expected[1]
-		if (!isNumber(minimum) || !isNumber(maximum)) return false
-		return actual >= minimum && actual <= maximum
 	}
 }

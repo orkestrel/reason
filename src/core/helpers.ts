@@ -5,6 +5,7 @@ import type {
 	Check,
 	Comparison,
 	Definition,
+	DefinitionEnvelope,
 	Equation,
 	Expression,
 	Fact,
@@ -12,31 +13,34 @@ import type {
 	FactorGroup,
 	FactorRange,
 	Inference,
+	InferentialClearKey,
 	InferentialDefinition,
+	LogicalClearKey,
 	LogicalDefinition,
 	LogicalOperator,
 	MathOperation,
+	QuantitativeClearKey,
 	QuantitativeDefinition,
 	ReasonResult,
 	Rule,
 	Source,
 	Subject,
+	SymbolicClearKey,
 	SymbolicDefinition,
 	SymbolicExpression,
 	Transform,
 } from './types.js'
 import type { FieldPath } from '@orkestrel/contract'
-import { isString, parseJSONAs } from '@orkestrel/contract'
+import { isArray, isNumber, isString, parseNumberField, resolveField } from '@orkestrel/contract'
 import { DEFAULT_CONFIDENCE, DEFAULT_PRIORITY } from './constants.js'
 import { ReasonError } from './errors.js'
-import { isDefinition } from './validators.js'
 
 // Pure builders for the declarative definition vocabulary, plus the module's
 // numeric helpers. Every builder returns a fresh, JSON-serializable value and
 // OMITS absent optional keys entirely (never sets them to `undefined`), so the
-// output round-trips through the exact-record validators (AGENTS §14). Builders
-// with an `overrides` bag spread it LAST — an override always wins over a
-// default (a `name` defaults to the `id` wherever a display name is required).
+// output round-trips through the exact-record validators. Builders with an
+// `overrides` bag spread it LAST — an override always wins over a default (a
+// `name` defaults to the `id` wherever a display name is required).
 
 // === Field display
 
@@ -735,6 +739,140 @@ export function clamp(value: number, limit?: Bounds): number {
 }
 
 /**
+ * Checks whether a value falls inside an inclusive range expressed as an array.
+ *
+ * @remarks
+ * The range test behind the `between` and `outside` {@link Comparison}s: only
+ * the FIRST TWO elements of `range` are read, both ends are inclusive, and a
+ * non-numeric `value`, a non-array `range`, a `range` shorter than two
+ * elements, or a non-numeric bound all report `false`. `outside` is the pure
+ * negation of this predicate, so a malformed range reads as outside.
+ *
+ * @param value - The resolved subject value to test
+ * @param range - The expected range (its first two elements are the inclusive bounds)
+ * @returns True if `value` is a number within the inclusive range; false otherwise
+ *
+ * @example
+ * ```ts
+ * import { isWithinBounds } from '@src/core'
+ *
+ * isWithinBounds(5, [1, 10])   // true — inclusive on both ends
+ * isWithinBounds(5, [1])       // false — a malformed range is never within
+ * ```
+ */
+export function isWithinBounds(value: unknown, range: unknown): boolean {
+	if (!isNumber(value)) return false
+	if (!isArray(range) || range.length < 2) return false
+	const minimum = range[0]
+	const maximum = range[1]
+	if (!isNumber(minimum) || !isNumber(maximum)) return false
+	return value >= minimum && value <= maximum
+}
+
+/**
+ * Returns the empty-input identity of one {@link Aggregation}.
+ *
+ * @remarks
+ * The aggregator's "no data" answers: `sum` and `average` reduce to `0`,
+ * `product` to `1`, and `minimum` / `maximum` to `NaN` — a deliberate signal
+ * the quantitative reasoner surfaces as a non-finite-value error rather than a
+ * silent success. An unknown aggregation from an untrusted definition is `0`.
+ *
+ * @param aggregation - The aggregation whose identity is wanted
+ * @returns The value the aggregation yields over zero inputs
+ *
+ * @example
+ * ```ts
+ * import { emptyAggregate } from '@src/core'
+ *
+ * emptyAggregate('sum')     // 0
+ * emptyAggregate('product') // 1
+ * emptyAggregate('minimum') // NaN — the "no data" signal
+ * ```
+ */
+export function emptyAggregate(aggregation: Aggregation): number {
+	switch (aggregation) {
+		case 'sum':
+		case 'average':
+			return 0
+		case 'product':
+			return 1
+		case 'minimum':
+		case 'maximum':
+			return Number.NaN
+		default:
+			return 0
+	}
+}
+
+/**
+ * Resolves one {@link Source} against a subject, falling back when it cannot.
+ *
+ * @remarks
+ * The source-resolution leaf of the quantitative factor pipeline. A `static`
+ * source passes its value through; `field` and `range` coerce through the
+ * contracts `parseNumberField`, so a non-finite subject number or a
+ * non-numeric string is unresolvable and takes `fallback`; `lookup` reads only
+ * OWN table keys, and a missing or `null` field takes `fallback` directly
+ * rather than letting a `''` key intercept absent data. A `range` scans its
+ * bands in order and the FIRST match wins — a band without `bounds` is a
+ * catch-all and an absent bound side is open. A malformed factor carrying no
+ * source at all takes `fallback` rather than crashing.
+ *
+ * @param source - The factor source to resolve
+ * @param subject - The subject to read from
+ * @param fallback - The value taken when the source does not resolve
+ * @returns The resolved number, the `fallback`, or `undefined` when neither exists
+ *
+ * @example
+ * ```ts
+ * import { fieldSource, lookupSource, resolveSource } from '@src/core'
+ *
+ * resolveSource(fieldSource('age'), { age: 30 })                        // 30
+ * resolveSource(lookupSource('state', { CA: 5 }), { state: 'NY' }, 1)  // 1 — fallback
+ * ```
+ */
+export function resolveSource(
+	source: Source,
+	subject: Subject,
+	fallback?: number,
+): number | undefined {
+	// A malformed factor may carry no source at all — the fallback path, not a crash.
+	if (!source) return fallback
+	switch (source.origin) {
+		case 'static':
+			return source.value
+		case 'field':
+			return parseNumberField(subject, source.field) ?? fallback
+		case 'lookup': {
+			const resolved = resolveField(subject, source.field)
+			// A missing / null field never reaches the table (a '' key must not
+			// intercept absent data); a PRESENT value still stringifies, so a
+			// real '' value may hit a '' key.
+			if (resolved === undefined || resolved === null) return fallback
+			const key = String(resolved)
+			return Object.hasOwn(source.table, key) ? source.table[key] : fallback
+		}
+		case 'range': {
+			const value = parseNumberField(subject, source.field)
+			if (value === undefined) return fallback
+			for (const range of source.ranges) {
+				if (typeof range !== 'object' || range === null) continue
+				const limit = range.bounds
+				// A band without bounds is a catch-all; an absent side is open.
+				if (!limit) return range.value
+				const aboveMinimum = limit.minimum === undefined || value >= limit.minimum
+				const belowMaximum = limit.maximum === undefined || value <= limit.maximum
+				if (aboveMinimum && belowMaximum) return range.value
+			}
+			return fallback
+		}
+		default:
+			return fallback
+	}
+}
+
+/**
  * Round a number to a fixed count of decimal places.
  *
  * @remarks
@@ -804,9 +942,8 @@ export function equalValues(left: unknown, right: unknown): boolean {
  * The shared evaluation-order helper of the quantitative (factors) and logical
  * (rules) reasoners: lower priorities run first, an absent `priority` defaults
  * to `0`, equal priorities keep DECLARATION order (stable), and the input array
- * is never mutated (AGENTS §11). An array hole, `null`, or other non-record
- * entry is dropped rather than sorted — the output may be shorter than the
- * input.
+ * is never mutated. An array hole, `null`, or other non-record entry is dropped
+ * rather than sorted — the output may be shorter than the input.
  *
  * @param items - The priority-carrying items to order
  * @returns A fresh array, sorted ascending by priority
@@ -1064,7 +1201,7 @@ export function matchFacts(pattern: Fact, candidate: Fact): Record<string, unkno
  * string term that is present in `bindings` is replaced by its bound value;
  * every other term (constants and UNBOUND variables alike) is kept verbatim. The
  * returned fact is a fresh copy (`{ ...fact, terms }`) — the input is never
- * mutated (AGENTS §11).
+ * mutated.
  *
  * @param source - The fact (or pattern) to instantiate
  * @param bindings - The variable bindings to apply
@@ -1085,6 +1222,53 @@ export function instantiateFact(source: Fact, bindings: Record<string, unknown>)
 		return term
 	})
 	return { ...source, terms }
+}
+
+/**
+ * Computes the confidence a set of matched premises contributes to a derived
+ * fact — the product of each premise's FIRST matching fact's confidence.
+ *
+ * @remarks
+ * The confidence half of the inferential reasoner's forward derivation: each
+ * premise is instantiated under `bindings`, then matched against its own
+ * predicate+arity bucket of `index` (see {@link indexByArity}) and the first
+ * match's `confidence ?? DEFAULT_CONFIDENCE` multiplies into the running
+ * product. A premise with no match contributes nothing, so an empty premise set
+ * yields `1`. Bucket append order is preserved, so the first bucket match is
+ * the same fact a full linear scan would find. The inference's own
+ * `confidence` is applied by the caller, not here.
+ *
+ * @param premises - The premise patterns to score
+ * @param index - The live predicate+arity fact index to match against
+ * @param bindings - The variable bindings the premises are instantiated under
+ * @returns The product of the matched premise facts' confidences
+ *
+ * @example
+ * ```ts
+ * import { computePremiseConfidence, fact, indexByArity } from '@src/core'
+ *
+ * const index = indexByArity([fact('f1', 'human', ['socrates'], 0.5)])
+ * computePremiseConfidence([fact('p1', 'human', ['?x'])], index, {}) // 0.5
+ * ```
+ */
+export function computePremiseConfidence(
+	premises: readonly Fact[],
+	index: ReadonlyMap<string, readonly Fact[]>,
+	bindings: Record<string, unknown>,
+): number {
+	let confidence = 1
+
+	for (const premise of premises) {
+		const instantiated = instantiateFact(premise, bindings)
+		for (const candidate of index.get(factToArityKey(premise)) ?? []) {
+			if (matchFacts(instantiated, candidate)) {
+				confidence *= candidate.confidence ?? DEFAULT_CONFIDENCE
+				break
+			}
+		}
+	}
+
+	return confidence
 }
 
 /**
@@ -1133,18 +1317,18 @@ export function subjectToFacts(subject: Subject, trace: string[]): Fact[] {
 }
 
 /**
- * The `'?'`-prefixed variables an inference's conclusion introduces that no
- * premise binds.
+ * Collects the `'?'`-prefixed conclusion variables no premise binds.
  *
  * @remarks
- * The authoring-time footgun probe behind `InferentialReasoner.validate`'s
- * unbound-variable warning: backward proving establishes each premise
- * independently with no cross-premise binding consistency, so a conclusion
- * term that no premise's `terms` ever names stays uninstantiated in the
- * derived fact. Gathers the `?`-prefixed string terms of `conclusion.terms`,
- * subtracts every `?`-prefixed string term appearing in any premise's
- * `terms`, and returns the remainder once each, in the conclusion's authored
- * order.
+ * The unbound names are the `'?'`-prefixed variables an inference's conclusion
+ * introduces that no premise binds. The authoring-time footgun probe behind
+ * `InferentialReasoner.validate`'s unbound-variable warning: backward proving
+ * establishes each premise independently with no cross-premise binding
+ * consistency, so a conclusion term that no premise's `terms` ever names stays
+ * uninstantiated in the derived fact. Gathers the `?`-prefixed string terms of
+ * `conclusion.terms`, subtracts every `?`-prefixed string term appearing in any
+ * premise's `terms`, and returns the remainder once each, in the conclusion's
+ * authored order.
  *
  * @param source - The inference whose conclusion is checked against its premises
  * @returns The unbound conclusion variable names, once each, authored order
@@ -1236,12 +1420,14 @@ export function containsVariable(
  * multiplication. Inversion by zero yields `NaN` (never a throw) — a `multiply`
  * with a zero `right` has no unique solution, and `x / 0 = value` has none
  * either, so both surface `NaN` for the non-finite check to report rather than a
- * bogus value. A non-invertible operator throws (caught per equation upstream).
+ * bogus value. A non-invertible operator throws
+ * `ReasonError('OPERATOR', …, { operator })`, caught per equation upstream.
  *
  * @param operator - The math operation to invert
  * @param value - The known result of `x op right`
  * @param rightValue - The known right operand
  * @returns The isolated left operand (`NaN` on a zero-division inverse)
+ * @throws {@link ReasonError} `'OPERATOR'` when `operator` is outside the invertible vocabulary
  *
  * @example
  * ```ts
@@ -1265,7 +1451,9 @@ export function invertLeft(operator: MathOperation, value: number, rightValue: n
 			// a bogus `x = 0`.
 			return rightValue === 0 ? Number.NaN : value * rightValue
 		default:
-			throw new Error(`Cannot invert operation "${operator}" for left operand`)
+			throw new ReasonError('OPERATOR', `Cannot invert operation "${operator}" for left operand`, {
+				operator,
+			})
 	}
 }
 
@@ -1277,12 +1465,14 @@ export function invertLeft(operator: MathOperation, value: number, rightValue: n
  * to `value - left`, `subtract` to `left - value`, `multiply` to `value / left`
  * (with a zero `left` yielding `NaN`), `divide` to `left / value` (with a zero
  * `value` yielding `NaN`). Inversion by zero yields `NaN`, never a throw; a
- * non-invertible operator throws (caught per equation upstream).
+ * non-invertible operator throws `ReasonError('OPERATOR', …, { operator })`,
+ * caught per equation upstream.
  *
  * @param operator - The math operation to invert
  * @param value - The known result of `left op x`
  * @param leftValue - The known left operand
  * @returns The isolated right operand (`NaN` on a zero-division inverse)
+ * @throws {@link ReasonError} `'OPERATOR'` when `operator` is outside the invertible vocabulary
  *
  * @example
  * ```ts
@@ -1303,7 +1493,9 @@ export function invertRight(operator: MathOperation, value: number, leftValue: n
 		case 'divide':
 			return value === 0 ? Number.NaN : leftValue / value
 		default:
-			throw new Error(`Cannot invert operation "${operator}" for right operand`)
+			throw new ReasonError('OPERATOR', `Cannot invert operation "${operator}" for right operand`, {
+				operator,
+			})
 	}
 }
 
@@ -1316,13 +1508,15 @@ export function invertRight(operator: MathOperation, value: number, leftValue: n
  * by zero is `NaN` (never a throw), the unary operations (`round` / `ceil` /
  * `floor` / `abs`) ignore `right`, and `percentage` is `left * (right / 100)`.
  * `operator` is typed `string` because untrusted definitions reach here
- * unchecked; the ONE throwing path is the unknown-operator default (caught per
- * equation upstream).
+ * unchecked; the ONE throwing path is the unknown-operator default, which
+ * throws `ReasonError('OPERATOR', …, { operator })` and is caught per equation
+ * upstream.
  *
  * @param operator - The operation name (untrusted — an unknown one throws)
  * @param left - The left operand
  * @param right - The right operand (ignored by the unary operations)
  * @returns The operation's result (`NaN` on divide-by-zero)
+ * @throws {@link ReasonError} `'OPERATOR'` when `operator` names no known operation
  *
  * @example
  * ```ts
@@ -1361,7 +1555,7 @@ export function applyOperation(operator: string, left: number, right: number): n
 		case 'abs':
 			return Math.abs(left)
 		default:
-			throw new Error(`Unknown operator: ${operator}`)
+			throw new ReasonError('OPERATOR', `Unknown operator: ${operator}`, { operator })
 	}
 }
 
@@ -1442,14 +1636,15 @@ export function extractConclusions(expression: Expression): Record<string, unkno
 }
 
 /**
- * The `formatField`-flattened overlay keys an array-path conclusion atom
- * writes ANYWHERE among `rules` that an array-path premise atom also reads
- * ANYWHERE among `rules`.
+ * Collects the flattened overlay keys written through an array path and also
+ * read through an array path.
  *
  * @remarks
- * The cross-rule authoring-time footgun probe behind
- * `LogicalReasoner.validate`'s overlay-key-mismatch warning: a logical
- * conclusion's derived overlay is a FLAT record keyed by
+ * The reported keys are the `formatField`-flattened overlay keys an array-path
+ * conclusion atom writes ANYWHERE among `rules` that an array-path premise atom
+ * also reads ANYWHERE among `rules`. The cross-rule authoring-time footgun
+ * probe behind `LogicalReasoner.validate`'s overlay-key-mismatch warning: a
+ * logical conclusion's derived overlay is a FLAT record keyed by
  * `formatField(check.field)` — an array `FieldPath` dot-joins into one string
  * key. A premise that reads the same field via a DOTTED-STRING path resolves
  * that flat key correctly, but a premise that reads it via an ARRAY path
@@ -1565,22 +1760,67 @@ export function buildErrorResult(definition: Definition, message: string): Reaso
 	}
 }
 
-// === Id-keyed collection primitives (PROPOSAL.md §7)
+// === Definition projection
+
+/**
+ * Projects a {@link Definition} to its scalar envelope — the kind's collections
+ * drop out.
+ *
+ * @remarks
+ * The `{noun}To{Noun}` projection behind the `DefinitionBuilder`'s private
+ * envelope: a rest-omit removes `groups` from a quantitative definition,
+ * `rules` from a logical one, `equations` / `variables` from a symbolic one,
+ * and `facts` / `inferences` from an inferential one, leaving `reasoning` /
+ * `id` / `name` plus the kind's own scalars. The input is never mutated.
+ *
+ * @param definition - The definition to project
+ * @returns A fresh envelope carrying the definition's non-collection fields
+ *
+ * @example
+ * ```ts
+ * import { definitionToEnvelope, logicalDefinition } from '@src/core'
+ *
+ * 'rules' in definitionToEnvelope(logicalDefinition('e', 'E', [])) // false
+ * ```
+ */
+export function definitionToEnvelope(definition: Definition): DefinitionEnvelope {
+	switch (definition.reasoning) {
+		case 'quantitative': {
+			const { groups, ...rest } = definition
+			return rest
+		}
+		case 'logical': {
+			const { rules, ...rest } = definition
+			return rest
+		}
+		case 'symbolic': {
+			const { equations, variables, ...rest } = definition
+			return rest
+		}
+		case 'inferential': {
+			const { facts, inferences, ...rest } = definition
+			return rest
+		}
+	}
+}
+
+// === Id-keyed collection primitives
 //
 // Five exported generic primitives every per-kind change/merge helper below
-// composes over. Per AGENTS §4.2.4 no parameter selects behavior: `appendById`
-// and `prependById` are separately named functions, and the optional `target`
-// each takes is DATA — an id to anchor on — never a behavior switch. Every
-// primitive is copy-on-write (AGENTS §11): the input array is never mutated,
-// and a fresh array is always returned.
+// composes over. No parameter selects behavior (`.claude/rules/names.md`
+// § Split instead of compounding): `appendById` and `prependById` are
+// separately named functions, and the optional `target` each takes is DATA — an
+// id to anchor on — never a behavior switch. Every primitive is copy-on-write
+// (`.claude/rules/typescript.md` § Immutability): the input array is never
+// mutated, and a fresh array is always returned.
 
 /**
  * Insert `item` into an id-keyed collection, deduping any existing element
  * sharing its id, then placing it at the END (or immediately AFTER `target`).
  *
  * @remarks
- * `filtered` is `items` with every `item.id` twin removed FIRST (dedup-on-
- * insert — input arrays may already carry same-id twins per PROPOSAL.md §7).
+ * Insertion DEDUPES on the id first: `filtered` is `items` with every `item.id`
+ * twin removed, because an input array may already carry same-id twins.
  * Re-appending an existing id therefore REPOSITIONS it rather than updating it
  * in place — {@link replaceById} is the position-preserving alternative. With
  * no `target`, `item` lands at the end; with a `target`, it lands immediately
@@ -1723,7 +1963,7 @@ export function removeById<T extends { readonly id: string }>(
  * base-only survivors appended after.
  *
  * @remarks
- * The Strategic-Merge-Patch-style id-keyed upsert of PROPOSAL.md §6-§7:
+ * A Strategic-Merge-Patch-style id-keyed upsert:
  * the result is ordered by `incoming`'s id order FIRST (each element resolved
  * through `resolve` when its id also exists in `base`, defaulting to
  * incoming-wins-wholesale), THEN the `base`-only survivors in `base`'s own
@@ -1768,7 +2008,7 @@ export function mergeById<T extends { readonly id: string }>(
 	return merged
 }
 
-// === Quantitative change/extend helpers (PROPOSAL.md §8)
+// === Quantitative change/extend helpers
 
 /**
  * Insert `group` into a {@link QuantitativeDefinition}'s `groups` — dedup-then-
@@ -1958,10 +2198,10 @@ export function removeFactor(group: FactorGroup, id: string): FactorGroup {
 	return { ...group, factors: removeById(group.factors, id) }
 }
 
-// === Logical change/extend helpers (PROPOSAL.md §8)
+// === Logical change/extend helpers
 
 /**
- * Insert `rule` into a {@link LogicalDefinition}'s `rules` — dedup-then-insert
+ * Inserts a rule into a {@link LogicalDefinition}'s `rules` — dedup-then-insert
  * at the end, or immediately after `target`.
  *
  * @remarks
@@ -1972,7 +2212,7 @@ export function removeFactor(group: FactorGroup, id: string): FactorGroup {
  * @param definition - The definition to insert into
  * @param source - The rule to insert
  * @param target - Optional rule id to insert immediately after
- * @returns A fresh definition with `rule` inserted
+ * @returns A fresh definition with the rule inserted
  * @throws {@link ReasonError} `'TARGET'` when `target` names no existing rule
  *
  * @example
@@ -1991,13 +2231,13 @@ export function appendRule(
 }
 
 /**
- * Insert `rule` into a {@link LogicalDefinition}'s `rules` — dedup-then-insert
+ * Inserts a rule into a {@link LogicalDefinition}'s `rules` — dedup-then-insert
  * at the start, or immediately before `target`.
  *
  * @param definition - The definition to insert into
  * @param source - The rule to insert
  * @param target - Optional rule id to insert immediately before
- * @returns A fresh definition with `rule` inserted
+ * @returns A fresh definition with the rule inserted
  * @throws {@link ReasonError} `'TARGET'` when `target` names no existing rule
  *
  * @example
@@ -2016,7 +2256,7 @@ export function prependRule(
 }
 
 /**
- * Swap the rule sharing `rule.id` in a {@link LogicalDefinition} IN PLACE,
+ * Swaps the rule sharing `source.id` in a {@link LogicalDefinition} IN PLACE,
  * preserving its position (appends when absent).
  *
  * @param definition - The definition to update
@@ -2055,10 +2295,10 @@ export function removeRule(definition: LogicalDefinition, id: string): LogicalDe
 	return { ...definition, rules: removeById(definition.rules, id) }
 }
 
-// === Symbolic change/extend helpers (PROPOSAL.md §8)
+// === Symbolic change/extend helpers
 
 /**
- * Insert `equation` into a {@link SymbolicDefinition}'s `equations` — dedup-
+ * Inserts an equation into a {@link SymbolicDefinition}'s `equations` — dedup-
  * then-insert at the end, or immediately after `target`.
  *
  * @remarks
@@ -2068,7 +2308,7 @@ export function removeRule(definition: LogicalDefinition, id: string): LogicalDe
  * @param definition - The definition to insert into
  * @param source - The equation to insert
  * @param target - Optional equation id to insert immediately after
- * @returns A fresh definition with `equation` inserted
+ * @returns A fresh definition with the equation inserted
  * @throws {@link ReasonError} `'TARGET'` when `target` names no existing equation
  *
  * @example
@@ -2087,13 +2327,13 @@ export function appendEquation(
 }
 
 /**
- * Insert `equation` into a {@link SymbolicDefinition}'s `equations` — dedup-
+ * Inserts an equation into a {@link SymbolicDefinition}'s `equations` — dedup-
  * then-insert at the start, or immediately before `target`.
  *
  * @param definition - The definition to insert into
  * @param source - The equation to insert
  * @param target - Optional equation id to insert immediately before
- * @returns A fresh definition with `equation` inserted
+ * @returns A fresh definition with the equation inserted
  * @throws {@link ReasonError} `'TARGET'` when `target` names no existing equation
  *
  * @example
@@ -2112,7 +2352,7 @@ export function prependEquation(
 }
 
 /**
- * Swap the equation sharing `equation.id` in a {@link SymbolicDefinition} IN
+ * Swaps the equation sharing `source.id` in a {@link SymbolicDefinition} IN
  * PLACE, preserving its position (appends when absent).
  *
  * @param definition - The definition to update
@@ -2205,10 +2445,10 @@ export function removeVariable(definition: SymbolicDefinition, name: string): Sy
 	return { ...definition, variables: rest }
 }
 
-// === Inferential change/extend helpers (PROPOSAL.md §8)
+// === Inferential change/extend helpers
 
 /**
- * Insert `fact` into an {@link InferentialDefinition}'s `facts` — dedup-then-
+ * Inserts a fact into an {@link InferentialDefinition}'s `facts` — dedup-then-
  * insert at the end, or immediately after `target`.
  *
  * @remarks
@@ -2219,7 +2459,7 @@ export function removeVariable(definition: SymbolicDefinition, name: string): Sy
  * @param definition - The definition to insert into
  * @param source - The fact to insert
  * @param target - Optional fact id to insert immediately after
- * @returns A fresh definition with `fact` inserted
+ * @returns A fresh definition with the fact inserted
  * @throws {@link ReasonError} `'TARGET'` when `target` names no existing fact
  *
  * @example
@@ -2238,13 +2478,13 @@ export function appendFact(
 }
 
 /**
- * Insert `fact` into an {@link InferentialDefinition}'s `facts` — dedup-then-
+ * Inserts a fact into an {@link InferentialDefinition}'s `facts` — dedup-then-
  * insert at the start, or immediately before `target`.
  *
  * @param definition - The definition to insert into
  * @param source - The fact to insert
  * @param target - Optional fact id to insert immediately before
- * @returns A fresh definition with `fact` inserted
+ * @returns A fresh definition with the fact inserted
  * @throws {@link ReasonError} `'TARGET'` when `target` names no existing fact
  *
  * @example
@@ -2263,7 +2503,7 @@ export function prependFact(
 }
 
 /**
- * Swap the fact sharing `fact.id` in an {@link InferentialDefinition} IN
+ * Swaps the fact sharing `source.id` in an {@link InferentialDefinition} IN
  * PLACE, preserving its position (appends when absent).
  *
  * @param definition - The definition to update
@@ -2306,7 +2546,7 @@ export function removeFact(definition: InferentialDefinition, id: string): Infer
 }
 
 /**
- * Insert `inference` into an {@link InferentialDefinition}'s `inferences` —
+ * Inserts an inference into an {@link InferentialDefinition}'s `inferences` —
  * dedup-then-insert at the end, or immediately after `target`.
  *
  * @remarks
@@ -2316,7 +2556,7 @@ export function removeFact(definition: InferentialDefinition, id: string): Infer
  * @param definition - The definition to insert into
  * @param source - The inference to insert
  * @param target - Optional inference id to insert immediately after
- * @returns A fresh definition with `inference` inserted
+ * @returns A fresh definition with the inference inserted
  * @throws {@link ReasonError} `'TARGET'` when `target` names no existing inference
  *
  * @example
@@ -2338,13 +2578,13 @@ export function appendInference(
 }
 
 /**
- * Insert `inference` into an {@link InferentialDefinition}'s `inferences` —
+ * Inserts an inference into an {@link InferentialDefinition}'s `inferences` —
  * dedup-then-insert at the start, or immediately before `target`.
  *
  * @param definition - The definition to insert into
  * @param source - The inference to insert
  * @param target - Optional inference id to insert immediately before
- * @returns A fresh definition with `inference` inserted
+ * @returns A fresh definition with the inference inserted
  * @throws {@link ReasonError} `'TARGET'` when `target` names no existing inference
  *
  * @example
@@ -2366,7 +2606,7 @@ export function prependInference(
 }
 
 /**
- * Swap the inference sharing `inference.id` in an {@link InferentialDefinition}
+ * Swaps the inference sharing `source.id` in an {@link InferentialDefinition}
  * IN PLACE, preserving its position (appends when absent).
  *
  * @param definition - The definition to update
@@ -2412,20 +2652,23 @@ export function removeInference(
 	return { ...definition, inferences: removeById(definition.inferences, id) }
 }
 
-// === Merge helpers — whole-definition reconciliation (PROPOSAL.md §9)
+// === Merge helpers — whole-definition reconciliation
 //
 // Model: id-keyed upsert, incoming order wins, base-only survivors retained
 // (never deleted — additive). `base.id` (and `reasoning`) are preserved.
 // Scalars / value-object fields are incoming-wins-WHEN-PRESENT, else base is
-// kept — merge NEVER clears (that is `clear*`'s job, §10).
+// kept — merge NEVER clears, which is what the `clear*` helpers are for.
 
 /**
  * Reconcile two {@link QuantitativeDefinition}s onto `base`'s id.
  *
  * @remarks
- * `groups` merges via {@link mergeById}; a matched (same-id) PAIR of groups
- * recurses one level deeper — their `factors` also merge via `mergeById` — the
- * one exception to incoming-wins-wholesale (PROPOSAL.md §9). Every other
+ * The merge is ADDITIVE: a base-only group survives into the result and is
+ * never deleted, and a scalar absent from `incoming` keeps its base value —
+ * merge never clears a field, which is what {@link clearQuantitativeDefinition}
+ * is for. `groups` merges via {@link mergeById}; a matched (same-id) PAIR of
+ * groups recurses one level deeper — their `factors` also merge via
+ * `mergeById` — the one exception to incoming-wins-wholesale. Every other
  * scalar / value-object field is incoming-wins-when-present, else base kept.
  *
  * @param base - The definition merge targets (its `id` is preserved)
@@ -2465,6 +2708,9 @@ export function mergeQuantitativeDefinition(
  * Reconcile two {@link LogicalDefinition}s onto `base`'s id.
  *
  * @remarks
+ * The merge is ADDITIVE: a base-only rule survives into the result and is never
+ * deleted, and a scalar absent from `incoming` keeps its base value — merge
+ * never clears a field, which is what {@link clearLogicalDefinition} is for.
  * `rules` merges via {@link mergeById} (incoming-wins-wholesale on a matched
  * id). Every other scalar field is incoming-wins-when-present, else base kept.
  *
@@ -2499,10 +2745,13 @@ export function mergeLogicalDefinition(
  * Reconcile two {@link SymbolicDefinition}s onto `base`'s id.
  *
  * @remarks
- * `equations` merges via {@link mergeById} (incoming-wins-wholesale on a
- * matched id); `variables` is a plain incoming-wins spread
- * (`{ ...base.variables, ...incoming.variables }`). Every other scalar field
- * is incoming-wins-when-present, else base kept.
+ * The merge is ADDITIVE: a base-only equation or variable survives into the
+ * result and is never deleted, and a scalar absent from `incoming` keeps its
+ * base value — merge never clears a field, which is what
+ * {@link clearSymbolicDefinition} is for. `equations` merges via
+ * {@link mergeById} (incoming-wins-wholesale on a matched id); `variables` is a
+ * plain incoming-wins spread (`{ ...base.variables, ...incoming.variables }`).
+ * Every other scalar field is incoming-wins-when-present, else base kept.
  *
  * @param base - The definition merge targets (its `id` is preserved)
  * @param incoming - The definition merged in (its order, matches, and variables take priority)
@@ -2537,9 +2786,12 @@ export function mergeSymbolicDefinition(
  * Reconcile two {@link InferentialDefinition}s onto `base`'s id.
  *
  * @remarks
- * `inferences` and `facts` each merge via {@link mergeById}
- * (incoming-wins-wholesale on a matched id). Every other scalar field is
- * incoming-wins-when-present, else base kept.
+ * The merge is ADDITIVE: a base-only inference or fact survives into the result
+ * and is never deleted, and a scalar absent from `incoming` keeps its base
+ * value — merge never clears a field, which is what
+ * {@link clearInferentialDefinition} is for. `inferences` and `facts` each
+ * merge via {@link mergeById} (incoming-wins-wholesale on a matched id). Every
+ * other scalar field is incoming-wins-when-present, else base kept.
  *
  * @param base - The definition merge targets (its `id` is preserved)
  * @param incoming - The definition merged in (its order and matches take priority)
@@ -2569,7 +2821,7 @@ export function mergeInferentialDefinition(
 	}
 }
 
-// === Clear helpers — optional-field key-deletion (PROPOSAL.md §10)
+// === Clear helpers — optional-field key-deletion
 //
 // `const { [key]: _drop, ...rest } = definition; return rest` — the
 // destructure-rest form sidesteps oxlint `no-param-reassign` friction, and the
@@ -2593,7 +2845,7 @@ export function mergeInferentialDefinition(
  */
 export function clearQuantitativeDefinition(
 	definition: QuantitativeDefinition,
-	key: 'description' | 'base' | 'bounds' | 'precision',
+	key: QuantitativeClearKey,
 ): QuantitativeDefinition {
 	const { [key]: _drop, ...rest } = definition
 	return rest
@@ -2616,7 +2868,7 @@ export function clearQuantitativeDefinition(
  */
 export function clearLogicalDefinition(
 	definition: LogicalDefinition,
-	key: 'description' | 'depth',
+	key: LogicalClearKey,
 ): LogicalDefinition {
 	const { [key]: _drop, ...rest } = definition
 	return rest
@@ -2639,7 +2891,7 @@ export function clearLogicalDefinition(
  */
 export function clearSymbolicDefinition(
 	definition: SymbolicDefinition,
-	key: 'description' | 'precision',
+	key: SymbolicClearKey,
 ): SymbolicDefinition {
 	const { [key]: _drop, ...rest } = definition
 	return rest
@@ -2662,57 +2914,26 @@ export function clearSymbolicDefinition(
  */
 export function clearInferentialDefinition(
 	definition: InferentialDefinition,
-	key: 'description' | 'depth',
+	key: InferentialClearKey,
 ): InferentialDefinition {
 	const { [key]: _drop, ...rest } = definition
 	return rest
 }
 
-// === Store-ability (PROPOSAL.md §12)
-
-/**
- * Parse a JSON string into a {@link Definition}, failing safe to `undefined`.
- *
- * @remarks
- * The safe inverse of the builders: `parseJSONAs` composed with the data guard
- * {@link isDefinition}. A built definition body IS the durable JSON payload —
- * `JSON.stringify(definition)` round-trips through `parseDefinition`. Two
- * authoring hazards: a required `Check.value: undefined` drops its key on
- * `JSON.stringify` (author `null` instead), and a `Fact.terms` element of
- * `undefined` serializes to `null` (terms must be JSON-safe scalars/strings).
- *
- * @param json - The JSON text to parse
- * @returns A {@link Definition} of any reasoning, or `undefined` when malformed
- *
- * @example
- * ```ts
- * import { logicalDefinition, parseDefinition } from '@src/core'
- *
- * const text = JSON.stringify(logicalDefinition('e', 'E', []))
- * parseDefinition(text)   // the definition, restored
- * parseDefinition('{}')   // undefined — fails safe
- * ```
- */
-export function parseDefinition(json: string): Definition | undefined {
-	return parseJSONAs(json, isDefinition)
-}
-
-// === Subject engine (PROPOSAL.md §11)
+// === Subject engine
 //
 // The subject counterpart of the definition engine above — four pure helpers.
 // Records are unordered, so there is no `append*`/`prepend*` on a subject
-// (mirrors the `addVariable`/`removeVariable` note, §8). Named `assignField`,
-// not `setField` — the core layer already exports a `FieldPath`-deep, in-place
-// `setField` (`src/core/helpers.ts:139`, returns `void`); reusing that token
-// for this pure, `Subject`-returning upsert would collide in the `@src/core`
-// barrel and violate AGENTS §4.4 (identical verbs must mean identical things).
+// (mirrors the `addVariable`/`removeVariable` note).
 
 /**
  * Upsert one field of a {@link Subject} — copy-on-write spread.
  *
  * @remarks
- * Id-agnostic: overwrites an `id` key like any other field — id protection is
- * an entity's job, not this helper's.
+ * Named `assignField` rather than `setField` because it RETURNS a fresh subject
+ * instead of writing into the one it is given — `set*` reads as an in-place
+ * write. Id-agnostic: overwrites an `id` key like any other field — id
+ * protection is an entity's job, not this helper's.
  *
  * @param subject - The subject to update
  * @param key - The field to set

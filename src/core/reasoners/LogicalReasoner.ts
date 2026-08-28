@@ -2,6 +2,7 @@ import type {
 	Definition,
 	EvaluatorInterface,
 	Expression,
+	LogicalChainingOutcome,
 	LogicalDefinition,
 	LogicalReasonerOptions,
 	Reasoning,
@@ -46,7 +47,7 @@ import { Evaluator } from '../operators/Evaluator.js'
  * inside a conclusion is asserted, even under `not` / `or`. Overlay bookkeeping
  * compares with SameValueZero (`equalValues`), so a NaN-valued conclusion
  * derives once and the fixpoint converges. Nothing mutates its inputs; fully
- * deterministic (AGENTS §11).
+ * deterministic.
  */
 export class LogicalReasoner implements ReasonerInterface {
 	readonly #id: string
@@ -160,7 +161,7 @@ export class LogicalReasoner implements ReasonerInterface {
 		subject: Subject,
 		trace: string[],
 		errors: string[],
-	): { conclusion: boolean; rules: RuleResult[] } {
+	): LogicalChainingOutcome {
 		const maxDepth = definition.depth ?? DEFAULT_DEPTH
 		const derived: Record<string, unknown> = {}
 
@@ -239,7 +240,7 @@ export class LogicalReasoner implements ReasonerInterface {
 		subject: Subject,
 		trace: string[],
 		errors: string[],
-	): { conclusion: boolean; rules: RuleResult[] } {
+	): LogicalChainingOutcome {
 		const maxDepth = definition.depth ?? DEFAULT_DEPTH
 		const derived: Record<string, unknown> = {}
 		const ruleResults = new Map<string, RuleResult>()

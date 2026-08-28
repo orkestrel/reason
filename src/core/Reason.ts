@@ -30,7 +30,7 @@ import { ReasonError } from './errors.js'
  * type-shaped failure result under `bail: false`; only SUCCESSFUL results emit
  * `reason` (synchronously, before returning). The batch overload maps subjects
  * in order (validation, when on, repeats per subject). `destroy()` clears the
- * registry, emits `destroy`, then destroys the emitter LAST (AGENTS §13) and is
+ * registry, emits `destroy`, then destroys the emitter LAST and is
  * idempotent; every other method afterwards throws `DESTROYED` — only the
  * {@link emitter} getter keeps working.
  */
@@ -55,7 +55,7 @@ export class Reason implements ReasonInterface {
 		return this.#emitter
 	}
 
-	// Array overload first (AGENTS §9) so a list resolves to the batch form.
+	// Array overload first so a list resolves to the batch form.
 	reason(subjects: readonly Subject[], definition: Definition): readonly ReasonResult[]
 	reason(subject: Subject, definition: Definition): ReasonResult
 	reason(
@@ -118,7 +118,7 @@ export class Reason implements ReasonInterface {
 	#reasonOne(subject: Subject, definition: Definition): ReasonResult {
 		const reasoner = this.#reasoners.get(definition.reasoning)
 		if (!reasoner) {
-			// Bypasses bail and emits nothing — a registry miss is caller misuse (§12).
+			// Bypasses bail and emits nothing — a registry miss is caller misuse.
 			throw new ReasonError(
 				'MISSING',
 				`No reasoner registered for reasoning "${definition.reasoning}"`,

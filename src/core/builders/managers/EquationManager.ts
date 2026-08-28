@@ -6,15 +6,15 @@ import type {
 	EquationManagerOptions,
 } from '../../types.js'
 import { Emitter } from '@orkestrel/emitter'
-import { appendById, prependById, removeById, replaceById } from '../../helpers.js'
-import { ReasonError } from '../../errors.js'
+import { Collection } from './Collection.js'
 
 /**
  * The {@link EquationManagerInterface} implementation — a self-owning,
  * kind-free manager over a symbolic definition's `equations`.
  *
  * @remarks
- * OWNS its `#equations` collection as private copy-on-write state and its own
+ * OWNS its `equations` as a private {@link Collection} — copy-on-write state
+ * shared by composition with the other list managers — plus its own
  * {@link Emitter} over {@link EquationManagerEventMap}. Equation order is
  * STRONGLY load-bearing — equations solve strictly in order and each rounded
  * solution feeds forward. The write-only `collection` setter is the owning
@@ -23,12 +23,11 @@ import { ReasonError } from '../../errors.js'
  * `ReasonError('DESTROYED', …)`.
  */
 export class EquationManager implements EquationManagerInterface {
-	#equations: readonly Equation[]
+	readonly #equations: Collection<Equation>
 	readonly #emitter: Emitter<EquationManagerEventMap>
-	#destroyed = false
 
 	constructor(options?: EquationManagerOptions) {
-		this.#equations = options?.equations ?? []
+		this.#equations = new Collection('EquationManager', options?.equations ?? [])
 		this.#emitter = new Emitter<EquationManagerEventMap>(options)
 	}
 
@@ -37,53 +36,42 @@ export class EquationManager implements EquationManagerInterface {
 	}
 
 	set collection(value: readonly Equation[]) {
-		this.#ensureAlive()
-		this.#equations = value
+		this.#equations.seat(value)
 	}
 
 	equation(id: string): Equation | undefined {
-		this.#ensureAlive()
-		return this.#equations.find((equation) => equation.id === id)
+		return this.#equations.item(id)
 	}
 
 	equations(): readonly Equation[] {
-		this.#ensureAlive()
-		return this.#equations
+		return this.#equations.items()
 	}
 
 	append(equation: Equation, target?: string): void {
-		this.#ensureAlive()
-		this.#equations = appendById(this.#equations, equation, target)
+		this.#equations.append(equation, target)
 		this.#emitter.emit('append', equation.id)
 	}
 
 	prepend(equation: Equation, target?: string): void {
-		this.#ensureAlive()
-		this.#equations = prependById(this.#equations, equation, target)
+		this.#equations.prepend(equation, target)
 		this.#emitter.emit('prepend', equation.id)
 	}
 
 	replace(equation: Equation): void {
-		this.#ensureAlive()
-		this.#equations = replaceById(this.#equations, equation)
+		this.#equations.replace(equation)
 		this.#emitter.emit('replace', equation.id)
 	}
 
 	remove(id: string): void {
-		this.#ensureAlive()
-		this.#equations = removeById(this.#equations, id)
+		this.#equations.remove(id)
 		this.#emitter.emit('remove', id)
 	}
 
 	destroy(): void {
-		this.#destroyed = true
+		// Idempotent: a second call re-flags an already-destroyed collection and
+		// emits into an already-destroyed emitter (a no-op).
+		this.#equations.destroy()
 		this.#emitter.emit('destroy')
 		this.#emitter.destroy()
-	}
-
-	#ensureAlive(): void {
-		if (this.#destroyed) {
-			throw new ReasonError('DESTROYED', 'EquationManager has been destroyed')
-		}
 	}
 }

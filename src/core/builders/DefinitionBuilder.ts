@@ -20,11 +20,18 @@ import {
 	clearLogicalDefinition,
 	clearQuantitativeDefinition,
 	clearSymbolicDefinition,
+	definitionToEnvelope,
 	mergeInferentialDefinition,
 	mergeLogicalDefinition,
 	mergeQuantitativeDefinition,
 	mergeSymbolicDefinition,
 } from '../helpers.js'
+import {
+	isInferentialClearKey,
+	isLogicalClearKey,
+	isQuantitativeClearKey,
+	isSymbolicClearKey,
+} from '../validators.js'
 import { DEFINITION_BUILDER_BRAND } from '../constants.js'
 import { ReasonError } from '../errors.js'
 import { EquationManager } from './managers/EquationManager.js'
@@ -37,9 +44,9 @@ import { VariableManager } from './managers/VariableManager.js'
 
 /**
  * A stateful workspace builder accumulating a {@link Definition} through seven
- * always-present self-owning manager properties, shaped like `AgentContext`
- * (AGENTS §4.2.2): a private SCALAR ENVELOPE (reasoning / id / name plus the
- * kind's scalars) composed with each collection read from its manager.
+ * always-present self-owning manager properties, shaped like `AgentContext`: a
+ * private SCALAR ENVELOPE (reasoning / id / name plus the kind's scalars)
+ * composed with each collection read from its manager.
  *
  * @remarks
  * Each manager is BRING-YOUR-OWN (a supplied one is reused) or a fresh one
@@ -51,47 +58,47 @@ import { VariableManager } from './managers/VariableManager.js'
  * envelope and collections into the managers via the matching `merge*` helper.
  * `clear(key)` deletes one optional field of the envelope for the instance's
  * `reasoning` (a non-clearable key throws `MISMATCH`). `destroy()` cascades to
- * all seven managers, emits `destroy`, then tears the builder emitter down LAST
- * (AGENTS §13); it is idempotent, and post-destroy mutation / build throws
+ * all seven managers, emits `destroy`, then tears the builder emitter down
+ * LAST; it is idempotent, and post-destroy mutation / build throws
  * `ReasonError('DESTROYED', …)`.
  */
 export class DefinitionBuilder implements DefinitionBuilderInterface {
 	readonly [DEFINITION_BUILDER_BRAND]: true = true
 	readonly #id: string
 	readonly #emitter: Emitter<DefinitionBuilderEventMap>
-	readonly groups: GroupManagerInterface
-	readonly factors: FactorManagerInterface
-	readonly rules: RuleManagerInterface
-	readonly equations: EquationManagerInterface
-	readonly variables: VariableManagerInterface
-	readonly facts: FactManagerInterface
-	readonly inferences: InferenceManagerInterface
+	readonly #groups: GroupManagerInterface
+	readonly #factors: FactorManagerInterface
+	readonly #rules: RuleManagerInterface
+	readonly #equations: EquationManagerInterface
+	readonly #variables: VariableManagerInterface
+	readonly #facts: FactManagerInterface
+	readonly #inferences: InferenceManagerInterface
 	#envelope: DefinitionEnvelope
 	#destroyed = false
 
 	constructor(seed: Definition, options?: DefinitionBuilderOptions) {
 		this.#id = options?.id ?? seed.id
 		const seeded: Definition = { ...seed, id: this.#id }
-		this.#envelope = this.#strip(seeded)
+		this.#envelope = definitionToEnvelope(seeded)
 		this.#emitter = new Emitter<DefinitionBuilderEventMap>(options)
 
-		this.groups =
+		this.#groups =
 			options?.groups ??
 			new GroupManager({ groups: seeded.reasoning === 'quantitative' ? seeded.groups : [] })
-		this.factors = options?.factors ?? new FactorManager(this.groups)
-		this.rules =
+		this.#factors = options?.factors ?? new FactorManager(this.#groups)
+		this.#rules =
 			options?.rules ??
 			new RuleManager({ rules: seeded.reasoning === 'logical' ? seeded.rules : [] })
-		this.equations =
+		this.#equations =
 			options?.equations ??
 			new EquationManager({ equations: seeded.reasoning === 'symbolic' ? seeded.equations : [] })
-		this.variables =
+		this.#variables =
 			options?.variables ??
 			new VariableManager({ variables: seeded.reasoning === 'symbolic' ? seeded.variables : {} })
-		this.facts =
+		this.#facts =
 			options?.facts ??
 			new FactManager({ facts: seeded.reasoning === 'inferential' ? seeded.facts : [] })
-		this.inferences =
+		this.#inferences =
 			options?.inferences ??
 			new InferenceManager({
 				inferences: seeded.reasoning === 'inferential' ? seeded.inferences : [],
@@ -108,6 +115,34 @@ export class DefinitionBuilder implements DefinitionBuilderInterface {
 
 	get emitter(): EmitterInterface<DefinitionBuilderEventMap> {
 		return this.#emitter
+	}
+
+	get groups(): GroupManagerInterface {
+		return this.#groups
+	}
+
+	get factors(): FactorManagerInterface {
+		return this.#factors
+	}
+
+	get rules(): RuleManagerInterface {
+		return this.#rules
+	}
+
+	get equations(): EquationManagerInterface {
+		return this.#equations
+	}
+
+	get variables(): VariableManagerInterface {
+		return this.#variables
+	}
+
+	get facts(): FactManagerInterface {
+		return this.#facts
+	}
+
+	get inferences(): InferenceManagerInterface {
+		return this.#inferences
 	}
 
 	build(): Definition {
@@ -145,13 +180,13 @@ export class DefinitionBuilder implements DefinitionBuilderInterface {
 		this.#ensureAlive()
 		const current = this.#compose()
 		let next: Definition
-		if (current.reasoning === 'quantitative' && this.#isQuantitativeClearKey(key)) {
+		if (current.reasoning === 'quantitative' && isQuantitativeClearKey(key)) {
 			next = clearQuantitativeDefinition(current, key)
-		} else if (current.reasoning === 'logical' && this.#isLogicalClearKey(key)) {
+		} else if (current.reasoning === 'logical' && isLogicalClearKey(key)) {
 			next = clearLogicalDefinition(current, key)
-		} else if (current.reasoning === 'symbolic' && this.#isSymbolicClearKey(key)) {
+		} else if (current.reasoning === 'symbolic' && isSymbolicClearKey(key)) {
 			next = clearSymbolicDefinition(current, key)
-		} else if (current.reasoning === 'inferential' && this.#isInferentialClearKey(key)) {
+		} else if (current.reasoning === 'inferential' && isInferentialClearKey(key)) {
 			next = clearInferentialDefinition(current, key)
 		} else {
 			throw new ReasonError(
@@ -160,20 +195,20 @@ export class DefinitionBuilder implements DefinitionBuilderInterface {
 				{ key, reasoning: current.reasoning },
 			)
 		}
-		this.#envelope = this.#strip(next)
+		this.#envelope = definitionToEnvelope(next)
 		this.#emitter.emit('clear', key)
 	}
 
 	destroy(): void {
 		// Cascade to every manager first (each idempotent, emitter LAST), then the
 		// builder's own destroy emit, then its emitter LAST — idempotent overall.
-		this.groups.destroy()
-		this.factors.destroy()
-		this.rules.destroy()
-		this.equations.destroy()
-		this.variables.destroy()
-		this.facts.destroy()
-		this.inferences.destroy()
+		this.#groups.destroy()
+		this.#factors.destroy()
+		this.#rules.destroy()
+		this.#equations.destroy()
+		this.#variables.destroy()
+		this.#facts.destroy()
+		this.#inferences.destroy()
 		this.#destroyed = true
 		this.#emitter.emit('destroy')
 		this.#emitter.destroy()
@@ -186,20 +221,20 @@ export class DefinitionBuilder implements DefinitionBuilderInterface {
 		const envelope = this.#envelope
 		switch (envelope.reasoning) {
 			case 'quantitative':
-				return { ...envelope, groups: this.groups.groups() }
+				return { ...envelope, groups: this.#groups.groups() }
 			case 'logical':
-				return { ...envelope, rules: this.rules.rules() }
+				return { ...envelope, rules: this.#rules.rules() }
 			case 'symbolic':
 				return {
 					...envelope,
-					equations: this.equations.equations(),
-					variables: this.variables.variables(),
+					equations: this.#equations.equations(),
+					variables: this.#variables.variables(),
 				}
 			case 'inferential':
 				return {
 					...envelope,
-					facts: this.facts.facts(),
-					inferences: this.inferences.inferences(),
+					facts: this.#facts.facts(),
+					inferences: this.#inferences.inferences(),
 				}
 		}
 	}
@@ -210,65 +245,26 @@ export class DefinitionBuilder implements DefinitionBuilderInterface {
 	#seat(definition: Definition): void {
 		switch (definition.reasoning) {
 			case 'quantitative':
-				this.groups.collection = definition.groups
+				this.#groups.collection = definition.groups
 				break
 			case 'logical':
-				this.rules.collection = definition.rules
+				this.#rules.collection = definition.rules
 				break
 			case 'symbolic':
-				this.equations.collection = definition.equations
-				this.variables.collection = definition.variables
+				this.#equations.collection = definition.equations
+				this.#variables.collection = definition.variables
 				break
 			case 'inferential':
-				this.facts.collection = definition.facts
-				this.inferences.collection = definition.inferences
+				this.#facts.collection = definition.facts
+				this.#inferences.collection = definition.inferences
 				break
 		}
-		this.#envelope = this.#strip(definition)
-	}
-
-	// Project a definition to its scalar envelope — the collections drop out
-	// (rest-sibling omission), leaving reasoning / id / name + the kind's scalars.
-	#strip(definition: Definition): DefinitionEnvelope {
-		switch (definition.reasoning) {
-			case 'quantitative': {
-				const { groups, ...rest } = definition
-				return rest
-			}
-			case 'logical': {
-				const { rules, ...rest } = definition
-				return rest
-			}
-			case 'symbolic': {
-				const { equations, variables, ...rest } = definition
-				return rest
-			}
-			case 'inferential': {
-				const { facts, inferences, ...rest } = definition
-				return rest
-			}
-		}
+		this.#envelope = definitionToEnvelope(definition)
 	}
 
 	#ensureAlive(): void {
 		if (this.#destroyed) {
 			throw new ReasonError('DESTROYED', 'DefinitionBuilder has been destroyed')
 		}
-	}
-
-	#isQuantitativeClearKey(key: string): key is 'description' | 'base' | 'bounds' | 'precision' {
-		return key === 'description' || key === 'base' || key === 'bounds' || key === 'precision'
-	}
-
-	#isLogicalClearKey(key: string): key is 'description' | 'depth' {
-		return key === 'description' || key === 'depth'
-	}
-
-	#isSymbolicClearKey(key: string): key is 'description' | 'precision' {
-		return key === 'description' || key === 'precision'
-	}
-
-	#isInferentialClearKey(key: string): key is 'description' | 'depth' {
-		return key === 'description' || key === 'depth'
 	}
 }

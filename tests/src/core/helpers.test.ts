@@ -20,8 +20,11 @@ import {
 	clearQuantitativeDefinition,
 	clearSymbolicDefinition,
 	compound,
+	computePremiseConfidence,
 	constant,
 	containsVariable,
+	definitionToEnvelope,
+	emptyAggregate,
 	equalValues,
 	equation,
 	extractAtoms,
@@ -43,6 +46,7 @@ import {
 	invertLeft,
 	invertRight,
 	isReasonError,
+	isWithinBounds,
 	logicalDefinition,
 	lookupFactor,
 	lookupSource,
@@ -82,6 +86,7 @@ import {
 	replaceGroup,
 	replaceInference,
 	replaceRule,
+	resolveSource,
 	roundTo,
 	rule,
 	sortByPriority,
@@ -1070,6 +1075,13 @@ describe('invertLeft — solve x op right = value for x', () => {
 		expect(invertLeft('multiply', 10, 0)).toBeNaN()
 		expect(invertLeft('divide', 5, 0)).toBeNaN()
 	})
+
+	it('throws ReasonError("OPERATOR") on a non-invertible operation', () => {
+		const error = captureError(() => invertLeft('power', 8, 3))
+		if (!isReasonError(error)) throw new Error('expected a ReasonError')
+		expect(error.code).toBe('OPERATOR')
+		expect(error.context).toEqual({ operator: 'power' })
+	})
 })
 
 describe('invertRight — solve left op x = value for x', () => {
@@ -1084,6 +1096,13 @@ describe('invertRight — solve left op x = value for x', () => {
 		expect(invertRight('multiply', 10, 0)).toBeNaN()
 		// `left / x = 0` (value 0) has no finite solution — NaN.
 		expect(invertRight('divide', 0, 10)).toBeNaN()
+	})
+
+	it('throws ReasonError("OPERATOR") on a non-invertible operation', () => {
+		const error = captureError(() => invertRight('abs', 8, 3))
+		if (!isReasonError(error)) throw new Error('expected a ReasonError')
+		expect(error.code).toBe('OPERATOR')
+		expect(error.context).toEqual({ operator: 'abs' })
 	})
 })
 
@@ -1108,8 +1127,138 @@ describe('applyOperation — evaluated-operand arithmetic', () => {
 		expect(applyOperation('divide', 1, 0)).toBeNaN()
 	})
 
-	it('an unknown operator throws', () => {
-		expect(captureError(() => applyOperation('bogus', 1, 2))).toBeInstanceOf(Error)
+	it('an unknown operator throws ReasonError("OPERATOR")', () => {
+		const error = captureError(() => applyOperation('bogus', 1, 2))
+		if (!isReasonError(error)) throw new Error('expected a ReasonError')
+		expect(error.code).toBe('OPERATOR')
+		expect(error.context).toEqual({ operator: 'bogus' })
+	})
+})
+
+describe('isWithinBounds — the between / outside range test', () => {
+	it('is inclusive on both ends', () => {
+		expect(isWithinBounds(1, [1, 10])).toBe(true)
+		expect(isWithinBounds(10, [1, 10])).toBe(true)
+		expect(isWithinBounds(5, [1, 10])).toBe(true)
+		expect(isWithinBounds(11, [1, 10])).toBe(false)
+	})
+
+	it('reads only the first two range elements', () => {
+		expect(isWithinBounds(5, [1, 10, 0])).toBe(true)
+	})
+
+	it('reports false for a non-numeric value or a malformed range', () => {
+		expect(isWithinBounds('5', [1, 10])).toBe(false)
+		expect(isWithinBounds(5, [1])).toBe(false)
+		expect(isWithinBounds(5, 'range')).toBe(false)
+		expect(isWithinBounds(5, ['1', '10'])).toBe(false)
+	})
+})
+
+describe('emptyAggregate — the empty-input identity per aggregation', () => {
+	it('yields the additive, multiplicative, and no-data identities', () => {
+		expect(emptyAggregate('sum')).toBe(0)
+		expect(emptyAggregate('average')).toBe(0)
+		expect(emptyAggregate('product')).toBe(1)
+		expect(emptyAggregate('minimum')).toBeNaN()
+		expect(emptyAggregate('maximum')).toBeNaN()
+	})
+
+	it('yields 0 for an unknown aggregation from an untrusted definition', () => {
+		expect(invokeUnchecked<number>(undefined, emptyAggregate, ['median'])).toBe(0)
+	})
+})
+
+describe('resolveSource — one factor source against a subject', () => {
+	it('passes a static value through', () => {
+		expect(resolveSource(staticSource(42), {})).toBe(42)
+	})
+
+	it('coerces a field source and falls back when unresolvable', () => {
+		expect(resolveSource(fieldSource('age'), { age: 30 })).toBe(30)
+		expect(resolveSource(fieldSource('age'), { age: 'old' }, 7)).toBe(7)
+		expect(resolveSource(fieldSource('age'), {})).toBeUndefined()
+	})
+
+	it('reads only OWN lookup table keys, and falls back on a missing field', () => {
+		const source = lookupSource('state', { CA: 5 })
+		expect(resolveSource(source, { state: 'CA' })).toBe(5)
+		expect(resolveSource(source, { state: 'NY' }, 1)).toBe(1)
+		expect(resolveSource(source, { state: null }, 1)).toBe(1)
+		expect(resolveSource(source, { state: 'toString' }, 1)).toBe(1)
+	})
+
+	it('scans range bands in order and takes the first match', () => {
+		const source = rangeSource('age', [
+			{ bounds: bounds(undefined, 24), value: 30 },
+			{ bounds: bounds(25, 64), value: 15 },
+			{ value: 1 },
+		])
+		expect(resolveSource(source, { age: 20 })).toBe(30)
+		expect(resolveSource(source, { age: 40 })).toBe(15)
+		expect(resolveSource(source, { age: 90 })).toBe(1)
+		expect(resolveSource(source, {}, 0)).toBe(0)
+	})
+
+	it('takes the fallback for a factor carrying no source at all', () => {
+		expect(invokeUnchecked<number | undefined>(undefined, resolveSource, [undefined, {}, 3])).toBe(
+			3,
+		)
+	})
+})
+
+describe("computePremiseConfidence — the matched premises' confidence product", () => {
+	it("multiplies the FIRST matching fact's confidence per premise", () => {
+		const index = indexByArity([
+			fact('f1', 'human', ['socrates'], 0.5),
+			fact('f2', 'wise', ['socrates'], 0.4),
+		])
+		const premises = [fact('p1', 'human', ['?x']), fact('p2', 'wise', ['?x'])]
+		expect(computePremiseConfidence(premises, index, {})).toBeCloseTo(0.2, 10)
+	})
+
+	it('contributes nothing for a premise with no match, and yields 1 for none', () => {
+		const index = indexByArity([fact('f1', 'human', ['socrates'], 0.5)])
+		expect(computePremiseConfidence([fact('p1', 'alive', ['?x'])], index, {})).toBe(1)
+		expect(computePremiseConfidence([], index, {})).toBe(1)
+	})
+
+	it('instantiates each premise under the supplied bindings', () => {
+		const index = indexByArity([
+			fact('f1', 'human', ['socrates'], 0.5),
+			fact('f2', 'human', ['plato'], 0.25),
+		])
+		const premises = [fact('p1', 'human', ['?x'])]
+		expect(computePremiseConfidence(premises, index, { '?x': 'plato' })).toBe(0.25)
+	})
+})
+
+describe('definitionToEnvelope — the scalar projection of a definition', () => {
+	it("drops each kind's collections and keeps its scalars", () => {
+		const quantitative = definitionToEnvelope(quantitativeDefinition('risk', 'Risk', []))
+		expect('groups' in quantitative).toBe(false)
+		expect(quantitative).toEqual({
+			reasoning: 'quantitative',
+			id: 'risk',
+			name: 'Risk',
+			aggregation: 'sum',
+		})
+
+		expect('rules' in definitionToEnvelope(logicalDefinition('e', 'E', []))).toBe(false)
+
+		const symbolic = definitionToEnvelope(symbolicDefinition('s', 'S', []))
+		expect('equations' in symbolic).toBe(false)
+		expect('variables' in symbolic).toBe(false)
+
+		const inferential = definitionToEnvelope(inferentialDefinition('m', 'M', [], []))
+		expect('facts' in inferential).toBe(false)
+		expect('inferences' in inferential).toBe(false)
+	})
+
+	it('never mutates its input', () => {
+		const definition = deepFreeze(logicalDefinition('e', 'E', []))
+		definitionToEnvelope(definition)
+		expect(definition.rules).toEqual([])
 	})
 })
 

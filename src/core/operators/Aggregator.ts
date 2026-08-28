@@ -1,4 +1,5 @@
 import type { Aggregation, AggregatorInterface, AggregatorOptions } from '../types.js'
+import { emptyAggregate } from '../helpers.js'
 import { AGGREGATOR_ID, DEFAULT_WEIGHT } from '../constants.js'
 
 /**
@@ -31,7 +32,7 @@ export class Aggregator implements AggregatorInterface {
 		aggregation: Aggregation,
 		weights?: readonly number[],
 	): number {
-		if (values.length === 0) return this.#empty(aggregation)
+		if (values.length === 0) return emptyAggregate(aggregation)
 		// Weights apply only on an exact length match — anything else is unweighted.
 		const scaled = weights !== undefined && weights.length === values.length ? weights : undefined
 		switch (aggregation) {
@@ -71,22 +72,6 @@ export class Aggregator implements AggregatorInterface {
 				return values.reduce((maximum, value) => Math.max(maximum, value))
 			default:
 				// An unknown aggregation from an untrusted definition yields 0.
-				return 0
-		}
-	}
-
-	// Empty-input identity per aggregation — NaN for min/max signals "no data".
-	#empty(aggregation: Aggregation): number {
-		switch (aggregation) {
-			case 'sum':
-			case 'average':
-				return 0
-			case 'product':
-				return 1
-			case 'minimum':
-			case 'maximum':
-				return Number.NaN
-			default:
 				return 0
 		}
 	}

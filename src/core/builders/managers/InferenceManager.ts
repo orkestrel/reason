@@ -6,15 +6,15 @@ import type {
 	InferenceManagerOptions,
 } from '../../types.js'
 import { Emitter } from '@orkestrel/emitter'
-import { appendById, prependById, removeById, replaceById } from '../../helpers.js'
-import { ReasonError } from '../../errors.js'
+import { Collection } from './Collection.js'
 
 /**
  * The {@link InferenceManagerInterface} implementation — a self-owning,
  * kind-free manager over an inferential definition's `inferences`.
  *
  * @remarks
- * OWNS its `#inferences` collection as private copy-on-write state and its own
+ * OWNS its `inferences` as a private {@link Collection} — copy-on-write state
+ * shared by composition with the other list managers — plus its own
  * {@link Emitter} over {@link InferenceManagerEventMap}. Inference order is
  * LOAD-BEARING — backward proving iterates in declaration order and returns on
  * first success. The write-only `collection` setter is the owning builder's
@@ -23,12 +23,11 @@ import { ReasonError } from '../../errors.js'
  * `ReasonError('DESTROYED', …)`.
  */
 export class InferenceManager implements InferenceManagerInterface {
-	#inferences: readonly Inference[]
+	readonly #inferences: Collection<Inference>
 	readonly #emitter: Emitter<InferenceManagerEventMap>
-	#destroyed = false
 
 	constructor(options?: InferenceManagerOptions) {
-		this.#inferences = options?.inferences ?? []
+		this.#inferences = new Collection('InferenceManager', options?.inferences ?? [])
 		this.#emitter = new Emitter<InferenceManagerEventMap>(options)
 	}
 
@@ -37,53 +36,42 @@ export class InferenceManager implements InferenceManagerInterface {
 	}
 
 	set collection(value: readonly Inference[]) {
-		this.#ensureAlive()
-		this.#inferences = value
+		this.#inferences.seat(value)
 	}
 
 	inference(id: string): Inference | undefined {
-		this.#ensureAlive()
-		return this.#inferences.find((inference) => inference.id === id)
+		return this.#inferences.item(id)
 	}
 
 	inferences(): readonly Inference[] {
-		this.#ensureAlive()
-		return this.#inferences
+		return this.#inferences.items()
 	}
 
 	append(inference: Inference, target?: string): void {
-		this.#ensureAlive()
-		this.#inferences = appendById(this.#inferences, inference, target)
+		this.#inferences.append(inference, target)
 		this.#emitter.emit('append', inference.id)
 	}
 
 	prepend(inference: Inference, target?: string): void {
-		this.#ensureAlive()
-		this.#inferences = prependById(this.#inferences, inference, target)
+		this.#inferences.prepend(inference, target)
 		this.#emitter.emit('prepend', inference.id)
 	}
 
 	replace(inference: Inference): void {
-		this.#ensureAlive()
-		this.#inferences = replaceById(this.#inferences, inference)
+		this.#inferences.replace(inference)
 		this.#emitter.emit('replace', inference.id)
 	}
 
 	remove(id: string): void {
-		this.#ensureAlive()
-		this.#inferences = removeById(this.#inferences, id)
+		this.#inferences.remove(id)
 		this.#emitter.emit('remove', id)
 	}
 
 	destroy(): void {
-		this.#destroyed = true
+		// Idempotent: a second call re-flags an already-destroyed collection and
+		// emits into an already-destroyed emitter (a no-op).
+		this.#inferences.destroy()
 		this.#emitter.emit('destroy')
 		this.#emitter.destroy()
-	}
-
-	#ensureAlive(): void {
-		if (this.#destroyed) {
-			throw new ReasonError('DESTROYED', 'InferenceManager has been destroyed')
-		}
 	}
 }

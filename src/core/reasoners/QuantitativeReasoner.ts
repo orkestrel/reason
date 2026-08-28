@@ -11,12 +11,10 @@ import type {
 	ReasonResult,
 	ReasonValidationResult,
 	ReasonerInterface,
-	Source,
 	Subject,
 	TransformerInterface,
 } from '../types.js'
-import { parseNumberField, resolveField } from '@orkestrel/contract'
-import { clamp, findDuplicates, roundTo, sortByPriority } from '../helpers.js'
+import { clamp, findDuplicates, resolveSource, roundTo, sortByPriority } from '../helpers.js'
 import { DEFAULT_BASE, DEFAULT_PRECISION, DEFAULT_WEIGHT, QUANTITATIVE_ID } from '../constants.js'
 import { ReasonError } from '../errors.js'
 import { Evaluator } from '../operators/Evaluator.js'
@@ -42,7 +40,7 @@ import { Aggregator } from '../operators/Aggregator.js'
  * contracts `parseNumberField`: a non-finite subject number or a non-numeric
  * string is unresolvable and takes the fallback path. Lookup sources read only
  * OWN table keys, and a missing / `null` field falls back directly. Nothing
- * mutates its inputs; fully deterministic (AGENTS §11).
+ * mutates its inputs; fully deterministic.
  */
 export class QuantitativeReasoner implements ReasonerInterface {
 	readonly #id: string
@@ -256,7 +254,7 @@ export class QuantitativeReasoner implements ReasonerInterface {
 			}
 		}
 
-		const raw = this.#resolveSource(factor.source, subject, factor.fallback)
+		const raw = resolveSource(factor.source, subject, factor.fallback)
 		if (raw === undefined) {
 			trace.push(`Factor "${factor.id}": could not resolve source`)
 			if (factor.required) {
@@ -289,44 +287,5 @@ export class QuantitativeReasoner implements ReasonerInterface {
 
 		trace.push(`Factor "${factor.id}": raw=${raw}, value=${value}`)
 		return { id: factor.id, applied: true, value, raw }
-	}
-
-	// Source resolution: static passes through; field/range coerce via parseNumberField
-	// (non-finite / non-numeric → fallback); lookup stringifies PRESENT values into
-	// the table's OWN keys (missing/null field and absent/inherited key → fallback).
-	#resolveSource(source: Source, subject: Subject, fallback?: number): number | undefined {
-		// A malformed factor may carry no source at all — the fallback path, not a crash.
-		if (!source) return fallback
-		switch (source.origin) {
-			case 'static':
-				return source.value
-			case 'field':
-				return parseNumberField(subject, source.field) ?? fallback
-			case 'lookup': {
-				const resolved = resolveField(subject, source.field)
-				// A missing / null field never reaches the table (a '' key must not
-				// intercept absent data); a PRESENT value still stringifies, so a
-				// real '' value may hit a '' key.
-				if (resolved === undefined || resolved === null) return fallback
-				const key = String(resolved)
-				return Object.hasOwn(source.table, key) ? source.table[key] : fallback
-			}
-			case 'range': {
-				const value = parseNumberField(subject, source.field)
-				if (value === undefined) return fallback
-				for (const range of source.ranges) {
-					if (typeof range !== 'object' || range === null) continue
-					const bounds = range.bounds
-					// A band without bounds is a catch-all; an absent side is open.
-					if (!bounds) return range.value
-					const aboveMinimum = bounds.minimum === undefined || value >= bounds.minimum
-					const belowMaximum = bounds.maximum === undefined || value <= bounds.maximum
-					if (aboveMinimum && belowMaximum) return range.value
-				}
-				return fallback
-			}
-			default:
-				return fallback
-		}
 	}
 }

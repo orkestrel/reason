@@ -17,13 +17,16 @@ import type {
 	FactorResult,
 	GroupResult,
 	Inference,
+	InferentialClearKey,
 	InferentialDefinition,
 	InferentialResult,
+	LogicalClearKey,
 	LogicalDefinition,
 	LogicalOperator,
 	LogicalResult,
 	MathOperation,
 	ProofNode,
+	QuantitativeClearKey,
 	QuantitativeDefinition,
 	QuantitativeResult,
 	ReasonResult,
@@ -33,6 +36,7 @@ import type {
 	RuleResult,
 	Source,
 	SubjectBuilderInterface,
+	SymbolicClearKey,
 	SymbolicDefinition,
 	SymbolicExpression,
 	SymbolicResult,
@@ -60,7 +64,7 @@ import {
 } from '@orkestrel/contract'
 import { DEFINITION_BUILDER_BRAND, SUBJECT_BUILDER_BRAND } from './constants.js'
 
-// AGENTS §14: every guard here is a TOTAL function — adversarial input (junk,
+// Every guard here is a TOTAL function — adversarial input (junk,
 // hostile prototypes, deep nesting) returns `false`, never throws. Input
 // guards compose the contracts combinators; result guards use bespoke open
 // member checks, with the combinators retained for nested values. Of the
@@ -78,8 +82,8 @@ import { DEFINITION_BUILDER_BRAND, SUBJECT_BUILDER_BRAND } from './constants.js'
 // unconstrained field (`Check.value`, legitimately ANY value including `null`)
 // uses the trivially-true guard `notOf(unionOf())` — `unionOf()` of zero guards
 // is always-false, its negation always-true. Record-shape guards take the
-// declared-predicate function form (the `recordOf` shape inlined per call, so
-// no non-exported member lingers — §5; terminals precedent).
+// declared-predicate function form, with the `recordOf` shape inlined per
+// call so no non-exported member lingers.
 
 /**
  * Determine whether a value is a {@link Reasoning} literal.
@@ -465,7 +469,7 @@ export function isFactorGroup(value: unknown): value is FactorGroup {
  * tree of atoms and compounds, discriminated by `form`.
  *
  * @remarks
- * Recursive through `lazyOf` (AGENTS §14) — recursion is STACK-BOUNDED, not
+ * Recursive through `lazyOf` — recursion is STACK-BOUNDED, not
  * unbounded: nesting beyond the engine's stack budget (roughly 1000 levels)
  * and cyclic input are CONTAINED as `false`, never a throw. Input past that
  * bound is rejected, not validated.
@@ -528,7 +532,7 @@ export function isRule(value: unknown): value is Rule {
  * `form`.
  *
  * @remarks
- * Recursive through `lazyOf` (AGENTS §14) — recursion is STACK-BOUNDED, not
+ * Recursive through `lazyOf` — recursion is STACK-BOUNDED, not
  * unbounded: nesting beyond the engine's stack budget (roughly 1000 levels)
  * and cyclic input are CONTAINED as `false`, never a throw. Input past that
  * bound is rejected, not validated.
@@ -787,6 +791,79 @@ export function isDefinition(value: unknown): value is Definition {
 		isInferentialDefinition(value)
 	)
 }
+
+/**
+ * Determine whether a value is a {@link QuantitativeClearKey} — an optional
+ * field `clearQuantitativeDefinition` can delete.
+ *
+ * @param value - The value to test
+ * @returns `true` when `value` names a clearable quantitative field
+ *
+ * @example
+ * ```ts
+ * import { isQuantitativeClearKey } from '@src/core'
+ *
+ * isQuantitativeClearKey('bounds') // true
+ * isQuantitativeClearKey('groups') // false — a collection, not an optional scalar
+ * ```
+ */
+export const isQuantitativeClearKey: Guard<QuantitativeClearKey> = literalOf(
+	'description',
+	'base',
+	'bounds',
+	'precision',
+)
+
+/**
+ * Determine whether a value is a {@link LogicalClearKey} — an optional field
+ * `clearLogicalDefinition` can delete.
+ *
+ * @param value - The value to test
+ * @returns `true` when `value` names a clearable logical field
+ *
+ * @example
+ * ```ts
+ * import { isLogicalClearKey } from '@src/core'
+ *
+ * isLogicalClearKey('depth')    // true
+ * isLogicalClearKey('strategy') // false — required, never clearable
+ * ```
+ */
+export const isLogicalClearKey: Guard<LogicalClearKey> = literalOf('description', 'depth')
+
+/**
+ * Determine whether a value is a {@link SymbolicClearKey} — an optional field
+ * `clearSymbolicDefinition` can delete.
+ *
+ * @param value - The value to test
+ * @returns `true` when `value` names a clearable symbolic field
+ *
+ * @example
+ * ```ts
+ * import { isSymbolicClearKey } from '@src/core'
+ *
+ * isSymbolicClearKey('precision') // true
+ * isSymbolicClearKey('variables') // false — required, never clearable
+ * ```
+ */
+export const isSymbolicClearKey: Guard<SymbolicClearKey> = literalOf('description', 'precision')
+
+/**
+ * Determine whether a value is an {@link InferentialClearKey} — an optional
+ * field `clearInferentialDefinition` can delete.
+ *
+ * @param value - The value to test
+ * @returns `true` when `value` names a clearable inferential field
+ *
+ * @example
+ * ```ts
+ * import { isInferentialClearKey } from '@src/core'
+ *
+ * isInferentialClearKey('depth')    // true
+ * isInferentialClearKey('strategy') // false — required, never clearable
+ * ```
+ */
+export const isInferentialClearKey: Guard<InferentialClearKey> = literalOf('description', 'depth')
 
 /**
  * Determine whether a value is a result-side {@link Fact}.
@@ -1173,7 +1250,7 @@ export function isReasonValidationResult(value: unknown): value is ReasonValidat
  * stateful workspace, not the plain {@link Definition} data union.
  *
  * @remarks
- * A `unique symbol` brand check (`Reflect.get`, AGENTS §14): a plain subject
+ * A `unique symbol` brand check (`Reflect.get`): a plain subject
  * is an open record whose values may legally be functions, so a
  * method-presence check (`typeof value.build === 'function'`) is FORGEABLE —
  * this guard is not. A module-owned `unique symbol` cannot be produced by
@@ -1204,7 +1281,7 @@ export function isDefinitionBuilder(value: unknown): value is DefinitionBuilderI
  * stateful workspace, not the plain {@link Subject} data record.
  *
  * @remarks
- * A `unique symbol` brand check (`Reflect.get`, AGENTS §14), distinct from
+ * A `unique symbol` brand check (`Reflect.get`), distinct from
  * {@link isDefinitionBuilder} — the two entities can never match each other's
  * guard. Total: a non-object, a missing brand, or a hostile prototype all
  * return `false`, never throw.
