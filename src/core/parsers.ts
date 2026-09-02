@@ -21,11 +21,11 @@ import { isDefinition } from './validators.js'
  *
  * @example
  * ```ts
- * import { logicalDefinition, parseDefinition } from '@src/core'
+ * import { createLogicalDefinition, parseDefinition } from '@src/core'
  *
- * const text = JSON.stringify(logicalDefinition('e', 'E', []))
- * parseDefinition(text)   // the definition, restored
- * parseDefinition('{}')   // undefined — fails safe
+ * const text = JSON.stringify(createLogicalDefinition('e', 'E', []))
+ * parseDefinition(text) // the definition, restored
+ * parseDefinition('{}') // undefined — fails safe
  * ```
  */
 export function parseDefinition(json: string): Definition | undefined {

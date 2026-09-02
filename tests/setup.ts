@@ -16,7 +16,13 @@ import type {
 	SymbolicExpression,
 	SymbolicResult,
 } from '@src/core'
-import { compound, factorGroup, operation, quantitativeDefinition, staticFactor } from '@src/core'
+import {
+	createCompound,
+	createFactorGroup,
+	createOperation,
+	createQuantitativeDefinition,
+	createStaticFactor,
+} from '@src/core'
 import { afterEach, vi } from 'vitest'
 
 afterEach(() => {
@@ -161,7 +167,9 @@ export const DRIVER_SUBJECT: Subject = {
  * @returns The assembled quantitative definition
  */
 export function buildStaticDefinition(id = 'static-quant', value = 42): QuantitativeDefinition {
-	return quantitativeDefinition(id, id, [factorGroup('g1', 'sum', [staticFactor('f1', value)])])
+	return createQuantitativeDefinition(id, id, [
+		createFactorGroup('g1', 'sum', [createStaticFactor('f1', value)]),
+	])
 }
 
 /**
@@ -311,7 +319,7 @@ export function sparse<T>(length: number, filled: ReadonlyArray<readonly [number
 export function deepCompound(depth: number, leaf: Expression): Expression {
 	let result = leaf
 	for (let index = 0; index < depth; index += 1) {
-		result = compound('and', [result])
+		result = createCompound('and', [result])
 	}
 	return result
 }
@@ -335,7 +343,7 @@ export function deepAddition(
 ): SymbolicExpression {
 	let result = leaf
 	for (let index = 0; index < depth; index += 1) {
-		result = operation('add', result, step)
+		result = createOperation('add', result, step)
 	}
 	return result
 }

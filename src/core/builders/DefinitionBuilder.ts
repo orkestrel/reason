@@ -241,22 +241,22 @@ export class DefinitionBuilder implements DefinitionBuilderInterface {
 
 	// Distribute a whole definition back into the envelope + managers: the
 	// scalars strip into the envelope, the kind's collections re-seat wholesale
-	// through the managers' silent `collection` setters (no per-element events).
+	// through the managers' silent `seat` calls (no per-element events).
 	#seat(definition: Definition): void {
 		switch (definition.reasoning) {
 			case 'quantitative':
-				this.#groups.collection = definition.groups
+				this.#groups.seat(definition.groups)
 				break
 			case 'logical':
-				this.#rules.collection = definition.rules
+				this.#rules.seat(definition.rules)
 				break
 			case 'symbolic':
-				this.#equations.collection = definition.equations
-				this.#variables.collection = definition.variables
+				this.#equations.seat(definition.equations)
+				this.#variables.seat(definition.variables)
 				break
 			case 'inferential':
-				this.#facts.collection = definition.facts
-				this.#inferences.collection = definition.inferences
+				this.#facts.seat(definition.facts)
+				this.#inferences.seat(definition.inferences)
 				break
 		}
 		this.#envelope = definitionToEnvelope(definition)

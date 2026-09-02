@@ -1,14 +1,14 @@
 import type { ReasonResult, ReasonValidationResult } from '@src/core'
 import {
-	createInferentialReasoner,
 	createDefinitionBuilder,
+	createFact,
+	createInference,
+	createInferentialDefinition,
+	createInferentialReasoner,
+	createQuantitativeDefinition,
 	createSubjectBuilder,
-	fact,
-	inference,
 	InferentialReasoner,
-	inferentialDefinition,
 	isReasonError,
-	quantitativeDefinition,
 } from '@src/core'
 import { describe, expect, it } from 'vitest'
 import { captureError, invokeUnchecked } from '@orkestrel/test'
@@ -42,11 +42,17 @@ const reasoner = createInferentialReasoner()
 
 // The canonical mortality scenario: human(socrates) and human(?x) → mortal(?x).
 function mortality(subjects: readonly string[] = ['socrates']) {
-	return inferentialDefinition(
+	return createInferentialDefinition(
 		'mortality',
 		'Mortality',
-		subjects.map((name, index) => fact(`f${index + 1}`, 'human', [name])),
-		[inference('i1', [fact('p1', 'human', ['?x'])], fact('c1', 'mortal', ['?x']))],
+		subjects.map((name, index) => createFact(`f${index + 1}`, 'human', [name])),
+		[
+			createInference(
+				'i1',
+				[createFact('p1', 'human', ['?x'])],
+				createFact('c1', 'mortal', ['?x']),
+			),
+		],
 	)
 }
 
@@ -64,8 +70,8 @@ describe('InferentialReasoner — identity', () => {
 
 describe('InferentialReasoner — supports', () => {
 	it('supports inferential definitions only', () => {
-		expect(reasoner.supports(inferentialDefinition('d', 'd', [], []))).toBe(true)
-		expect(reasoner.supports(quantitativeDefinition('d', 'd', []))).toBe(false)
+		expect(reasoner.supports(createInferentialDefinition('d', 'd', [], []))).toBe(true)
+		expect(reasoner.supports(createQuantitativeDefinition('d', 'd', []))).toBe(false)
 	})
 })
 
@@ -77,25 +83,30 @@ describe('InferentialReasoner — validate', () => {
 	})
 
 	it('rejects the wrong reasoning with the renamed message', () => {
-		const validation = reasoner.validate(quantitativeDefinition('d', 'd', []))
+		const validation = reasoner.validate(createQuantitativeDefinition('d', 'd', []))
 		expect(validation.errors[0]).toBe('Expected reasoning "inferential", got "quantitative"')
 	})
 
 	it('demands an id and a name', () => {
-		const validation = reasoner.validate(inferentialDefinition('', '', [], []))
+		const validation = reasoner.validate(createInferentialDefinition('', '', [], []))
 		expect(validation.errors).toContain('Definition must have an id')
 		expect(validation.errors).toContain('Definition must have a name')
 	})
 
 	it('an empty inference set is a WARNING, not an error', () => {
-		const validation = reasoner.validate(inferentialDefinition('d', 'd', [], []))
+		const validation = reasoner.validate(createInferentialDefinition('d', 'd', [], []))
 		expect(validation.valid).toBe(true)
 		expect(validation.warnings).toContain('Definition has no inference rules')
 	})
 
 	it('a premise-less inference is a WARNING; a conclusion-less one is an ERROR', () => {
 		const warned = reasoner.validate(
-			inferentialDefinition('d', 'd', [], [inference('i1', [], fact('c1', 'p', []))]),
+			createInferentialDefinition(
+				'd',
+				'd',
+				[],
+				[createInference('i1', [], createFact('c1', 'p', []))],
+			),
 		)
 		expect(warned.valid).toBe(true)
 		expect(warned.warnings).toContain('Inference "i1" has no premises')
@@ -107,7 +118,7 @@ describe('InferentialReasoner — validate', () => {
 				name: 'd',
 				facts: [],
 				strategy: 'forward',
-				inferences: [{ id: 'i1', name: 'i1', premises: [fact('p1', 'p', [])] }],
+				inferences: [{ id: 'i1', name: 'i1', premises: [createFact('p1', 'p', [])] }],
 			},
 		])
 		expect(errored.valid).toBe(false)
@@ -116,14 +127,14 @@ describe('InferentialReasoner — validate', () => {
 
 	it('duplicate inference ids are a WARNING, once per duplicated id', () => {
 		const validation = reasoner.validate(
-			inferentialDefinition(
+			createInferentialDefinition(
 				'd',
 				'd',
 				[],
 				[
-					inference('dup', [fact('p1', 'a', [])], fact('c1', 'b', [])),
-					inference('dup', [fact('p2', 'c', [])], fact('c2', 'd', [])),
-					inference('dup', [fact('p3', 'e', [])], fact('c3', 'f', [])),
+					createInference('dup', [createFact('p1', 'a', [])], createFact('c1', 'b', [])),
+					createInference('dup', [createFact('p2', 'c', [])], createFact('c2', 'd', [])),
+					createInference('dup', [createFact('p3', 'e', [])], createFact('c3', 'f', [])),
 				],
 			),
 		)
@@ -135,13 +146,17 @@ describe('InferentialReasoner — validate', () => {
 
 	it('a confidence outside [0, 1] is a WARNING — on facts and inferences alike', () => {
 		const validation = reasoner.validate(
-			inferentialDefinition(
+			createInferentialDefinition(
 				'd',
 				'd',
-				[fact('f1', 'p', [], 1.5), fact('f2', 'q', [], 0.5)],
+				[createFact('f1', 'p', [], 1.5), createFact('f2', 'q', [], 0.5)],
 				[
-					inference('i1', [fact('p1', 'p', [])], fact('c1', 'r', []), { confidence: -0.2 }),
-					inference('i2', [fact('p2', 'q', [])], fact('c2', 's', []), { confidence: 1 }),
+					createInference('i1', [createFact('p1', 'p', [])], createFact('c1', 'r', []), {
+						confidence: -0.2,
+					}),
+					createInference('i2', [createFact('p2', 'q', [])], createFact('c2', 's', []), {
+						confidence: 1,
+					}),
 				],
 			),
 		)
@@ -155,11 +170,15 @@ describe('InferentialReasoner — validate', () => {
 
 	it('a NaN confidence is outside [0, 1] too — the warning still fires', () => {
 		const validation = reasoner.validate(
-			inferentialDefinition(
+			createInferentialDefinition(
 				'd',
 				'd',
-				[fact('f1', 'p', [], Number.NaN)],
-				[inference('i1', [fact('p1', 'p', [])], fact('c1', 'r', []), { confidence: Number.NaN })],
+				[createFact('f1', 'p', [], Number.NaN)],
+				[
+					createInference('i1', [createFact('p1', 'p', [])], createFact('c1', 'r', []), {
+						confidence: Number.NaN,
+					}),
+				],
 			),
 		)
 		expect(validation.valid).toBe(true)
@@ -168,11 +187,17 @@ describe('InferentialReasoner — validate', () => {
 	})
 
 	it('a conclusion variable unbound by all premises is a WARNING (runnable)', () => {
-		const footgun = inferentialDefinition(
+		const footgun = createInferentialDefinition(
 			'd',
 			'd',
 			[],
-			[inference('i1', [fact('p1', 'human', ['?x'])], fact('c1', 'mortal', ['?x', '?y']))],
+			[
+				createInference(
+					'i1',
+					[createFact('p1', 'human', ['?x'])],
+					createFact('c1', 'mortal', ['?x', '?y']),
+				),
+			],
 		)
 		const validation = reasoner.validate(footgun)
 		expect(validation.valid).toBe(true)
@@ -188,25 +213,36 @@ describe('InferentialReasoner — validate', () => {
 	})
 
 	it('stays silent on the unbound-variable warning for a fully ground conclusion', () => {
-		const ground = inferentialDefinition(
+		const ground = createInferentialDefinition(
 			'd',
 			'd',
 			[],
-			[inference('i1', [fact('p1', 'human', ['?x'])], fact('c1', 'mortal', ['socrates']))],
+			[
+				createInference(
+					'i1',
+					[createFact('p1', 'human', ['?x'])],
+					createFact('c1', 'mortal', ['socrates']),
+				),
+			],
 		)
 		const validation = reasoner.validate(ground)
 		expect(validation.warnings.filter((warning) => warning.includes('is unbound by'))).toEqual([])
 	})
 
 	it('skips a disabled inference and a conclusion-less inference for the unbound-variable check', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'd',
 			'd',
 			[],
 			[
-				inference('i1', [fact('p1', 'human', ['?x'])], fact('c1', 'mortal', ['?x', '?y']), {
-					enabled: false,
-				}),
+				createInference(
+					'i1',
+					[createFact('p1', 'human', ['?x'])],
+					createFact('c1', 'mortal', ['?x', '?y']),
+					{
+						enabled: false,
+					},
+				),
 			],
 		)
 		const validation = reasoner.validate(definition)
@@ -219,22 +255,31 @@ describe('InferentialReasoner — validate', () => {
 				name: 'd',
 				facts: [],
 				strategy: 'forward',
-				inferences: [{ id: 'i1', name: 'i1', premises: [fact('p1', 'human', ['?x'])] }],
+				inferences: [{ id: 'i1', name: 'i1', premises: [createFact('p1', 'human', ['?x'])] }],
 			},
 		])
 		expect(errored.warnings.filter((warning) => warning.includes('is unbound by'))).toEqual([])
 	})
 
 	it('keeps the existing duplicate-id and confidence warnings unaffected by the new unbound-variable check', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'd',
 			'd',
 			[],
 			[
-				inference('dup', [fact('p1', 'human', ['?x'])], fact('c1', 'mortal', ['?x', '?y']), {
-					confidence: -0.2,
-				}),
-				inference('dup', [fact('p2', 'human', ['?x'])], fact('c2', 'mortal', ['?x'])),
+				createInference(
+					'dup',
+					[createFact('p1', 'human', ['?x'])],
+					createFact('c1', 'mortal', ['?x', '?y']),
+					{
+						confidence: -0.2,
+					},
+				),
+				createInference(
+					'dup',
+					[createFact('p2', 'human', ['?x'])],
+					createFact('c2', 'mortal', ['?x']),
+				),
 			],
 		)
 		const validation = reasoner.validate(definition)
@@ -265,15 +310,15 @@ describe('InferentialReasoner — forward chaining', () => {
 	})
 
 	it('a join with only one supporting fact succeeds with nothing derived', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'family',
 			'Family',
-			[fact('f1', 'parent', ['alice', 'bob'])],
+			[createFact('f1', 'parent', ['alice', 'bob'])],
 			[
-				inference(
+				createInference(
 					'grandparent',
-					[fact('p1', 'parent', ['?x', '?y']), fact('p2', 'parent', ['?y', '?z'])],
-					fact('c1', 'grandparent', ['?x', '?z']),
+					[createFact('p1', 'parent', ['?x', '?y']), createFact('p2', 'parent', ['?y', '?z'])],
+					createFact('c1', 'grandparent', ['?x', '?z']),
 				),
 			],
 		)
@@ -283,15 +328,15 @@ describe('InferentialReasoner — forward chaining', () => {
 	})
 
 	it('binds variables CONSISTENTLY across premises (relational join)', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'family',
 			'Family',
-			[fact('f1', 'parent', ['alice', 'bob']), fact('f2', 'parent', ['bob', 'carol'])],
+			[createFact('f1', 'parent', ['alice', 'bob']), createFact('f2', 'parent', ['bob', 'carol'])],
 			[
-				inference(
+				createInference(
 					'grandparent',
-					[fact('p1', 'parent', ['?x', '?y']), fact('p2', 'parent', ['?y', '?z'])],
-					fact('c1', 'grandparent', ['?x', '?z']),
+					[createFact('p1', 'parent', ['?x', '?y']), createFact('p2', 'parent', ['?y', '?z'])],
+					createFact('c1', 'grandparent', ['?x', '?z']),
 				),
 			],
 		)
@@ -301,13 +346,21 @@ describe('InferentialReasoner — forward chaining', () => {
 	})
 
 	it('chains transitively within the fixpoint (mortal → needsInsurance)', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'chain',
 			'Chain',
-			[fact('f1', 'human', ['socrates'])],
+			[createFact('f1', 'human', ['socrates'])],
 			[
-				inference('i1', [fact('p1', 'human', ['?x'])], fact('c1', 'mortal', ['?x'])),
-				inference('i2', [fact('p2', 'mortal', ['?x'])], fact('c2', 'needsInsurance', ['?x'])),
+				createInference(
+					'i1',
+					[createFact('p1', 'human', ['?x'])],
+					createFact('c1', 'mortal', ['?x']),
+				),
+				createInference(
+					'i2',
+					[createFact('p2', 'mortal', ['?x'])],
+					createFact('c2', 'needsInsurance', ['?x']),
+				),
 			],
 			{ depth: 5 },
 		)
@@ -318,21 +371,33 @@ describe('InferentialReasoner — forward chaining', () => {
 	})
 
 	it('never re-derives an already-known fact (dedup by predicate + arity + terms)', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'mortality',
 			'Mortality',
-			[fact('f1', 'human', ['socrates']), fact('f2', 'mortal', ['socrates'])],
-			[inference('i1', [fact('p1', 'human', ['?x'])], fact('c1', 'mortal', ['?x']))],
+			[createFact('f1', 'human', ['socrates']), createFact('f2', 'mortal', ['socrates'])],
+			[
+				createInference(
+					'i1',
+					[createFact('p1', 'human', ['?x'])],
+					createFact('c1', 'mortal', ['?x']),
+				),
+			],
 		)
 		expect(expectInferential(reasoner.reason({}, definition)).derived).toHaveLength(0)
 	})
 
 	it('a NaN-termed fact derives ONCE and the fixpoint converges (SameValueZero dedupe)', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'd',
 			'd',
-			[fact('f1', 'value', [Number.NaN])],
-			[inference('i1', [fact('p1', 'value', ['?x'])], fact('c1', 'double', ['?x']))],
+			[createFact('f1', 'value', [Number.NaN])],
+			[
+				createInference(
+					'i1',
+					[createFact('p1', 'value', ['?x'])],
+					createFact('c1', 'double', ['?x']),
+				),
+			],
 		)
 		const result = expectInferential(reasoner.reason({}, definition))
 		expect(result.derived).toHaveLength(1)
@@ -342,14 +407,19 @@ describe('InferentialReasoner — forward chaining', () => {
 	})
 
 	it('pins the exact forward Derived trace format', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'd',
 			'd',
-			[fact('f1', 'human', ['socrates'], 0.8)],
+			[createFact('f1', 'human', ['socrates'], 0.8)],
 			[
-				inference('i1', [fact('p1', 'human', ['?x'])], fact('c1', 'mortal', ['?x']), {
-					confidence: 0.5,
-				}),
+				createInference(
+					'i1',
+					[createFact('p1', 'human', ['?x'])],
+					createFact('c1', 'mortal', ['?x']),
+					{
+						confidence: 0.5,
+					},
+				),
 			],
 		)
 		const result = expectInferential(reasoner.reason({}, definition))
@@ -359,11 +429,17 @@ describe('InferentialReasoner — forward chaining', () => {
 	})
 
 	it('a variable in a BASE FACT unifies against a constant premise (bidirectional)', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'd',
 			'd',
-			[fact('f1', 'human', ['?anyone'])],
-			[inference('i1', [fact('p1', 'human', ['socrates'])], fact('c1', 'mortal', ['socrates']))],
+			[createFact('f1', 'human', ['?anyone'])],
+			[
+				createInference(
+					'i1',
+					[createFact('p1', 'human', ['socrates'])],
+					createFact('c1', 'mortal', ['socrates']),
+				),
+			],
 		)
 		const result = expectInferential(reasoner.reason({}, definition))
 		expect(result.derived).toHaveLength(1)
@@ -373,11 +449,17 @@ describe('InferentialReasoner — forward chaining', () => {
 	})
 
 	it('the SAME variable twice in one premise enforces within-match consistency', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'd',
 			'd',
-			[fact('f1', 'pair', ['a', 'b']), fact('f2', 'pair', ['c', 'c'])],
-			[inference('i1', [fact('p1', 'pair', ['?x', '?x'])], fact('c1', 'twin', ['?x']))],
+			[createFact('f1', 'pair', ['a', 'b']), createFact('f2', 'pair', ['c', 'c'])],
+			[
+				createInference(
+					'i1',
+					[createFact('p1', 'pair', ['?x', '?x'])],
+					createFact('c1', 'twin', ['?x']),
+				),
+			],
 		)
 		const result = expectInferential(reasoner.reason({}, definition))
 		expect(result.derived).toHaveLength(1)
@@ -386,15 +468,26 @@ describe('InferentialReasoner — forward chaining', () => {
 
 	it('the depth cap truncates by DECLARATION ORDER — knownFacts grows live within a pass', () => {
 		const dependencyOrder = [
-			inference('i1', [fact('p1', 'human', ['?x'])], fact('c1', 'mortal', ['?x'])),
-			inference('i2', [fact('p2', 'mortal', ['?x'])], fact('c2', 'insured', ['?x'])),
+			createInference(
+				'i1',
+				[createFact('p1', 'human', ['?x'])],
+				createFact('c1', 'mortal', ['?x']),
+			),
+			createInference(
+				'i2',
+				[createFact('p2', 'mortal', ['?x'])],
+				createFact('c2', 'insured', ['?x']),
+			),
 		]
-		const base = [fact('f1', 'human', ['socrates'])]
+		const base = [createFact('f1', 'human', ['socrates'])]
 
 		// In dependency order, ONE pass derives both — mortal lands in knownFacts
 		// mid-pass and immediately feeds i2 (unlike the logical snapshot).
 		const forward = expectInferential(
-			reasoner.reason({}, inferentialDefinition('d', 'd', base, dependencyOrder, { depth: 1 })),
+			reasoner.reason(
+				{},
+				createInferentialDefinition('d', 'd', base, dependencyOrder, { depth: 1 }),
+			),
 		)
 		expect(forward.derived.map((derived) => derived.predicate)).toEqual(['mortal', 'insured'])
 		expect(forward.trace.some((entry) => entry.includes('converged'))).toBe(false)
@@ -403,7 +496,7 @@ describe('InferentialReasoner — forward chaining', () => {
 		const reversed = expectInferential(
 			reasoner.reason(
 				{},
-				inferentialDefinition('d', 'd', base, [...dependencyOrder].reverse(), { depth: 1 }),
+				createInferentialDefinition('d', 'd', base, [...dependencyOrder].reverse(), { depth: 1 }),
 			),
 		)
 		expect(reversed.derived.map((derived) => derived.predicate)).toEqual(['mortal'])
@@ -411,14 +504,19 @@ describe('InferentialReasoner — forward chaining', () => {
 	})
 
 	it('skips a disabled inference silently', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'mortality',
 			'Mortality',
-			[fact('f1', 'human', ['socrates'])],
+			[createFact('f1', 'human', ['socrates'])],
 			[
-				inference('i1', [fact('p1', 'human', ['?x'])], fact('c1', 'mortal', ['?x']), {
-					enabled: false,
-				}),
+				createInference(
+					'i1',
+					[createFact('p1', 'human', ['?x'])],
+					createFact('c1', 'mortal', ['?x']),
+					{
+						enabled: false,
+					},
+				),
 			],
 		)
 		const result = expectInferential(reasoner.reason({}, definition))
@@ -427,39 +525,51 @@ describe('InferentialReasoner — forward chaining', () => {
 	})
 
 	it('unmatched premises and empty fact sets are success with nothing derived', () => {
-		const unmatched = inferentialDefinition(
+		const unmatched = createInferentialDefinition(
 			'd',
 			'd',
-			[fact('f1', 'dog', ['rex'])],
-			[inference('i1', [fact('p1', 'human', ['?x'])], fact('c1', 'mortal', ['?x']))],
+			[createFact('f1', 'dog', ['rex'])],
+			[
+				createInference(
+					'i1',
+					[createFact('p1', 'human', ['?x'])],
+					createFact('c1', 'mortal', ['?x']),
+				),
+			],
 		)
 		const unmatchedResult = expectInferential(reasoner.reason({}, unmatched))
 		expect(unmatchedResult.success).toBe(true)
 		expect(unmatchedResult.derived).toHaveLength(0)
 
-		const empty = inferentialDefinition(
+		const empty = createInferentialDefinition(
 			'd',
 			'd',
 			[],
-			[inference('i1', [fact('p1', 'human', ['?x'])], fact('c1', 'mortal', ['?x']))],
+			[
+				createInference(
+					'i1',
+					[createFact('p1', 'human', ['?x'])],
+					createFact('c1', 'mortal', ['?x']),
+				),
+			],
 		)
 		expect(expectInferential(reasoner.reason({}, empty)).success).toBe(true)
 	})
 
 	it('an empty inference set traces "No inference rules defined"', () => {
 		const result = expectInferential(
-			reasoner.reason({}, inferentialDefinition('d', 'd', [fact('f1', 'p', [])], [])),
+			reasoner.reason({}, createInferentialDefinition('d', 'd', [createFact('f1', 'p', [])], [])),
 		)
 		expect(result.success).toBe(true)
 		expect(result.trace).toContain('No inference rules defined')
 	})
 
 	it('a premise-less inference errors once and is excluded (forward)', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'd',
 			'd',
 			[],
-			[inference('i1', [], fact('c1', 'p', []))],
+			[createInference('i1', [], createFact('c1', 'p', []))],
 		)
 		const result = expectInferential(reasoner.reason({}, definition))
 		expect(result.success).toBe(false)
@@ -470,34 +580,47 @@ describe('InferentialReasoner — forward chaining', () => {
 
 describe('InferentialReasoner — confidence', () => {
 	it('multiplies the premise-fact confidence with the inference confidence', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'd',
 			'd',
-			[fact('f1', 'human', ['socrates'], 0.8)],
+			[createFact('f1', 'human', ['socrates'], 0.8)],
 			[
-				inference('i1', [fact('p1', 'human', ['?x'])], fact('c1', 'mortal', ['?x']), {
-					confidence: 0.5,
-				}),
+				createInference(
+					'i1',
+					[createFact('p1', 'human', ['?x'])],
+					createFact('c1', 'mortal', ['?x']),
+					{
+						confidence: 0.5,
+					},
+				),
 			],
 		)
 		expect(expectInferential(reasoner.reason({}, definition)).derived[0]?.confidence).toBe(0.4)
 	})
 
 	it('propagates multiplicatively through a transitive chain', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'birds',
 			'Birds',
-			[fact('f1', 'hasFeathers', ['tweety'], 1), fact('f2', 'laysEggs', ['tweety'], 0.9)],
 			[
-				inference(
+				createFact('f1', 'hasFeathers', ['tweety'], 1),
+				createFact('f2', 'laysEggs', ['tweety'], 0.9),
+			],
+			[
+				createInference(
 					'bird-rule',
-					[fact('p1', 'hasFeathers', ['?x']), fact('p2', 'laysEggs', ['?x'])],
-					fact('c1', 'isBird', ['?x']),
+					[createFact('p1', 'hasFeathers', ['?x']), createFact('p2', 'laysEggs', ['?x'])],
+					createFact('c1', 'isBird', ['?x']),
 					{ confidence: 0.8 },
 				),
-				inference('fly-rule', [fact('p3', 'isBird', ['?x'])], fact('c2', 'canFly', ['?x']), {
-					confidence: 0.5,
-				}),
+				createInference(
+					'fly-rule',
+					[createFact('p3', 'isBird', ['?x'])],
+					createFact('c2', 'canFly', ['?x']),
+					{
+						confidence: 0.5,
+					},
+				),
 			],
 			{ depth: 5 },
 		)
@@ -509,14 +632,19 @@ describe('InferentialReasoner — confidence', () => {
 	})
 
 	it('rounds the derived confidence to 4 decimal places', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'd',
 			'd',
-			[fact('f1', 'human', ['socrates'], 0.1111)],
+			[createFact('f1', 'human', ['socrates'], 0.1111)],
 			[
-				inference('i1', [fact('p1', 'human', ['?x'])], fact('c1', 'mortal', ['?x']), {
-					confidence: 0.1111,
-				}),
+				createInference(
+					'i1',
+					[createFact('p1', 'human', ['?x'])],
+					createFact('c1', 'mortal', ['?x']),
+					{
+						confidence: 0.1111,
+					},
+				),
 			],
 		)
 		// 0.1111 × 0.1111 = 0.01234321 → rounded to 0.0123.
@@ -526,11 +654,17 @@ describe('InferentialReasoner — confidence', () => {
 
 describe('InferentialReasoner — subject facts', () => {
 	it('scalar subject fields become has(key, value) facts that feed premises', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'residency',
 			'Residency',
 			[],
-			[inference('i1', [fact('p1', 'has', ['state', 'CA'])], fact('c1', 'californiaResident', []))],
+			[
+				createInference(
+					'i1',
+					[createFact('p1', 'has', ['state', 'CA'])],
+					createFact('c1', 'californiaResident', []),
+				),
+			],
 		)
 		const result = expectInferential(reasoner.reason({ state: 'CA' }, definition))
 		expect(result.derived).toHaveLength(1)
@@ -540,11 +674,17 @@ describe('InferentialReasoner — subject facts', () => {
 	})
 
 	it('skips id, null, undefined, objects, and arrays — scalars only', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'd',
 			'd',
 			[],
-			[inference('i1', [fact('p1', 'has', ['age', 30])], fact('c1', 'adultish', []))],
+			[
+				createInference(
+					'i1',
+					[createFact('p1', 'has', ['age', 30])],
+					createFact('c1', 'adultish', []),
+				),
+			],
 		)
 		const result = expectInferential(
 			reasoner.reason(
@@ -561,15 +701,15 @@ describe('InferentialReasoner — subject facts', () => {
 	})
 
 	it('subject facts combine with definition facts inside multi-premise inferences', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'beach',
 			'Beach',
-			[fact('f1', 'likesSun', ['alice'])],
+			[createFact('f1', 'likesSun', ['alice'])],
 			[
-				inference(
+				createInference(
 					'i1',
-					[fact('p1', 'has', ['state', 'CA']), fact('p2', 'likesSun', ['?x'])],
-					fact('c1', 'beachDay', ['?x']),
+					[createFact('p1', 'has', ['state', 'CA']), createFact('p2', 'likesSun', ['?x'])],
+					createFact('c1', 'beachDay', ['?x']),
 				),
 			],
 		)
@@ -580,15 +720,15 @@ describe('InferentialReasoner — subject facts', () => {
 })
 
 describe('InferentialReasoner — backward chaining (proof trees)', () => {
-	const birds = inferentialDefinition(
+	const birds = createInferentialDefinition(
 		'birds',
 		'Birds',
-		[fact('f1', 'hasFeathers', ['tweety'], 1), fact('f2', 'laysEggs', ['tweety'], 0.9)],
+		[createFact('f1', 'hasFeathers', ['tweety'], 1), createFact('f2', 'laysEggs', ['tweety'], 0.9)],
 		[
-			inference(
+			createInference(
 				'bird-rule',
-				[fact('p1', 'hasFeathers', ['?x']), fact('p2', 'laysEggs', ['?x'])],
-				fact('c1', 'isBird', ['?x']),
+				[createFact('p1', 'hasFeathers', ['?x']), createFact('p2', 'laysEggs', ['?x'])],
+				createFact('c1', 'isBird', ['?x']),
 				{ confidence: 0.8 },
 			),
 		],
@@ -620,11 +760,11 @@ describe('InferentialReasoner — backward chaining (proof trees)', () => {
 
 	it('a SELF-RECURSIVE inference terminates through the depth cap alone', () => {
 		// p(?x) → p(?x) with no base facts: the ONLY recursion guard is the cap.
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'd',
 			'd',
 			[],
-			[inference('i1', [fact('p1', 'p', ['?x'])], fact('c1', 'p', ['?x']))],
+			[createInference('i1', [createFact('p1', 'p', ['?x'])], createFact('c1', 'p', ['?x']))],
 			{ strategy: 'backward', depth: 5 },
 		)
 		const result = expectInferential(reasoner.reason({}, definition))
@@ -634,12 +774,12 @@ describe('InferentialReasoner — backward chaining (proof trees)', () => {
 	})
 
 	it('a goal that IS a base fact proves as a bare leaf — and still "derives" a duplicate', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'd',
 			'd',
-			[fact('f1', 'sunny', [])],
+			[createFact('f1', 'sunny', [])],
 			[
-				inference('i1', [fact('p1', 'irrelevant', [])], fact('c1', 'sunny', []), {
+				createInference('i1', [createFact('p1', 'irrelevant', [])], createFact('c1', 'sunny', []), {
 					confidence: 0.7,
 				}),
 			],
@@ -665,11 +805,11 @@ describe('InferentialReasoner — backward chaining (proof trees)', () => {
 					reasoning: 'inferential',
 					id: 'd',
 					name: 'd',
-					facts: [fact('f1', 'p', ['a'])],
+					facts: [createFact('f1', 'p', ['a'])],
 					strategy: 'backward',
 					inferences: [
-						{ id: 'i1', name: 'i1', conclusion: fact('c1', 'goal', []) },
-						inference('i2', [fact('p2', 'p', ['?x'])], fact('c2', 'q', ['?x'])),
+						{ id: 'i1', name: 'i1', conclusion: createFact('c1', 'goal', []) },
+						createInference('i2', [createFact('p2', 'p', ['?x'])], createFact('c2', 'q', ['?x'])),
 					],
 				},
 			]),
@@ -682,15 +822,15 @@ describe('InferentialReasoner — backward chaining (proof trees)', () => {
 	})
 
 	it('a missing base fact leaves the proof undefined (still success)', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'birds',
 			'Birds',
-			[fact('f1', 'hasFeathers', ['tweety'])],
+			[createFact('f1', 'hasFeathers', ['tweety'])],
 			[
-				inference(
+				createInference(
 					'bird-rule',
-					[fact('p1', 'hasFeathers', ['?x']), fact('p2', 'laysEggs', ['?x'])],
-					fact('c1', 'isBird', ['?x']),
+					[createFact('p1', 'hasFeathers', ['?x']), createFact('p2', 'laysEggs', ['?x'])],
+					createFact('c1', 'isBird', ['?x']),
 				),
 			],
 			{ strategy: 'backward' },
@@ -702,13 +842,13 @@ describe('InferentialReasoner — backward chaining (proof trees)', () => {
 	})
 
 	it('returns on the FIRST provable inference in declaration order', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'd',
 			'd',
-			[fact('f1', 'p', ['a'])],
+			[createFact('f1', 'p', ['a'])],
 			[
-				inference('i-fail', [fact('p1', 'q', ['?x'])], fact('c1', 'r', ['?x'])),
-				inference('i-pass', [fact('p2', 'p', ['?x'])], fact('c2', 's', ['?x'])),
+				createInference('i-fail', [createFact('p1', 'q', ['?x'])], createFact('c1', 'r', ['?x'])),
+				createInference('i-pass', [createFact('p2', 'p', ['?x'])], createFact('c2', 's', ['?x'])),
 			],
 			{ strategy: 'backward' },
 		)
@@ -718,16 +858,20 @@ describe('InferentialReasoner — backward chaining (proof trees)', () => {
 	})
 
 	it('proves through a nested inference chain (children carry the sub-proof)', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'birds',
 			'Birds',
-			[fact('f1', 'hasFeathers', ['tweety']), fact('f2', 'laysEggs', ['tweety'])],
+			[createFact('f1', 'hasFeathers', ['tweety']), createFact('f2', 'laysEggs', ['tweety'])],
 			[
-				inference('fly-rule', [fact('p3', 'isBird', ['?x'])], fact('c2', 'canFly', ['?x'])),
-				inference(
+				createInference(
+					'fly-rule',
+					[createFact('p3', 'isBird', ['?x'])],
+					createFact('c2', 'canFly', ['?x']),
+				),
+				createInference(
 					'bird-rule',
-					[fact('p1', 'hasFeathers', ['?x']), fact('p2', 'laysEggs', ['?x'])],
-					fact('c1', 'isBird', ['?x']),
+					[createFact('p1', 'hasFeathers', ['?x']), createFact('p2', 'laysEggs', ['?x'])],
+					createFact('c1', 'isBird', ['?x']),
 				),
 			],
 			{ strategy: 'backward', depth: 5 },
@@ -748,7 +892,7 @@ describe('InferentialReasoner — backward chaining (proof trees)', () => {
 					name: 'd',
 					facts: [],
 					strategy: 'backward',
-					inferences: [{ id: 'i1', name: 'i1', premises: [fact('p1', 'p', [])] }],
+					inferences: [{ id: 'i1', name: 'i1', premises: [createFact('p1', 'p', [])] }],
 				},
 			]),
 		)
@@ -767,11 +911,11 @@ describe('InferentialReasoner — backward chaining (proof trees)', () => {
 					reasoning: 'inferential',
 					id: 'd',
 					name: 'd',
-					facts: [fact('f1', 'q', [1])],
+					facts: [createFact('f1', 'q', [1])],
 					strategy: 'backward',
 					inferences: [
-						{ id: 'broken', name: 'broken', premises: [fact('p0', 'p', [])] },
-						inference('i1', [fact('p1', 'q', [1])], fact('c1', 's', [1])),
+						{ id: 'broken', name: 'broken', premises: [createFact('p0', 'p', [])] },
+						createInference('i1', [createFact('p1', 'q', [1])], createFact('c1', 's', [1])),
 					],
 				},
 			]),
@@ -785,7 +929,7 @@ describe('InferentialReasoner — backward chaining (proof trees)', () => {
 describe('InferentialReasoner — mismatch vs malformed shape', () => {
 	it('MISMATCH: the wrong reasoning THROWS a coded ReasonError with context', () => {
 		const error = captureError(() =>
-			reasoner.reason({}, quantitativeDefinition('other', 'Other', [])),
+			reasoner.reason({}, createQuantitativeDefinition('other', 'Other', [])),
 		)
 		if (!isReasonError(error)) throw new Error('expected a ReasonError')
 		expect(error.code).toBe('MISMATCH')
@@ -814,16 +958,20 @@ describe('InferentialReasoner — mismatch vs malformed shape', () => {
 // ancestors) — so completeness is reached in L-1 passes, not L, for a chain of L
 // edges. The full closure is every (i, j) with i < j — C(6, 2) = 15 pairs.
 function ancestry(depth: number) {
-	return inferentialDefinition(
+	return createInferentialDefinition(
 		'ancestry',
 		'Ancestry',
-		sequence(5).map((node) => fact(`p${node}`, 'parent', [node, node + 1])),
+		sequence(5).map((node) => createFact(`p${node}`, 'parent', [node, node + 1])),
 		[
-			inference('base', [fact('b1', 'parent', ['?x', '?y'])], fact('cb', 'ancestor', ['?x', '?y'])),
-			inference(
+			createInference(
+				'base',
+				[createFact('b1', 'parent', ['?x', '?y'])],
+				createFact('cb', 'ancestor', ['?x', '?y']),
+			),
+			createInference(
 				'trans',
-				[fact('t1', 'parent', ['?x', '?y']), fact('t2', 'ancestor', ['?y', '?z'])],
-				fact('ct', 'ancestor', ['?x', '?z']),
+				[createFact('t1', 'parent', ['?x', '?y']), createFact('t2', 'ancestor', ['?y', '?z'])],
+				createFact('ct', 'ancestor', ['?x', '?z']),
 			),
 		],
 		{ depth },
@@ -832,15 +980,18 @@ function ancestry(depth: number) {
 
 describe('InferentialReasoner — higher-arity joins', () => {
 	it('threads a middle variable through arity-3 premises into an arity-5 conclusion', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'wide',
 			'Wide',
-			[fact('e1', 'rel', ['a', 'b', 1]), fact('e2', 'rel', ['b', 'c', 2])],
+			[createFact('e1', 'rel', ['a', 'b', 1]), createFact('e2', 'rel', ['b', 'c', 2])],
 			[
-				inference(
+				createInference(
 					'chain-rule',
-					[fact('p1', 'rel', ['?x', '?y', '?p']), fact('p2', 'rel', ['?y', '?z', '?q'])],
-					fact('c1', 'chain', ['?x', '?y', '?z', '?p', '?q']),
+					[
+						createFact('p1', 'rel', ['?x', '?y', '?p']),
+						createFact('p2', 'rel', ['?y', '?z', '?q']),
+					],
+					createFact('c1', 'chain', ['?x', '?y', '?z', '?p', '?q']),
 				),
 			],
 		)
@@ -855,15 +1006,15 @@ describe('InferentialReasoner — higher-arity joins', () => {
 	})
 
 	it('enforces within-match consistency of a repeated variable in an arity-3 premise', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'triples',
 			'Triples',
-			[fact('f1', 'triple', ['a', 'a', 'b']), fact('f2', 'triple', ['a', 'c', 'b'])],
+			[createFact('f1', 'triple', ['a', 'a', 'b']), createFact('f2', 'triple', ['a', 'c', 'b'])],
 			[
-				inference(
+				createInference(
 					'i1',
-					[fact('p1', 'triple', ['?x', '?x', '?y'])],
-					fact('c1', 'same', ['?x', '?y']),
+					[createFact('p1', 'triple', ['?x', '?x', '?y'])],
+					createFact('c1', 'same', ['?x', '?y']),
 				),
 			],
 		)
@@ -877,18 +1028,18 @@ describe('InferentialReasoner — higher-arity joins', () => {
 describe('InferentialReasoner — relational join scale', () => {
 	it('an N×N cross join derives exactly N² pairs (bounded, deterministic)', () => {
 		const size = 50
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'cross',
 			'Cross',
 			[
-				...sequence(size).map((n) => fact(`l${n}`, 'left', [n])),
-				...sequence(size).map((n) => fact(`r${n}`, 'right', [n])),
+				...sequence(size).map((n) => createFact(`l${n}`, 'left', [n])),
+				...sequence(size).map((n) => createFact(`r${n}`, 'right', [n])),
 			],
 			[
-				inference(
+				createInference(
 					'pair-rule',
-					[fact('p1', 'left', ['?x']), fact('p2', 'right', ['?y'])],
-					fact('c1', 'pair', ['?x', '?y']),
+					[createFact('p1', 'left', ['?x']), createFact('p2', 'right', ['?y'])],
+					createFact('c1', 'pair', ['?x', '?y']),
 				),
 			],
 		)
@@ -908,18 +1059,18 @@ describe('InferentialReasoner — relational join scale', () => {
 		// dedup this was O(bindings × facts) joins plus an O(derived²) rescan; both fixes
 		// keep it tractable while the derived count and predicate stay exact.
 		const size = 100
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'cross-scale',
 			'Cross-scale',
 			[
-				...sequence(size).map((n) => fact(`l${n}`, 'left', [n])),
-				...sequence(size).map((n) => fact(`r${n}`, 'right', [n])),
+				...sequence(size).map((n) => createFact(`l${n}`, 'left', [n])),
+				...sequence(size).map((n) => createFact(`r${n}`, 'right', [n])),
 			],
 			[
-				inference(
+				createInference(
 					'pair-rule',
-					[fact('p1', 'left', ['?x']), fact('p2', 'right', ['?y'])],
-					fact('c1', 'pair', ['?x', '?y']),
+					[createFact('p1', 'left', ['?x']), createFact('p2', 'right', ['?y'])],
+					createFact('c1', 'pair', ['?x', '?y']),
 				),
 			],
 		)
@@ -936,15 +1087,15 @@ describe('InferentialReasoner — relational join scale', () => {
 
 	it('a linear parent chain derives exactly N−1 grandparent pairs', () => {
 		const size = 50
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'lineage',
 			'Lineage',
-			sequence(size).map((n) => fact(`p${n}`, 'parent', [n, n + 1])),
+			sequence(size).map((n) => createFact(`p${n}`, 'parent', [n, n + 1])),
 			[
-				inference(
+				createInference(
 					'grandparent',
-					[fact('p1', 'parent', ['?x', '?y']), fact('p2', 'parent', ['?y', '?z'])],
-					fact('c1', 'grandparent', ['?x', '?z']),
+					[createFact('p1', 'parent', ['?x', '?y']), createFact('p2', 'parent', ['?y', '?z'])],
+					createFact('c1', 'grandparent', ['?x', '?z']),
 				),
 			],
 		)
@@ -993,16 +1144,24 @@ describe('InferentialReasoner — transitive fixpoint depth', () => {
 
 describe('InferentialReasoner — deep backward proof tree', () => {
 	it('nests a five-level ProofNode with fact / inference / depth per level to a bare leaf', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'deep',
 			'Deep',
-			[fact('f-base', 'base', ['thing'])],
+			[createFact('f-base', 'base', ['thing'])],
 			[
-				inference('i-top', [fact('p-top', 'b', ['?x'])], fact('c-top', 'a', ['?x'])),
-				inference('i-l4', [fact('p-l4', 'c', ['?x'])], fact('c-l4', 'b', ['?x'])),
-				inference('i-l3', [fact('p-l3', 'd', ['?x'])], fact('c-l3', 'c', ['?x'])),
-				inference('i-l2', [fact('p-l2', 'e', ['?x'])], fact('c-l2', 'd', ['?x'])),
-				inference('i-l1', [fact('p-l1', 'base', ['?x'])], fact('c-l1', 'e', ['?x'])),
+				createInference(
+					'i-top',
+					[createFact('p-top', 'b', ['?x'])],
+					createFact('c-top', 'a', ['?x']),
+				),
+				createInference('i-l4', [createFact('p-l4', 'c', ['?x'])], createFact('c-l4', 'b', ['?x'])),
+				createInference('i-l3', [createFact('p-l3', 'd', ['?x'])], createFact('c-l3', 'c', ['?x'])),
+				createInference('i-l2', [createFact('p-l2', 'e', ['?x'])], createFact('c-l2', 'd', ['?x'])),
+				createInference(
+					'i-l1',
+					[createFact('p-l1', 'base', ['?x'])],
+					createFact('c-l1', 'e', ['?x']),
+				),
 			],
 			{ strategy: 'backward', depth: 10 },
 		)
@@ -1029,13 +1188,21 @@ describe('InferentialReasoner — deep backward proof tree', () => {
 
 describe('InferentialReasoner — recursion termination', () => {
 	it('mutually-recursive backward inferences terminate through the depth cap', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'mutual',
 			'Mutual',
 			[],
 			[
-				inference('ping', [fact('p1', 'pong', ['?x'])], fact('c1', 'ping', ['?x'])),
-				inference('pong', [fact('p2', 'ping', ['?x'])], fact('c2', 'pong', ['?x'])),
+				createInference(
+					'ping',
+					[createFact('p1', 'pong', ['?x'])],
+					createFact('c1', 'ping', ['?x']),
+				),
+				createInference(
+					'pong',
+					[createFact('p2', 'ping', ['?x'])],
+					createFact('c2', 'pong', ['?x']),
+				),
 			],
 			{ strategy: 'backward', depth: 5 },
 		)
@@ -1047,11 +1214,11 @@ describe('InferentialReasoner — recursion termination', () => {
 	})
 
 	it('a forward self-loop converges immediately via dedup', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'self-loop',
 			'Self-loop',
-			[fact('f1', 'num', ['a'])],
-			[inference('i1', [fact('p1', 'num', ['?x'])], fact('c1', 'num', ['?x']))],
+			[createFact('f1', 'num', ['a'])],
+			[createInference('i1', [createFact('p1', 'num', ['?x'])], createFact('c1', 'num', ['?x']))],
 		)
 		const result = expectInferential(reasoner.reason({}, definition))
 		expect(result.derived).toHaveLength(0)
@@ -1062,28 +1229,38 @@ describe('InferentialReasoner — recursion termination', () => {
 
 describe('InferentialReasoner — confidence extremes', () => {
 	it('a zero-confidence premise fact yields a zero derived confidence', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'zero',
 			'Zero',
-			[fact('f1', 'human', ['s'], 0)],
+			[createFact('f1', 'human', ['s'], 0)],
 			[
-				inference('i1', [fact('p1', 'human', ['?x'])], fact('c1', 'mortal', ['?x']), {
-					confidence: 0.9,
-				}),
+				createInference(
+					'i1',
+					[createFact('p1', 'human', ['?x'])],
+					createFact('c1', 'mortal', ['?x']),
+					{
+						confidence: 0.9,
+					},
+				),
 			],
 		)
 		expect(expectInferential(reasoner.reason({}, definition)).derived[0]?.confidence).toBe(0)
 	})
 
 	it('an out-of-[0,1] confidence still computes — the product exceeds 1', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'over',
 			'Over',
-			[fact('f1', 'human', ['s'], 1.5)],
+			[createFact('f1', 'human', ['s'], 1.5)],
 			[
-				inference('i1', [fact('p1', 'human', ['?x'])], fact('c1', 'mortal', ['?x']), {
-					confidence: 2,
-				}),
+				createInference(
+					'i1',
+					[createFact('p1', 'human', ['?x'])],
+					createFact('c1', 'mortal', ['?x']),
+					{
+						confidence: 2,
+					},
+				),
 			],
 		)
 		const result = expectInferential(reasoner.reason({}, definition))
@@ -1093,25 +1270,36 @@ describe('InferentialReasoner — confidence extremes', () => {
 	})
 
 	it('a -0 confidence propagates as -0 (signed-zero preserved through roundTo)', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'neg-zero',
 			'Neg-zero',
-			[fact('f1', 'human', ['s'], -0)],
-			[inference('i1', [fact('p1', 'human', ['?x'])], fact('c1', 'mortal', ['?x']))],
+			[createFact('f1', 'human', ['s'], -0)],
+			[
+				createInference(
+					'i1',
+					[createFact('p1', 'human', ['?x'])],
+					createFact('c1', 'mortal', ['?x']),
+				),
+			],
 		)
 		const result = expectInferential(reasoner.reason({}, definition))
 		expect(Object.is(result.derived[0]?.confidence, -0)).toBe(true)
 	})
 
 	it('roundTo(4) truncates a long product to four decimal places', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'trunc',
 			'Trunc',
-			[fact('f1', 'human', ['s'], 0.3333)],
+			[createFact('f1', 'human', ['s'], 0.3333)],
 			[
-				inference('i1', [fact('p1', 'human', ['?x'])], fact('c1', 'mortal', ['?x']), {
-					confidence: 0.3333,
-				}),
+				createInference(
+					'i1',
+					[createFact('p1', 'human', ['?x'])],
+					createFact('c1', 'mortal', ['?x']),
+					{
+						confidence: 0.3333,
+					},
+				),
 			],
 		)
 		// 0.3333 × 0.3333 = 0.11108889 → rounded to 0.1111.
@@ -1119,16 +1307,26 @@ describe('InferentialReasoner — confidence extremes', () => {
 	})
 
 	it('a multiplicative chain underflows to 0 through the roundTo(4) truncation', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'underflow',
 			'Underflow',
-			[fact('f0', 'p0', ['x'])],
+			[createFact('f0', 'p0', ['x'])],
 			[
-				inference('i1', [fact('a1', 'p0', ['?a'])], fact('b1', 'p1', ['?a']), { confidence: 0.1 }),
-				inference('i2', [fact('a2', 'p1', ['?a'])], fact('b2', 'p2', ['?a']), { confidence: 0.1 }),
-				inference('i3', [fact('a3', 'p2', ['?a'])], fact('b3', 'p3', ['?a']), { confidence: 0.1 }),
-				inference('i4', [fact('a4', 'p3', ['?a'])], fact('b4', 'p4', ['?a']), { confidence: 0.1 }),
-				inference('i5', [fact('a5', 'p4', ['?a'])], fact('b5', 'p5', ['?a']), { confidence: 0.1 }),
+				createInference('i1', [createFact('a1', 'p0', ['?a'])], createFact('b1', 'p1', ['?a']), {
+					confidence: 0.1,
+				}),
+				createInference('i2', [createFact('a2', 'p1', ['?a'])], createFact('b2', 'p2', ['?a']), {
+					confidence: 0.1,
+				}),
+				createInference('i3', [createFact('a3', 'p2', ['?a'])], createFact('b3', 'p3', ['?a']), {
+					confidence: 0.1,
+				}),
+				createInference('i4', [createFact('a4', 'p3', ['?a'])], createFact('b4', 'p4', ['?a']), {
+					confidence: 0.1,
+				}),
+				createInference('i5', [createFact('a5', 'p4', ['?a'])], createFact('b5', 'p5', ['?a']), {
+					confidence: 0.1,
+				}),
 			],
 		)
 		const result = expectInferential(reasoner.reason({}, definition))
@@ -1146,11 +1344,17 @@ describe('InferentialReasoner — confidence extremes', () => {
 
 describe('InferentialReasoner — dedup quirks', () => {
 	it('+0 and -0 terms collapse to a single derivation (SameValueZero), keeping the first', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'signed-zero',
 			'Signed-zero',
-			[fact('f1', 'value', [-0]), fact('f2', 'value', [0])],
-			[inference('i1', [fact('p1', 'value', ['?x'])], fact('c1', 'marked', ['?x']))],
+			[createFact('f1', 'value', [-0]), createFact('f2', 'value', [0])],
+			[
+				createInference(
+					'i1',
+					[createFact('p1', 'value', ['?x'])],
+					createFact('c1', 'marked', ['?x']),
+				),
+			],
 		)
 		const result = expectInferential(reasoner.reason({}, definition))
 		expect(result.derived).toHaveLength(1)
@@ -1159,11 +1363,17 @@ describe('InferentialReasoner — dedup quirks', () => {
 	})
 
 	it('two NaN-termed facts derive once (equalValues treats NaN as self-equal)', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'nan',
 			'NaN',
-			[fact('f1', 'value', [Number.NaN]), fact('f2', 'value', [Number.NaN])],
-			[inference('i1', [fact('p1', 'value', ['?x'])], fact('c1', 'marked', ['?x']))],
+			[createFact('f1', 'value', [Number.NaN]), createFact('f2', 'value', [Number.NaN])],
+			[
+				createInference(
+					'i1',
+					[createFact('p1', 'value', ['?x'])],
+					createFact('c1', 'marked', ['?x']),
+				),
+			],
 		)
 		const result = expectInferential(reasoner.reason({}, definition))
 		expect(result.derived).toHaveLength(1)
@@ -1172,30 +1382,48 @@ describe('InferentialReasoner — dedup quirks', () => {
 
 	it('object / array terms dedupe by REFERENCE — shared refs collapse, equal values do not', () => {
 		const shared = { k: 1 }
-		const sameRef = inferentialDefinition(
+		const sameRef = createInferentialDefinition(
 			'same-ref',
 			'Same-ref',
-			[fact('f1', 'item', [shared]), fact('f2', 'item', [shared])],
-			[inference('i1', [fact('p1', 'item', ['?x'])], fact('c1', 'tagged', ['?x']))],
+			[createFact('f1', 'item', [shared]), createFact('f2', 'item', [shared])],
+			[
+				createInference(
+					'i1',
+					[createFact('p1', 'item', ['?x'])],
+					createFact('c1', 'tagged', ['?x']),
+				),
+			],
 		)
 		// One shared reference → equalValues(shared, shared) is true → one derivation.
 		expect(expectInferential(reasoner.reason({}, sameRef)).derived).toHaveLength(1)
 
-		const distinct = inferentialDefinition(
+		const distinct = createInferentialDefinition(
 			'distinct-ref',
 			'Distinct-ref',
-			[fact('f1', 'item', [{ k: 1 }]), fact('f2', 'item', [{ k: 1 }])],
-			[inference('i1', [fact('p1', 'item', ['?x'])], fact('c1', 'tagged', ['?x']))],
+			[createFact('f1', 'item', [{ k: 1 }]), createFact('f2', 'item', [{ k: 1 }])],
+			[
+				createInference(
+					'i1',
+					[createFact('p1', 'item', ['?x'])],
+					createFact('c1', 'tagged', ['?x']),
+				),
+			],
 		)
 		// Two structurally-equal but distinct objects → === is false → two derivations.
 		expect(expectInferential(reasoner.reason({}, distinct)).derived).toHaveLength(2)
 
 		const array = [1]
-		const sharedArray = inferentialDefinition(
+		const sharedArray = createInferentialDefinition(
 			'shared-array',
 			'Shared-array',
-			[fact('f1', 'item', [array]), fact('f2', 'item', [array])],
-			[inference('i1', [fact('p1', 'item', ['?x'])], fact('c1', 'tagged', ['?x']))],
+			[createFact('f1', 'item', [array]), createFact('f2', 'item', [array])],
+			[
+				createInference(
+					'i1',
+					[createFact('p1', 'item', ['?x'])],
+					createFact('c1', 'tagged', ['?x']),
+				),
+			],
 		)
 		expect(expectInferential(reasoner.reason({}, sharedArray)).derived).toHaveLength(1)
 	})
@@ -1203,11 +1431,11 @@ describe('InferentialReasoner — dedup quirks', () => {
 
 describe('InferentialReasoner — extreme & unicode terms', () => {
 	it('adversarial / unicode string terms match and are preserved exactly', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'tricky',
 			'Tricky',
-			TRICKY_KEYS.map((key, index) => fact(`f${index}`, 'node', [key])),
-			[inference('i1', [fact('p1', 'node', ['?x'])], fact('c1', 'seen', ['?x']))],
+			TRICKY_KEYS.map((key, index) => createFact(`f${index}`, 'node', [key])),
+			[createInference('i1', [createFact('p1', 'node', ['?x'])], createFact('c1', 'seen', ['?x']))],
 		)
 		const result = expectInferential(reasoner.reason({}, definition))
 		// Every TRICKY_KEYS entry is a distinct string, so each derives its own seen fact.
@@ -1219,11 +1447,11 @@ describe('InferentialReasoner — extreme & unicode terms', () => {
 	})
 
 	it('EXTREME_NUMBERS terms derive, with +0 / -0 collapsing to one fewer', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'extreme',
 			'Extreme',
-			EXTREME_NUMBERS.map((value, index) => fact(`f${index}`, 'value', [value])),
-			[inference('i1', [fact('p1', 'value', ['?x'])], fact('c1', 'big', ['?x']))],
+			EXTREME_NUMBERS.map((value, index) => createFact(`f${index}`, 'value', [value])),
+			[createInference('i1', [createFact('p1', 'value', ['?x'])], createFact('c1', 'big', ['?x']))],
 		)
 		const result = expectInferential(reasoner.reason({}, definition))
 		// EXTREME_NUMBERS holds both +0 and -0; equalValues collapses them, so one fewer.
@@ -1237,13 +1465,13 @@ describe('InferentialReasoner — extreme & unicode terms', () => {
 
 describe('InferentialReasoner — backward ordering & uninstantiated derivations', () => {
 	it('returns the FIRST of two independently-provable inferences in declaration order', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'order',
 			'Order',
-			[fact('f1', 'p', ['a']), fact('f2', 'q', ['a'])],
+			[createFact('f1', 'p', ['a']), createFact('f2', 'q', ['a'])],
 			[
-				inference('first', [fact('p1', 'p', ['?x'])], fact('c1', 'r', ['?x'])),
-				inference('second', [fact('p2', 'q', ['?x'])], fact('c2', 's', ['?x'])),
+				createInference('first', [createFact('p1', 'p', ['?x'])], createFact('c1', 'r', ['?x'])),
+				createInference('second', [createFact('p2', 'q', ['?x'])], createFact('c2', 's', ['?x'])),
 			],
 			{ strategy: 'backward' },
 		)
@@ -1255,15 +1483,15 @@ describe('InferentialReasoner — backward ordering & uninstantiated derivations
 	})
 
 	it('a multi-variable backward conclusion stays uninstantiated (premises proved independently)', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'relate',
 			'Relate',
-			[fact('ffoo', 'foo', ['a']), fact('fbar', 'bar', ['b'])],
+			[createFact('ffoo', 'foo', ['a']), createFact('fbar', 'bar', ['b'])],
 			[
-				inference(
+				createInference(
 					'rel',
-					[fact('p1', 'foo', ['?x']), fact('p2', 'bar', ['?y'])],
-					fact('crel', 'relate', ['?x', '?y']),
+					[createFact('p1', 'foo', ['?x']), createFact('p2', 'bar', ['?y'])],
+					createFact('crel', 'relate', ['?x', '?y']),
 					{
 						confidence: 0.9,
 					},
@@ -1291,27 +1519,27 @@ describe('InferentialReasoner — predicate+arity index determinism (before/afte
 	// must stay byte-identical before and after. Pinned from OBSERVED behavior
 	// against the pre-change code (indexed by predicate alone).
 	function mixedArity() {
-		return inferentialDefinition(
+		return createInferentialDefinition(
 			'mixed-arity',
 			'Mixed-arity',
 			[
-				fact('f1', 'rel', ['a', 'b'], 0.9),
-				fact('f2', 'rel', ['x', 'y', 'z'], 0.8),
-				fact('f3', 'rel', ['b', 'c'], 0.7),
+				createFact('f1', 'rel', ['a', 'b'], 0.9),
+				createFact('f2', 'rel', ['x', 'y', 'z'], 0.8),
+				createFact('f3', 'rel', ['b', 'c'], 0.7),
 			],
 			[
-				inference(
+				createInference(
 					'pair-rule',
-					[fact('p1', 'rel', ['?x', '?y'])],
-					fact('c1', 'pair', ['?x', '?y']),
+					[createFact('p1', 'rel', ['?x', '?y'])],
+					createFact('c1', 'pair', ['?x', '?y']),
 					{
 						confidence: 0.5,
 					},
 				),
-				inference(
+				createInference(
 					'triple-rule',
-					[fact('p2', 'rel', ['?x', '?y', '?z'])],
-					fact('c2', 'triple', ['?x', '?y', '?z']),
+					[createFact('p2', 'rel', ['?x', '?y', '?z'])],
+					createFact('c2', 'triple', ['?x', '?y', '?z']),
 					{ confidence: 0.5 },
 				),
 			],
@@ -1344,7 +1572,7 @@ describe('InferentialReasoner — predicate+arity index determinism (before/afte
 describe('InferentialReasoner — sparse fact terms (post-fix factToKey)', () => {
 	it('forward-chains over a sparse fact without throwing, and dedupes it against its dense twin', () => {
 		// [a, hole, c] and ['a', undefined, 'c'] densify to the same key — one known fact.
-		const sparseFact = fact(
+		const sparseFact = createFact(
 			'f1',
 			'value',
 			sparse(3, [
@@ -1352,16 +1580,16 @@ describe('InferentialReasoner — sparse fact terms (post-fix factToKey)', () =>
 				[2, 'c'],
 			]),
 		)
-		const denseFact = fact('f2', 'value', ['a', undefined, 'c'])
-		const definition = inferentialDefinition(
+		const denseFact = createFact('f2', 'value', ['a', undefined, 'c'])
+		const definition = createInferentialDefinition(
 			'd',
 			'd',
 			[sparseFact, denseFact],
 			[
-				inference(
+				createInference(
 					'i1',
-					[fact('p1', 'value', ['?x', '?y', '?z'])],
-					fact('c1', 'seen', ['?x', '?y', '?z']),
+					[createFact('p1', 'value', ['?x', '?y', '?z'])],
+					createFact('c1', 'seen', ['?x', '?y', '?z']),
 				),
 			],
 		)
@@ -1372,12 +1600,18 @@ describe('InferentialReasoner — sparse fact terms (post-fix factToKey)', () =>
 	})
 
 	it('a premise variable at a hole position binds to undefined, not a match failure', () => {
-		const sparseFact = fact('f1', 'value', sparse(2, [[0, 'a']]))
-		const definition = inferentialDefinition(
+		const sparseFact = createFact('f1', 'value', sparse(2, [[0, 'a']]))
+		const definition = createInferentialDefinition(
 			'd',
 			'd',
 			[sparseFact],
-			[inference('i1', [fact('p1', 'value', ['?x', '?y'])], fact('c1', 'seen', ['?x', '?y']))],
+			[
+				createInference(
+					'i1',
+					[createFact('p1', 'value', ['?x', '?y'])],
+					createFact('c1', 'seen', ['?x', '?y']),
+				),
+			],
 		)
 		const result = expectInferential(reasoner.reason({}, definition))
 		expect(result.derived).toHaveLength(1)
@@ -1388,11 +1622,15 @@ describe('InferentialReasoner — sparse fact terms (post-fix factToKey)', () =>
 
 describe('InferentialReasoner — confidence pins', () => {
 	it('an inference confidence above 1 produces an unclamped derived confidence above 1', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'd',
 			'd',
-			[fact('f1', 'p', ['x'], 1.5)],
-			[inference('i1', [fact('p1', 'p', ['?x'])], fact('c1', 'q', ['?x']), { confidence: 2 })],
+			[createFact('f1', 'p', ['x'], 1.5)],
+			[
+				createInference('i1', [createFact('p1', 'p', ['?x'])], createFact('c1', 'q', ['?x']), {
+					confidence: 2,
+				}),
+			],
 		)
 		const result = expectInferential(reasoner.reason({}, definition))
 		// validate() would warn on both weights, but reason() never validates: 1.5 × 2 = 3.
@@ -1400,14 +1638,18 @@ describe('InferentialReasoner — confidence pins', () => {
 	})
 
 	it('backward chaining does NOT multiply premise confidences — forward and backward diverge', () => {
-		const facts = [fact('f1', 'a', ['x'], 0.5)]
+		const facts = [createFact('f1', 'a', ['x'], 0.5)]
 		const chain = [
-			inference('i1', [fact('p1', 'a', ['?x'])], fact('c1', 'b', ['?x']), { confidence: 0.5 }),
-			inference('i2', [fact('p2', 'b', ['?x'])], fact('c2', 'c', ['?x']), { confidence: 0.5 }),
+			createInference('i1', [createFact('p1', 'a', ['?x'])], createFact('c1', 'b', ['?x']), {
+				confidence: 0.5,
+			}),
+			createInference('i2', [createFact('p2', 'b', ['?x'])], createFact('c2', 'c', ['?x']), {
+				confidence: 0.5,
+			}),
 		]
 		// Forward: b = 0.5(fact) × 0.5(i1) = 0.25; c = 0.25(b, now known) × 0.5(i2) = 0.125.
 		const forward = expectInferential(
-			reasoner.reason({}, inferentialDefinition('d', 'd', facts, chain, { depth: 5 })),
+			reasoner.reason({}, createInferentialDefinition('d', 'd', facts, chain, { depth: 5 })),
 		)
 		const b = forward.derived.find((derived) => derived.predicate === 'b')
 		const c = forward.derived.find((derived) => derived.predicate === 'c')
@@ -1419,7 +1661,7 @@ describe('InferentialReasoner — confidence pins', () => {
 		const backward = expectInferential(
 			reasoner.reason(
 				{},
-				inferentialDefinition('d', 'd', facts, chain, { strategy: 'backward', depth: 5 }),
+				createInferentialDefinition('d', 'd', facts, chain, { strategy: 'backward', depth: 5 }),
 			),
 		)
 		expect(backward.derived).toHaveLength(1)
@@ -1428,17 +1670,17 @@ describe('InferentialReasoner — confidence pins', () => {
 	})
 
 	it('a 30-step 0.1-confidence chain underflows to exactly 0 and stays there', () => {
-		const facts = [fact('f0', 'p0', ['x'])]
+		const facts = [createFact('f0', 'p0', ['x'])]
 		const chain = sequence(30).map((step) =>
-			inference(
+			createInference(
 				`i${step}`,
-				[fact(`a${step}`, `p${step}`, ['?a'])],
-				fact(`b${step}`, `p${step + 1}`, ['?a']),
+				[createFact(`a${step}`, `p${step}`, ['?a'])],
+				createFact(`b${step}`, `p${step + 1}`, ['?a']),
 				{ confidence: 0.1 },
 			),
 		)
 		const result = expectInferential(
-			reasoner.reason({}, inferentialDefinition('d', 'd', facts, chain, { depth: 30 })),
+			reasoner.reason({}, createInferentialDefinition('d', 'd', facts, chain, { depth: 30 })),
 		)
 		expect(result.derived).toHaveLength(30)
 		const confidenceOf = (predicate: string) =>
@@ -1456,7 +1698,7 @@ describe('InferentialReasoner — confidence pins', () => {
 
 describe('InferentialReasoner — subject injection edge fixtures', () => {
 	it('INTEGER_KEY_SUBJECT injects has() facts in Object.keys enumeration order', () => {
-		const definition = inferentialDefinition('d', 'd', [], [])
+		const definition = createInferentialDefinition('d', 'd', [], [])
 		const result = expectInferential(reasoner.reason(INTEGER_KEY_SUBJECT, definition))
 		// Integer-index keys enumerate ascending numerically first ("1", "2", "10"),
 		// then the ordinary string keys in insertion order ("zeta", "alpha") — "id"
@@ -1473,7 +1715,7 @@ describe('InferentialReasoner — subject injection edge fixtures', () => {
 	})
 
 	it('ADVERSARIAL_VALUE_SUBJECT: the symbol key is invisible, bigint/symbol/function kept as terms', () => {
-		const definition = inferentialDefinition('d', 'd', [], [])
+		const definition = createInferentialDefinition('d', 'd', [], [])
 		const result = expectInferential(reasoner.reason(ADVERSARIAL_VALUE_SUBJECT, definition))
 		// id skipped by name; the symbol-keyed property never surfaces via Object.keys —
 		// only big / sym / fn become has() facts. typeof bigint/symbol/function is never
@@ -1491,19 +1733,19 @@ describe('InferentialReasoner — subject injection edge fixtures', () => {
 describe('InferentialReasoner — depth-cap-bounded backward proof', () => {
 	function chainOf(length: number) {
 		return sequence(length).map((step) =>
-			inference(
+			createInference(
 				`i${step}`,
-				[fact(`a${step}`, `p${step + 1}`, ['?x'])],
-				fact(`c${step}`, `p${step}`, ['?x']),
+				[createFact(`a${step}`, `p${step + 1}`, ['?x'])],
+				createFact(`c${step}`, `p${step}`, ['?x']),
 			),
 		)
 	}
 
 	it('a 10-level proof chain proves exactly at the default depth cap of 10', () => {
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'chain10',
 			'Chain10',
-			[fact('fbase', 'p10', ['x'])],
+			[createFact('fbase', 'p10', ['x'])],
 			chainOf(10),
 			{ strategy: 'backward', depth: 10 },
 		)
@@ -1524,10 +1766,10 @@ describe('InferentialReasoner — depth-cap-bounded backward proof', () => {
 		// i0's conclusion "p0" needs 11 hops to fbase (p11) — one past the cap — and
 		// fails; declaration order moves on to i1's "p1", needing exactly 10 hops,
 		// which lands precisely at the cap boundary and succeeds.
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'chain11',
 			'Chain11',
-			[fact('fbase', 'p11', ['x'])],
+			[createFact('fbase', 'p11', ['x'])],
 			chainOf(11),
 			{ strategy: 'backward', depth: 10 },
 		)
@@ -1544,15 +1786,17 @@ describe('InferentialReasoner — depth-cap-bounded backward proof', () => {
 describe('InferentialReasoner — sparse array positions are hole-tolerant', () => {
 	it('a sparse facts list derives from only the present facts — holes are skipped', () => {
 		const facts = sparse(3, [
-			[0, fact('f1', 'p', ['a'])],
-			[2, fact('f2', 'p', ['b'])],
+			[0, createFact('f1', 'p', ['a'])],
+			[2, createFact('f2', 'p', ['b'])],
 		])
 		const definition = {
 			reasoning: 'inferential' as const,
 			id: 'd',
 			name: 'd',
 			facts,
-			inferences: [inference('i1', [fact('p1', 'p', ['?x'])], fact('c1', 'q', ['?x']))],
+			inferences: [
+				createInference('i1', [createFact('p1', 'p', ['?x'])], createFact('c1', 'q', ['?x'])),
+			],
 		}
 		const result = expectInferential(
 			invokeUnchecked<ReasonResult>(reasoner, reasoner.reason, [{}, definition]),
@@ -1567,13 +1811,13 @@ describe('InferentialReasoner — sparse array positions are hole-tolerant', () 
 
 	it('a sparse inferences list derives from only the present inferences — holes are skipped', () => {
 		const inferences = sparse(2, [
-			[1, inference('i1', [fact('p1', 'p', ['?x'])], fact('c1', 'q', ['?x']))],
+			[1, createInference('i1', [createFact('p1', 'p', ['?x'])], createFact('c1', 'q', ['?x']))],
 		])
 		const definition = {
 			reasoning: 'inferential' as const,
 			id: 'd',
 			name: 'd',
-			facts: [fact('f1', 'p', ['a'])],
+			facts: [createFact('f1', 'p', ['a'])],
 			inferences,
 		}
 		const result = expectInferential(

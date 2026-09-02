@@ -887,9 +887,9 @@ export interface ReasonInterface {
 // collection-level pure helpers and emits through the manager's OWN emitter;
 // the accessors are pure reads and do NOT emit. `destroy()` is idempotent and
 // tears the emitter down LAST; any call after it throws
-// `ReasonError('DESTROYED', …)`. The write-only `collection` setter is the
-// owning builder's bulk re-seat channel (used by `merge`) — it replaces the
-// whole collection in one silent assignment (no per-element events).
+// `ReasonError('DESTROYED', …)`. `seat` is the owning builder's bulk re-seat
+// channel (used by `merge`) — it replaces the whole collection in one silent
+// call (no per-element events).
 
 /**
  * The {@link DefinitionBuilderInterface} manager over a quantitative
@@ -902,13 +902,13 @@ export interface ReasonInterface {
  */
 export interface GroupManagerInterface {
 	readonly emitter: EmitterInterface<GroupManagerEventMap>
-	set collection(value: readonly FactorGroup[])
 	group(id: string): FactorGroup | undefined
 	groups(): readonly FactorGroup[]
 	append(group: FactorGroup, target?: string): void
 	prepend(group: FactorGroup, target?: string): void
 	replace(group: FactorGroup): void
 	remove(id: string): void
+	seat(items: readonly FactorGroup[]): void
 	destroy(): void
 }
 
@@ -1003,13 +1003,13 @@ export interface FactorManagerOptions {
  */
 export interface RuleManagerInterface {
 	readonly emitter: EmitterInterface<RuleManagerEventMap>
-	set collection(value: readonly Rule[])
 	rule(id: string): Rule | undefined
 	rules(): readonly Rule[]
 	append(rule: Rule, target?: string): void
 	prepend(rule: Rule, target?: string): void
 	replace(rule: Rule): void
 	remove(id: string): void
+	seat(items: readonly Rule[]): void
 	destroy(): void
 }
 
@@ -1050,13 +1050,13 @@ export interface RuleManagerOptions {
  */
 export interface EquationManagerInterface {
 	readonly emitter: EmitterInterface<EquationManagerEventMap>
-	set collection(value: readonly Equation[])
 	equation(id: string): Equation | undefined
 	equations(): readonly Equation[]
 	append(equation: Equation, target?: string): void
 	prepend(equation: Equation, target?: string): void
 	replace(equation: Equation): void
 	remove(id: string): void
+	seat(items: readonly Equation[]): void
 	destroy(): void
 }
 
@@ -1093,13 +1093,13 @@ export interface EquationManagerOptions {
  */
 export interface FactManagerInterface {
 	readonly emitter: EmitterInterface<FactManagerEventMap>
-	set collection(value: readonly Fact[])
 	fact(id: string): Fact | undefined
 	facts(): readonly Fact[]
 	append(fact: Fact, target?: string): void
 	prepend(fact: Fact, target?: string): void
 	replace(fact: Fact): void
 	remove(id: string): void
+	seat(items: readonly Fact[]): void
 	destroy(): void
 }
 
@@ -1140,13 +1140,13 @@ export interface FactManagerOptions {
  */
 export interface InferenceManagerInterface {
 	readonly emitter: EmitterInterface<InferenceManagerEventMap>
-	set collection(value: readonly Inference[])
 	inference(id: string): Inference | undefined
 	inferences(): readonly Inference[]
 	append(inference: Inference, target?: string): void
 	prepend(inference: Inference, target?: string): void
 	replace(inference: Inference): void
 	remove(id: string): void
+	seat(items: readonly Inference[]): void
 	destroy(): void
 }
 
@@ -1184,11 +1184,11 @@ export interface InferenceManagerOptions {
  */
 export interface VariableManagerInterface {
 	readonly emitter: EmitterInterface<VariableManagerEventMap>
-	set collection(value: Readonly<Record<string, number>>)
 	variable(name: string): number | undefined
 	variables(): Readonly<Record<string, number>>
 	add(name: string, value: number): void
 	remove(name: string): void
+	seat(items: Readonly<Record<string, number>>): void
 	destroy(): void
 }
 

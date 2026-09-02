@@ -2,7 +2,7 @@
 
 > A zero-dependency, synchronous, deterministic reasoning engine: declarative, **JSON-serializable definitions** are evaluated against **subjects** (plain data records) to produce traceable **results**. Four strategies behind one dispatch surface — `quantitative` (factor-based numeric scoring), `logical` (rule-based boolean deduction with forward / backward chaining), `symbolic` (algebraic equation solving by variable isolation), `inferential` (fact derivation with unification variables and proof trees) — each a `ReasonerInterface` registered on the thin `Reason` orchestrator, with three injectable operators (`Evaluator` / `Transformer` / `Aggregator`) doing the shared arithmetic. Every result is a fresh object carrying `success`, a human-readable `trace`, and accumulated `errors`; nothing mutates its inputs.
 >
-> The design stance is **data in, data out, no surprises**: definitions are pure data (built by hand or with the shipped builders), the orchestrator holds NO strategy logic (dispatch is a registry lookup by the `reasoning` discriminant), the operators are total (an unknown comparison surfaces as a `CheckResult.error`, an unknown math operation is a no-op, divide-by-zero is `NaN` — never a throw), and a reasoner never assumes `validate` ran — a malformed definition yields a failure RESULT, reserving throws for caller misuse (a coded `ReasonError`). On top of the evaluation engine sits the definitions & subjects capability layer: a pure copy-on-write helper family that changes / extends / merges / round-trips definitions as data, and two brand-guarded workspace builders — `DefinitionBuilder` (seven self-owning managers, taverna `AgentContext`-shaped) and `SubjectBuilder` (one flat collection, `Workspace`-shaped) — that accumulate state through named methods and `build()` a fresh plain payload on demand. Building happens OUTSIDE the engine: `reason` and `validate` take only the plain data, so a builder's `build()` output is passed at the call site. Deliberately absent: async reasoners, definition persistence, and probabilistic strategies beyond the multiplicative `confidence` of inferential facts. Source: [`src/core`](../src/core). Surfaced through the `@src/core` barrel.
+> The design stance is **data in, data out, no surprises**: definitions are pure data (built by hand or with the shipped value factories), the orchestrator holds NO strategy logic (dispatch is a registry lookup by the `reasoning` discriminant), the operators are total (an unknown comparison surfaces as a `CheckResult.error`, an unknown math operation is a no-op, divide-by-zero is `NaN` — never a throw), and a reasoner never assumes `validate` ran — a malformed definition yields a failure RESULT, reserving throws for caller misuse (a coded `ReasonError`). On top of the evaluation engine sits the definitions & subjects capability layer: a pure copy-on-write helper family that changes / extends / merges / round-trips definitions as data, and two brand-guarded workspace builders — `DefinitionBuilder` (seven self-owning managers, taverna `AgentContext`-shaped) and `SubjectBuilder` (one flat collection, `Workspace`-shaped) — that accumulate state through named methods and `build()` a fresh plain payload on demand. Building happens OUTSIDE the engine: `reason` and `validate` take only the plain data, so a builder's `build()` output is passed at the call site. Deliberately absent: async reasoners, definition persistence, and probabilistic strategies beyond the multiplicative `confidence` of inferential facts. Source: [`src/core`](../src/core). Surfaced through the `@src/core` barrel.
 
 ## Surface
 
@@ -10,20 +10,20 @@ Create an orchestrator over the reasoners you need, build a definition, then eva
 
 ```ts
 import {
+	createFactorGroup,
+	createFieldFactor,
+	createQuantitativeDefinition,
 	createQuantitativeReasoner,
 	createReason,
-	factorGroup,
-	fieldFactor,
-	quantitativeDefinition,
-	staticFactor,
+	createStaticFactor,
 } from '@orkestrel/reason'
 
 const reason = createReason({ reasoners: [createQuantitativeReasoner()] })
 
-const definition = quantitativeDefinition('risk', 'Risk score', [
-	factorGroup('drivers', 'sum', [
-		fieldFactor('age', 'age'), // reads subject.age, parseNumber-coerced (§14)
-		staticFactor('floor', 10), // a fixed contribution
+const definition = createQuantitativeDefinition('risk', 'Risk score', [
+	createFactorGroup('drivers', 'sum', [
+		createFieldFactor('age', 'age'), // reads subject.age, parseNumber-coerced (§14)
+		createStaticFactor('floor', 10), // a fixed contribution
 	]),
 ])
 
@@ -37,7 +37,7 @@ reason.reasoner('quantitative')?.supports(definition) // the reasoner's own guar
 
 `reason` dispatches by `definition.reasoning` — pass an ARRAY of subjects and the batch overload maps them in order to an equal-length result array. Results are a discriminated union (`reasoning` names the axis, AGENTS §4.4): narrow with the discriminant and read the strategy-specific payload (`value` / `conclusion` / `solutions` / `derived`).
 
-### Factories
+### Entity factories
 
 | API                          | Kind     | Summary                                                                                                                                                                             |
 | ---------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -93,37 +93,39 @@ The definitions & subjects capability layer's stateful workspace builders (taver
 | `InferenceManager`  | class | The self-owning, kind-free manager over an inferential definition's `inferences`.                                                                                                        |
 | `SubjectBuilder`    | class | The `SUBJECT_BUILDER_BRAND`-carrying stateful builder — a flat single-collection workspace — `field` / `fields` + `set` / `remove` / `merge` / `clear` / `repeat` / `build` / `destroy`. |
 
-### Builders
+### Value factories
 
-| API                      | Kind     | Builds…                                                                                         |
-| ------------------------ | -------- | ----------------------------------------------------------------------------------------------- |
-| `check`                  | function | a `Check` — field / comparison / expected value.                                                |
-| `atom`                   | function | an atom `Expression` wrapping one `check(...)`.                                                 |
-| `compound`               | function | a compound `Expression` — a `LogicalOperator` over operands.                                    |
-| `rule`                   | function | a `Rule` from id / premises / conclusion (`name` defaults to the id; overrides merge).          |
-| `transform`              | function | a `Transform` — the `operand` key is OMITTED when absent (round-trips the exact guard).         |
-| `bounds`                 | function | a `Bounds` — absent sides omitted (unbounded).                                                  |
-| `variable`               | function | a variable `SymbolicExpression` leaf.                                                           |
-| `constant`               | function | a constant `SymbolicExpression` leaf.                                                           |
-| `operation`              | function | an operation `SymbolicExpression` node (`right` omitted when absent — the unary form).          |
-| `equation`               | function | an `Equation` — left / right solved for `target` (`name` defaults to the id).                   |
-| `fact`                   | function | a `Fact` — `confidence` ALWAYS set (`?? DEFAULT_CONFIDENCE`), the one builder that fills it in. |
-| `inference`              | function | an `Inference` from id / premise patterns / conclusion pattern.                                 |
-| `staticSource`           | function | a `Source` yielding a fixed number.                                                             |
-| `fieldSource`            | function | a `Source` reading a subject field as a number.                                                 |
-| `lookupSource`           | function | a `Source` mapping a stringified field value through a table.                                   |
-| `rangeSource`            | function | a `Source` banding a numeric field through ordered ranges (first match wins).                   |
-| `staticFactor`           | function | a `Factor` over a `staticSource` (`name` defaults to the id; overrides merge).                  |
-| `fieldFactor`            | function | a `Factor` over a `fieldSource`.                                                                |
-| `lookupFactor`           | function | a `Factor` over a `lookupSource`.                                                               |
-| `rangeFactor`            | function | a `Factor` over a `rangeSource`.                                                                |
-| `factorGroup`            | function | a `FactorGroup` from id / aggregation / factors.                                                |
-| `quantitativeDefinition` | function | a `QuantitativeDefinition` (`aggregation` defaults to `'sum'`).                                 |
-| `logicalDefinition`      | function | a `LogicalDefinition` (`strategy` defaults to `'forward'`).                                     |
-| `symbolicDefinition`     | function | a `SymbolicDefinition` (`variables` defaults to `{}`).                                          |
-| `inferentialDefinition`  | function | an `InferentialDefinition` from facts + inferences (`strategy` defaults to `'forward'`).        |
+The other half of `factories.ts`: plain-data constructors for the declarative definition vocabulary — no lifecycle, no emitter, no identity. Reach for the entity factories earlier when you need a working instance instead.
 
-Every builder returns a fresh object and OMITS absent optional keys entirely, so its output round-trips the exact-record validators below.
+| API                            | Kind     | Creates…                                                                                        |
+| ------------------------------ | -------- | ----------------------------------------------------------------------------------------------- |
+| `createCheck`                  | function | a `Check` — field / comparison / expected value.                                                |
+| `createAtom`                   | function | an atom `Expression` wrapping one `createCheck(...)`.                                           |
+| `createCompound`               | function | a compound `Expression` — a `LogicalOperator` over operands.                                    |
+| `createRule`                   | function | a `Rule` from id / premises / conclusion (`name` defaults to the id; overrides merge).          |
+| `createTransform`              | function | a `Transform` — the `operand` key is OMITTED when absent (round-trips the exact guard).         |
+| `createBounds`                 | function | a `Bounds` — absent sides omitted (unbounded).                                                  |
+| `createVariable`               | function | a variable `SymbolicExpression` leaf.                                                           |
+| `createConstant`               | function | a constant `SymbolicExpression` leaf.                                                           |
+| `createOperation`              | function | an operation `SymbolicExpression` node (`right` omitted when absent — the unary form).          |
+| `createEquation`               | function | an `Equation` — left / right solved for `target` (`name` defaults to the id).                   |
+| `createFact`                   | function | a `Fact` — `confidence` ALWAYS set (`?? DEFAULT_CONFIDENCE`), the one factory that fills it in. |
+| `createInference`              | function | an `Inference` from id / premise patterns / conclusion pattern.                                 |
+| `createStaticSource`           | function | a `Source` yielding a fixed number.                                                             |
+| `createFieldSource`            | function | a `Source` reading a subject field as a number.                                                 |
+| `createLookupSource`           | function | a `Source` mapping a stringified field value through a table.                                   |
+| `createRangeSource`            | function | a `Source` banding a numeric field through ordered ranges (first match wins).                   |
+| `createStaticFactor`           | function | a `Factor` over a static `Source` (`name` defaults to the id; overrides merge).                 |
+| `createFieldFactor`            | function | a `Factor` over a field `Source`.                                                               |
+| `createLookupFactor`           | function | a `Factor` over a lookup `Source`.                                                              |
+| `createRangeFactor`            | function | a `Factor` over a range `Source`.                                                               |
+| `createFactorGroup`            | function | a `FactorGroup` from id / aggregation / factors.                                                |
+| `createQuantitativeDefinition` | function | a `QuantitativeDefinition` (`aggregation` defaults to `'sum'`).                                 |
+| `createLogicalDefinition`      | function | a `LogicalDefinition` (`strategy` defaults to `'forward'`).                                     |
+| `createSymbolicDefinition`     | function | a `SymbolicDefinition` (`variables` defaults to `{}`).                                          |
+| `createInferentialDefinition`  | function | an `InferentialDefinition` from facts + inferences (`strategy` defaults to `'forward'`).        |
+
+Every value factory returns a fresh object and OMITS absent optional keys entirely, so its output round-trips the exact-record validators below.
 
 ### Helpers
 
@@ -132,7 +134,7 @@ Every builder returns a fresh object and OMITS absent optional keys entirely, so
 | `formatField`              | function | Format a `FieldPath` for display — the string key itself, or the array segments joined with `.`.                                  |
 | `clamp`                    | function | Clamp a number to inclusive `Bounds` (either side optional; no bounds → unchanged).                                               |
 | `roundTo`                  | function | Round to a fixed count of decimal places (`Math.round` semantics; extreme precisions pass the value through).                     |
-| `isWithinBounds`           | function | Whether a value is a number inside an inclusive `[minimum, maximum]` array range — the `between` / `outside` range test.          |
+| `matchesBounds`            | function | Whether a value is a number inside an inclusive `[minimum, maximum]` array range — the `between` / `outside` range test.          |
 | `emptyAggregate`           | function | The empty-input identity of one `Aggregation` (`sum` / `average` → `0`, `product` → `1`, `minimum` / `maximum` → `NaN`).          |
 | `resolveSource`            | function | Resolve one factor `Source` against a subject, taking the `fallback` when it does not resolve.                                    |
 | `equalValues`              | function | SameValueZero equality (`NaN` equals `NaN`, `+0` equals `-0`) — the chaining reasoners' derivation equality.                      |
@@ -219,7 +221,6 @@ Total guards (AGENTS §14) return `false`, never throw, for adversarial input su
 | `isComparison`             | const    | `Comparison`.                                                                                                                                                                                         |
 | `isLogicalOperator`        | const    | `LogicalOperator`.                                                                                                                                                                                    |
 | `isFieldPath`              | const    | `FieldPath` — a string or an array of strings.                                                                                                                                                        |
-| `isSubject`                | const    | `Subject` — a plain record (`isRecord` typed to the subject alias).                                                                                                                                   |
 | `isNumberRecord`           | const    | `Readonly<Record<string, number>>` — the open dictionary of a lookup `table` / `variables`.                                                                                                           |
 | `isCheck`                  | function | `Check` — the `value` key must be PRESENT, but may hold anything (including `null`).                                                                                                                  |
 | `isTransform`              | function | `Transform`.                                                                                                                                                                                          |
@@ -360,25 +361,25 @@ Total guards (AGENTS §14) return `false`, never throw, for adversarial input su
 | `ReasonEventMap`              | type      | The orchestrator's push observation surface (§13) — `register(reasoning)` · `reason(result)` · `error(error)` · `destroy()`.                                               |
 | `ReasonOptions`               | interface | `{ reasoners?, bail?, validate?, on?, error? }` — input to `createReason`.                                                                                                 |
 | `ReasonInterface`             | interface | `emitter` + `reason` / `register` / `reasoner` / `reasoners` / `supports` / `validate` / `destroy`.                                                                        |
-| `GroupManagerInterface`       | interface | The self-owning, kind-free manager over `groups` — `emitter` + `group` / `groups` + `append` / `prepend` / `replace` / `remove` / `destroy`.                               |
+| `GroupManagerInterface`       | interface | The self-owning, kind-free manager over `groups` — `emitter` + `group` / `groups` + `append` / `prepend` / `replace` / `remove` / `seat` / `destroy`.                      |
 | `GroupManagerEventMap`        | type      | `GroupManager`'s push surface (§13) — `append(id)` · `prepend(id)` · `replace(id)` · `remove(id)` · `destroy()`.                                                           |
 | `GroupManagerOptions`         | interface | `{ groups?, on?, error? }` — input to `createGroupManager`.                                                                                                                |
 | `FactorManagerInterface`      | interface | The divergent manager over a group's `factors`, `groupId`-threaded — `emitter` + `factor` / `factors` + `append` / `prepend` / `replace` / `remove` / `destroy`.           |
 | `FactorManagerEventMap`       | type      | `FactorManager`'s push surface (§13) — `append(id)` · `prepend(id)` · `replace(id)` · `remove(id)` · `destroy()`.                                                          |
 | `FactorManagerOptions`        | interface | `{ on?, error? }` — input to `createFactorManager` (the sibling `GroupManager` is a constructor argument).                                                                 |
-| `RuleManagerInterface`        | interface | The self-owning, kind-free manager over `rules` — `emitter` + `rule` / `rules` + `append` / `prepend` / `replace` / `remove` / `destroy`.                                  |
+| `RuleManagerInterface`        | interface | The self-owning, kind-free manager over `rules` — `emitter` + `rule` / `rules` + `append` / `prepend` / `replace` / `remove` / `seat` / `destroy`.                         |
 | `RuleManagerEventMap`         | type      | `RuleManager`'s push surface (§13) — `append(id)` · `prepend(id)` · `replace(id)` · `remove(id)` · `destroy()`.                                                            |
 | `RuleManagerOptions`          | interface | `{ rules?, on?, error? }` — input to `createRuleManager`.                                                                                                                  |
-| `EquationManagerInterface`    | interface | The self-owning, kind-free manager over `equations` — `emitter` + `equation` / `equations` + `append` / `prepend` / `replace` / `remove` / `destroy`.                      |
+| `EquationManagerInterface`    | interface | The self-owning, kind-free manager over `equations` — `emitter` + `equation` / `equations` + `append` / `prepend` / `replace` / `remove` / `seat` / `destroy`.             |
 | `EquationManagerEventMap`     | type      | `EquationManager`'s push surface (§13) — `append(id)` · `prepend(id)` · `replace(id)` · `remove(id)` · `destroy()`.                                                        |
 | `EquationManagerOptions`      | interface | `{ equations?, on?, error? }` — input to `createEquationManager`.                                                                                                          |
-| `FactManagerInterface`        | interface | The self-owning, kind-free manager over `facts` — `emitter` + `fact` / `facts` + `append` / `prepend` / `replace` / `remove` / `destroy`.                                  |
+| `FactManagerInterface`        | interface | The self-owning, kind-free manager over `facts` — `emitter` + `fact` / `facts` + `append` / `prepend` / `replace` / `remove` / `seat` / `destroy`.                         |
 | `FactManagerEventMap`         | type      | `FactManager`'s push surface (§13) — `append(id)` · `prepend(id)` · `replace(id)` · `remove(id)` · `destroy()`.                                                            |
 | `FactManagerOptions`          | interface | `{ facts?, on?, error? }` — input to `createFactManager`.                                                                                                                  |
-| `InferenceManagerInterface`   | interface | The self-owning, kind-free manager over `inferences` — `emitter` + `inference` / `inferences` + `append` / `prepend` / `replace` / `remove` / `destroy`.                   |
+| `InferenceManagerInterface`   | interface | The self-owning, kind-free manager over `inferences` — `emitter` + `inference` / `inferences` + `append` / `prepend` / `replace` / `remove` / `seat` / `destroy`.          |
 | `InferenceManagerEventMap`    | type      | `InferenceManager`'s push surface (§13) — `append(id)` · `prepend(id)` · `replace(id)` · `remove(id)` · `destroy()`.                                                       |
 | `InferenceManagerOptions`     | interface | `{ inferences?, on?, error? }` — input to `createInferenceManager`.                                                                                                        |
-| `VariableManagerInterface`    | interface | The self-owning, kind-free manager over `variables` (name-keyed record) — `emitter` + `variable` / `variables` + `add` / `remove` / `destroy`.                             |
+| `VariableManagerInterface`    | interface | The self-owning, kind-free manager over `variables` (name-keyed record) — `emitter` + `variable` / `variables` + `add` / `remove` / `seat` / `destroy`.                    |
 | `VariableManagerEventMap`     | type      | `VariableManager`'s push surface (§13) — `add(name)` · `remove(name)` · `destroy()`.                                                                                       |
 | `VariableManagerOptions`      | interface | `{ variables?, on?, error? }` — input to `createVariableManager`.                                                                                                          |
 | `DefinitionBuilderEventMap`   | type      | The `DefinitionBuilder`'s push surface (§13) — `merge(reasoning)` · `clear(key)` · `destroy()` (per-element mutations live on the managers' own emitters).                 |
@@ -390,7 +391,7 @@ Total guards (AGENTS §14) return `false`, never throw, for adversarial input su
 
 ## Methods
 
-The public methods of each behavioral interface — one table per type, keyed by its backticked name, every call-signature member listed (the `readonly` data members — `emitter` on the orchestrator, the builders, and every manager; `id` / `reasoning` on reasoners and operators; each manager's write-only `collection` re-seat setter — stay off the method tables). Each implementing class (`Reason`; the four reasoners; `Evaluator` / `Transformer` / `Aggregator`; the `DefinitionBuilder` / `SubjectBuilder` builders and the seven manager classes) exposes exactly its interface's methods, so this doubles as the per-instance method surface (AGENTS §22).
+The public methods of each behavioral interface — one table per type, keyed by its backticked name, every call-signature member listed (the `readonly` data members — `emitter` on the orchestrator, the builders, and every manager; `id` / `reasoning` on reasoners and operators — stay off the method tables). Each implementing class (`Reason`; the four reasoners; `Evaluator` / `Transformer` / `Aggregator`; the `DefinitionBuilder` / `SubjectBuilder` builders and the seven manager classes) exposes exactly its interface's methods, so this doubles as the per-instance method surface (AGENTS §22).
 
 #### `ReasonInterface`
 
@@ -448,6 +449,7 @@ The self-owning manager over a quantitative definition's `groups`. Managers are 
 | `prepend` | `void`                     | Insert a group, dedup-then-insert at the start or before `target` (`TARGET` on a naming miss). |
 | `replace` | `void`                     | Swap a same-id group in place (appends when absent).                                           |
 | `remove`  | `void`                     | Filter a group out by id (no-op when absent).                                                  |
+| `seat`    | `void`                     | Replace the whole collection in one silent call — the owning builder's bulk re-seat channel.   |
 | `destroy` | `void`                     | Idempotent teardown — emits `destroy`, then destroys the emitter LAST.                         |
 
 #### `FactorManagerInterface`
@@ -476,49 +478,53 @@ The self-owning manager over a logical definition's `rules`. Rule order is load-
 | `prepend` | `void`              | Insert a rule, dedup-then-insert at the start or before `target`.                                                    |
 | `replace` | `void`              | Swap a same-id rule in place (appends when absent).                                                                  |
 | `remove`  | `void`              | Filter a rule out by id (no-op when absent).                                                                         |
+| `seat`    | `void`              | Replace the whole collection in one silent call — the owning builder's bulk re-seat channel.                         |
 | `destroy` | `void`              | Idempotent teardown — emits `destroy`, then destroys the emitter LAST.                                               |
 
 #### `EquationManagerInterface`
 
 The self-owning manager over a symbolic definition's `equations`. Equation order is strongly load-bearing — equations solve strictly in order and each rounded solution feeds forward. Managers are KIND-FREE — an off-kind collection is ignored by `build()`, never a throw. A call after `destroy()` throws `DESTROYED`.
 
-| Method      | Returns                 | Behavior                                                               |
-| ----------- | ----------------------- | ---------------------------------------------------------------------- |
-| `equation`  | `Equation \| undefined` | Look up ONE equation by id (the §9.1 singular accessor).               |
-| `equations` | `readonly Equation[]`   | List ALL equations in solve order (the §9.1 plural accessor).          |
-| `append`    | `void`                  | Insert an equation, dedup-then-insert at the end or after `target`.    |
-| `prepend`   | `void`                  | Insert an equation, dedup-then-insert at the start or before `target`. |
-| `replace`   | `void`                  | Swap a same-id equation in place (appends when absent).                |
-| `remove`    | `void`                  | Filter an equation out by id (no-op when absent).                      |
-| `destroy`   | `void`                  | Idempotent teardown — emits `destroy`, then destroys the emitter LAST. |
+| Method      | Returns                 | Behavior                                                                                     |
+| ----------- | ----------------------- | -------------------------------------------------------------------------------------------- |
+| `equation`  | `Equation \| undefined` | Look up ONE equation by id (the §9.1 singular accessor).                                     |
+| `equations` | `readonly Equation[]`   | List ALL equations in solve order (the §9.1 plural accessor).                                |
+| `append`    | `void`                  | Insert an equation, dedup-then-insert at the end or after `target`.                          |
+| `prepend`   | `void`                  | Insert an equation, dedup-then-insert at the start or before `target`.                       |
+| `replace`   | `void`                  | Swap a same-id equation in place (appends when absent).                                      |
+| `remove`    | `void`                  | Filter an equation out by id (no-op when absent).                                            |
+| `seat`      | `void`                  | Replace the whole collection in one silent call — the owning builder's bulk re-seat channel. |
+| `destroy`   | `void`                  | Idempotent teardown — emits `destroy`, then destroys the emitter LAST.                       |
 
 #### `FactManagerInterface`
 
 The self-owning manager over an inferential definition's `facts`. Managers are KIND-FREE — an off-kind collection is ignored by `build()`, never a throw. A call after `destroy()` throws `DESTROYED`.
 
-| Method    | Returns             | Behavior                                                               |
-| --------- | ------------------- | ---------------------------------------------------------------------- |
-| `fact`    | `Fact \| undefined` | Look up ONE fact by id (the §9.1 singular accessor).                   |
-| `facts`   | `readonly Fact[]`   | List ALL facts in order (the §9.1 plural accessor).                    |
-| `append`  | `void`              | Insert a fact, dedup-then-insert at the end or after `target`.         |
-| `prepend` | `void`              | Insert a fact, dedup-then-insert at the start or before `target`.      |
-| `replace` | `void`              | Swap a same-id fact in place (appends when absent).                    |
-| `remove`  | `void`              | Filter a fact out by id (no-op when absent).                           |
-| `destroy` | `void`              | Idempotent teardown — emits `destroy`, then destroys the emitter LAST. |
+| Method    | Returns             | Behavior                                                                                     |
+| --------- | ------------------- | -------------------------------------------------------------------------------------------- |
+| `fact`    | `Fact \| undefined` | Look up ONE fact by id (the §9.1 singular accessor).                                         |
+| `facts`   | `readonly Fact[]`   | List ALL facts in order (the §9.1 plural accessor).                                          |
+| `append`  | `void`              | Insert a fact, dedup-then-insert at the end or after `target`.                               |
+| `prepend` | `void`              | Insert a fact, dedup-then-insert at the start or before `target`.                            |
+| `replace` | `void`              | Swap a same-id fact in place (appends when absent).                                          |
+| `remove`  | `void`              | Filter a fact out by id (no-op when absent).                                                 |
+| `seat`    | `void`              | Replace the whole collection in one silent call — the owning builder's bulk re-seat channel. |
+| `destroy` | `void`              | Idempotent teardown — emits `destroy`, then destroys the emitter LAST.                       |
 
 #### `InferenceManagerInterface`
 
 The self-owning manager over an inferential definition's `inferences`. Inference order is load-bearing — backward proving iterates in declaration order and returns on first success. Managers are KIND-FREE — an off-kind collection is ignored by `build()`, never a throw. A call after `destroy()` throws `DESTROYED`.
 
-| Method       | Returns                  | Behavior                                                                |
-| ------------ | ------------------------ | ----------------------------------------------------------------------- |
-| `inference`  | `Inference \| undefined` | Look up ONE inference by id (the §9.1 singular accessor).               |
-| `inferences` | `readonly Inference[]`   | List ALL inferences in order (the §9.1 plural accessor).                |
-| `append`     | `void`                   | Insert an inference, dedup-then-insert at the end or after `target`.    |
-| `prepend`    | `void`                   | Insert an inference, dedup-then-insert at the start or before `target`. |
-| `replace`    | `void`                   | Swap a same-id inference in place (appends when absent).                |
-| `remove`     | `void`                   | Filter an inference out by id (no-op when absent).                      |
-| `destroy`    | `void`                   | Idempotent teardown — emits `destroy`, then destroys the emitter LAST.  |
+| Method       | Returns                  | Behavior                                                                                     |
+| ------------ | ------------------------ | -------------------------------------------------------------------------------------------- |
+| `inference`  | `Inference \| undefined` | Look up ONE inference by id (the §9.1 singular accessor).                                    |
+| `inferences` | `readonly Inference[]`   | List ALL inferences in order (the §9.1 plural accessor).                                     |
+| `append`     | `void`                   | Insert an inference, dedup-then-insert at the end or after `target`.                         |
+| `prepend`    | `void`                   | Insert an inference, dedup-then-insert at the start or before `target`.                      |
+| `replace`    | `void`                   | Swap a same-id inference in place (appends when absent).                                     |
+| `remove`     | `void`                   | Filter an inference out by id (no-op when absent).                                           |
+| `seat`       | `void`                   | Replace the whole collection in one silent call — the owning builder's bulk re-seat channel. |
+| `destroy`    | `void`                   | Idempotent teardown — emits `destroy`, then destroys the emitter LAST.                       |
 
 #### `VariableManagerInterface`
 
@@ -530,6 +536,7 @@ The self-owning manager over a symbolic definition's `variables` — a name-keye
 | `variables` | `Readonly<Record<string, number>>` | The whole name-keyed record (the §9.1 plural accessor).                                    |
 | `add`       | `void`                             | Upsert one entry — emits the `add` event with the variable name.                           |
 | `remove`    | `void`                             | Delete one entry (key omitted, never `undefined`) — emits `remove` with the variable name. |
+| `seat`      | `void`                             | Replace the whole record in one silent call — the owning builder's bulk re-seat channel.   |
 | `destroy`   | `void`                             | Idempotent teardown — emits `destroy`, then destroys the emitter LAST.                     |
 
 #### `DefinitionBuilderInterface`
@@ -584,31 +591,31 @@ Each factor runs a pipeline — `checks` gate (ALL must be met) → `source` res
 
 ```ts
 import {
-	bounds,
-	check,
+	createBounds,
+	createCheck,
+	createFactorGroup,
+	createFieldFactor,
+	createLookupFactor,
+	createQuantitativeDefinition,
 	createQuantitativeReasoner,
 	createReason,
-	factorGroup,
-	fieldFactor,
-	lookupFactor,
-	quantitativeDefinition,
-	transform,
+	createTransform,
 } from '@orkestrel/reason'
 
 const reason = createReason({ reasoners: [createQuantitativeReasoner()] })
 
-const definition = quantitativeDefinition('premium', 'Premium', [
-	factorGroup(
+const definition = createQuantitativeDefinition('premium', 'Premium', [
+	createFactorGroup(
 		'risk',
 		'sum',
 		[
-			fieldFactor('age', 'age', {
-				checks: [check('licensed', 'equals', true)], // gate: all checks must be met
-				transforms: [transform('percentage', 50)], // then 50% of the raw value
-				bounds: bounds(0, 40), // then clamp
+			createFieldFactor('age', 'age', {
+				checks: [createCheck('licensed', 'equals', true)], // gate: all checks must be met
+				transforms: [createTransform('percentage', 50)], // then 50% of the raw value
+				bounds: createBounds(0, 40), // then clamp
 				required: true, // a gate/resolve failure becomes a result ERROR
 			}),
-			lookupFactor('region', 'region', { CA: 12, NY: 8 }, { fallback: 5, weight: 2 }),
+			createLookupFactor('region', 'region', { CA: 12, NY: 8 }, { fallback: 5, weight: 2 }),
 		],
 		{ base: 100 },
 	),
@@ -627,20 +634,20 @@ The three operators (`Evaluator` / `Transformer` / `Aggregator`) are usable dire
 
 ```ts
 import {
-	check,
 	createAggregator,
+	createCheck,
 	createEvaluator,
+	createTransform,
 	createTransformer,
-	transform,
 } from '@orkestrel/reason'
 
 const evaluator = createEvaluator()
-evaluator.evaluate(check('age', 'above', 18), { age: 25 }) // { field: 'age', met: true, actual: 25 }
-evaluator.batch([check('age', 'above', 18)], { age: 25 }) // one CheckResult per check, positionally
+evaluator.evaluate(createCheck('age', 'above', 18), { age: 25 }) // { field: 'age', met: true, actual: 25 }
+evaluator.batch([createCheck('age', 'above', 18)], { age: 25 }) // one CheckResult per check, positionally
 
 const transformer = createTransformer()
-transformer.apply(10, transform('multiply', 2)) // 20 — one math step
-transformer.chain(10, [transform('add', 5), transform('multiply', 2)]) // 30 — left-folded
+transformer.apply(10, createTransform('multiply', 2)) // 20 — one math step
+transformer.chain(10, [createTransform('add', 5), createTransform('multiply', 2)]) // 30 — left-folded
 
 const aggregator = createAggregator()
 aggregator.aggregate([10, 20, 30], 'sum') // 60
@@ -699,33 +706,38 @@ Forward chaining runs the rules (ascending `priority`) to a fixpoint: each firin
 
 ```ts
 import {
-	atom,
-	compound,
+	createAtom,
+	createCompound,
+	createLogicalDefinition,
 	createLogicalReasoner,
 	createReason,
-	logicalDefinition,
-	rule,
+	createRule,
 } from '@orkestrel/reason'
 
 const reason = createReason({ reasoners: [createLogicalReasoner()] })
 
 const rules = [
-	rule('adult', [atom('age', 'from', 18)], atom('adult', 'equals', true)),
-	rule(
+	createRule('adult', [createAtom('age', 'from', 18)], createAtom('adult', 'equals', true)),
+	createRule(
 		'eligible',
-		[compound('and', [atom('adult', 'equals', true), atom('accidents', 'below', 2)])],
-		atom('eligible', 'equals', true),
+		[
+			createCompound('and', [
+				createAtom('adult', 'equals', true),
+				createAtom('accidents', 'below', 2),
+			]),
+		],
+		createAtom('eligible', 'equals', true),
 	),
 ]
 
 const forward = reason.reason(
 	{ age: 25, accidents: 0 },
-	logicalDefinition('e', 'Eligibility', rules),
+	createLogicalDefinition('e', 'Eligibility', rules),
 )
 if (forward.reasoning === 'logical') forward.conclusion // true — 'eligible' via the derived 'adult'
 
 // Backward: prove the last rule's conclusion, recursing only where needed.
-const goal = logicalDefinition('e', 'Eligibility', rules, { strategy: 'backward', depth: 5 })
+const goal = createLogicalDefinition('e', 'Eligibility', rules, { strategy: 'backward', depth: 5 })
 ```
 
 Connectives evaluate eagerly (every operand evaluates — no short-circuit): `not` reads only its first operand, `implies` is vacuously true below two operands, `xor` is false. Conclusion extraction ignores connectives — EVERY atom inside a firing rule's conclusion is asserted.
@@ -738,28 +750,37 @@ Bindings start from the definition's `variables`, then numeric subject fields OV
 
 ```ts
 import {
-	constant,
+	createConstant,
+	createEquation,
+	createOperation,
 	createReason,
+	createSymbolicDefinition,
 	createSymbolicReasoner,
-	equation,
-	operation,
-	symbolicDefinition,
-	variable,
+	createVariable,
 } from '@orkestrel/reason'
 
 const reason = createReason({ reasoners: [createSymbolicReasoner()] })
 
-const definition = symbolicDefinition(
+const definition = createSymbolicDefinition(
 	'pricing',
 	'Pricing',
 	[
 		// net + tax = total → isolate: net = total - tax
-		equation('net', operation('add', variable('net'), variable('tax')), variable('total'), 'net'),
+		createEquation(
+			'net',
+			createOperation('add', createVariable('net'), createVariable('tax')),
+			createVariable('total'),
+			'net',
+		),
 		// discount = net * 10 / 100 — 'net' just fed forward
-		equation(
+		createEquation(
 			'discount',
-			variable('discount'),
-			operation('divide', operation('multiply', variable('net'), constant(10)), constant(100)),
+			createVariable('discount'),
+			createOperation(
+				'divide',
+				createOperation('multiply', createVariable('net'), createConstant(10)),
+				createConstant(100),
+			),
 			'discount',
 		),
 	],
@@ -777,24 +798,24 @@ Scalar subject fields are injected as `has(key, value)` base facts. Forward chai
 
 ```ts
 import {
+	createFact,
+	createInference,
+	createInferentialDefinition,
 	createInferentialReasoner,
 	createReason,
-	fact,
-	inference,
-	inferentialDefinition,
 } from '@orkestrel/reason'
 
 const reason = createReason({ reasoners: [createInferentialReasoner()] })
 
-const definition = inferentialDefinition(
+const definition = createInferentialDefinition(
 	'family',
 	'Family',
-	[fact('f1', 'parent', ['alice', 'bob']), fact('f2', 'parent', ['bob', 'carol'], 0.9)],
+	[createFact('f1', 'parent', ['alice', 'bob']), createFact('f2', 'parent', ['bob', 'carol'], 0.9)],
 	[
-		inference(
+		createInference(
 			'grand',
-			[fact('p1', 'parent', ['?x', '?y']), fact('p2', 'parent', ['?y', '?z'])],
-			fact('c1', 'grandparent', ['?x', '?z']),
+			[createFact('p1', 'parent', ['?x', '?y']), createFact('p2', 'parent', ['?y', '?z'])],
+			createFact('c1', 'grandparent', ['?x', '?z']),
 		),
 	],
 )
@@ -809,15 +830,15 @@ definition.inferences // the one inference rule above
 // Backward: prove one conclusion and return its proof tree.
 const proved = reason.reason(
 	{},
-	inferentialDefinition(
+	createInferentialDefinition(
 		'family',
 		'Family',
-		[fact('f1', 'parent', ['alice', 'bob']), fact('f2', 'parent', ['bob', 'carol'])],
+		[createFact('f1', 'parent', ['alice', 'bob']), createFact('f2', 'parent', ['bob', 'carol'])],
 		[
-			inference(
+			createInference(
 				'grand',
-				[fact('p1', 'parent', ['?x', '?y']), fact('p2', 'parent', ['?y', '?z'])],
-				fact('c1', 'grandparent', ['?x', '?z']),
+				[createFact('p1', 'parent', ['?x', '?y']), createFact('p2', 'parent', ['?y', '?z'])],
+				createFact('c1', 'grandparent', ['?x', '?z']),
 			),
 		],
 		{ strategy: 'backward' },
@@ -836,17 +857,17 @@ A definition is plain data, so deriving a changed one is a pure function call �
 import {
 	appendFactor,
 	appendGroup,
-	factorGroup,
-	fieldFactor,
+	createFactorGroup,
+	createFieldFactor,
+	createQuantitativeDefinition,
+	createStaticFactor,
 	mergeQuantitativeDefinition,
 	parseDefinition,
-	quantitativeDefinition,
 	replaceGroup,
-	staticFactor,
 } from '@orkestrel/reason'
 
-const base = quantitativeDefinition('risk', 'Risk', [
-	factorGroup('drivers', 'sum', [staticFactor('floor', 10)]),
+const base = createQuantitativeDefinition('risk', 'Risk', [
+	createFactorGroup('drivers', 'sum', [createStaticFactor('floor', 10)]),
 ])
 
 // Grow a group, then swap the grown group back in — position preserved.
@@ -854,13 +875,20 @@ const drivers = base.groups[0]
 const grown =
 	drivers === undefined
 		? base
-		: replaceGroup(base, appendFactor(drivers, fieldFactor('age', 'age')))
+		: replaceGroup(base, appendFactor(drivers, createFieldFactor('age', 'age')))
 
 // Append a sibling group after 'drivers' (target names the anchor id).
-const wide = appendGroup(grown, factorGroup('region', 'sum', [staticFactor('flat', 5)]), 'drivers')
+const wide = appendGroup(
+	grown,
+	createFactorGroup('region', 'sum', [createStaticFactor('flat', 5)]),
+	'drivers',
+)
 
 // Reconcile a revision wholesale — id-keyed collections merge, incoming scalars win.
-const merged = mergeQuantitativeDefinition(wide, quantitativeDefinition('risk', 'Risk v2', []))
+const merged = mergeQuantitativeDefinition(
+	wide,
+	createQuantitativeDefinition('risk', 'Risk v2', []),
+)
 
 // The JSON round-trip: stringify any definition, narrow it back fail-safe.
 const restored = parseDefinition(JSON.stringify(merged)) // Definition | undefined — junk parses to undefined
@@ -874,29 +902,29 @@ For INCREMENTAL authoring — a builder UI, an MCP session, anything that accumu
 
 ```ts
 import {
-	check,
+	createCheck,
 	createQuantitativeReasoner,
 	createReason,
 	createDefinitionBuilder,
-	factorGroup,
-	fieldFactor,
-	quantitativeDefinition,
-	staticFactor,
+	createFactorGroup,
+	createFieldFactor,
+	createQuantitativeDefinition,
+	createStaticFactor,
 } from '@orkestrel/reason'
 
 const draft = createDefinitionBuilder(
-	quantitativeDefinition('risk', 'Risk', [
-		factorGroup('drivers', 'sum', [staticFactor('floor', 10)]),
+	createQuantitativeDefinition('risk', 'Risk', [
+		createFactorGroup('drivers', 'sum', [createStaticFactor('floor', 10)]),
 	]),
 )
 
-draft.factors.append('drivers', fieldFactor('age', 'age')) // into the named group
+draft.factors.append('drivers', createFieldFactor('age', 'age')) // into the named group
 draft.factors.replace(
 	'drivers',
-	fieldFactor('age', 'age', { checks: [check('licensed', 'equals', true)] }),
+	createFieldFactor('age', 'age', { checks: [createCheck('licensed', 'equals', true)] }),
 ) // in place
-draft.groups.append(factorGroup('region', 'sum', [staticFactor('flat', 5)]))
-draft.groups.prepend(factorGroup('base', 'sum', [staticFactor('seed', 1)])) // insert at the start
+draft.groups.append(createFactorGroup('region', 'sum', [createStaticFactor('flat', 5)]))
+draft.groups.prepend(createFactorGroup('base', 'sum', [createStaticFactor('seed', 1)])) // insert at the start
 draft.groups.group('region') // FactorGroup | undefined — the §9.1 accessors read
 draft.clear('description') // delete one optional field for this reasoning
 
@@ -905,10 +933,56 @@ const result = reason.reason({ age: 25, licensed: true }, draft.build()) // buil
 if (result.reasoning === 'quantitative') result.value // 40 — (10 + 25) + 5
 
 const payload = draft.build() // a fresh plain Definition every call — store it, ship it, reason over it
+draft.groups.seat([createFactorGroup('only', 'sum', [])]) // replace the whole collection in one silent call
 draft.destroy() // idempotent; cascades to the managers; afterwards mutation throws DESTROYED
 ```
 
-Managers are KIND-FREE: an off-kind mutation (`draft.rules.append(...)` on a quantitative draft) is INERT, never a throw — the rules accumulate in the `RuleManager` but `build()` composes only the collections belonging to the draft's `reasoning`, so they never surface in the payload. Design around this deliberately: nothing warns about off-kind state, so an authoring surface should gate its own verbs by `draft.reasoning`. `merge` requires the same `reasoning` (else `MISMATCH`) and re-seats collections through the managers SILENTLY (no per-element events); re-seeding is just `createDefinitionBuilder(parseDefinition(text) ?? fallback)` — `build()` output and `parseDefinition` are exact inverses across the JSON boundary. Rule and equation order stay load-bearing exactly as in the plain data: `rules.append` without a `target` makes the new rule the forward conclusion; `equations.append` places it last in the solve order. One nesting echo: factors live INSIDE groups, so a `factors` mutation writes the updated group back through the sibling `GroupManager` — the factor event fires on `factors.emitter` AND a `replace` fires on `groups.emitter` for the containing group.
+Managers are KIND-FREE: an off-kind mutation (`draft.rules.append(...)` on a quantitative draft) is INERT, never a throw — the rules accumulate in the `RuleManager` but `build()` composes only the collections belonging to the draft's `reasoning`, so they never surface in the payload. Design around this deliberately: nothing warns about off-kind state, so an authoring surface should gate its own verbs by `draft.reasoning`. `merge` requires the same `reasoning` (else `MISMATCH`) and re-seats collections through each manager's `seat` SILENTLY (no per-element events) — the same channel an authoring surface calls to swap a whole collection in one step; re-seeding is just `createDefinitionBuilder(parseDefinition(text) ?? fallback)` — `build()` output and `parseDefinition` are exact inverses across the JSON boundary. Rule and equation order stay load-bearing exactly as in the plain data: `rules.append` without a `target` makes the new rule the forward conclusion; `equations.append` places it last in the solve order. One nesting echo: factors live INSIDE groups, so a `factors` mutation writes the updated group back through the sibling `GroupManager` — the factor event fires on `factors.emitter` AND a `replace` fires on `groups.emitter` for the containing group.
+
+Every manager exposes the same §9.1 accessor pair over its own collection — here each one is read on a draft of its own `reasoning`:
+
+```ts
+import {
+	createAtom,
+	createConstant,
+	createDefinitionBuilder,
+	createEquation,
+	createFact,
+	createInference,
+	createInferentialDefinition,
+	createLogicalDefinition,
+	createRule,
+	createSymbolicDefinition,
+	createVariable,
+} from '@orkestrel/reason'
+
+const logical = createDefinitionBuilder(createLogicalDefinition('elig', 'Eligibility', []))
+logical.rules.append(
+	createRule('adult', [createAtom('age', 'from', 18)], createAtom('adult', 'equals', true)),
+)
+logical.rules.rule('adult')?.name // 'adult' — `name` defaults to the id
+logical.rules.rules().length // 1
+
+const symbolic = createDefinitionBuilder(createSymbolicDefinition('rate', 'Rate', []))
+symbolic.equations.append(createEquation('e1', createVariable('x'), createConstant(42), 'x'))
+symbolic.equations.equation('e1')?.target // 'x'
+symbolic.variables.add('x', 42)
+symbolic.variables.variable('x') // 42
+
+const inferential = createDefinitionBuilder(
+	createInferentialDefinition('mortality', 'Mortality', [], []),
+)
+inferential.facts.append(createFact('f1', 'human', ['socrates']))
+inferential.facts.fact('f1')?.predicate // 'human'
+inferential.inferences.append(
+	createInference(
+		'mortal',
+		[createFact('p1', 'human', ['?x'])],
+		createFact('c1', 'mortal', ['?x']),
+	),
+)
+inferential.inferences.inference('mortal')?.name // 'mortal'
+```
 
 ### The subject workspace — `SubjectBuilder`
 
@@ -994,18 +1068,18 @@ Prefer this at boundaries over the orchestrator's `validate: true` option (which
 ### Practices
 
 - **Register every reasoner before the first `reason` call** — dispatch is a registry lookup; a miss throws `MISSING` regardless of `bail`.
-- **Build definitions with the builders** — they default `name` to the id, omit absent optional keys (so outputs round-trip the EXACT-record validators), and keep call sites terse.
+- **Build definitions with the value factories** — they default `name` to the id, omit absent optional keys (so outputs round-trip the EXACT-record validators), and keep call sites terse.
 - **Gate untrusted definitions twice** — `isDefinition` for shape at the boundary, `validate` for semantics; reserve the `validate: true` option for programmer-error contexts.
 - **Keep ids unique** — `validate` only WARNS on duplicates; the runtime resolves them first/last-wins, silently.
 - **Check `success` before trusting the payload** — errors accumulate without aborting, so a `value` / `conclusion` computed alongside errors is a partial answer.
 - **Read the `trace` when a result surprises you** — every skip, gate, derivation, and convergence is narrated step by step.
 - **Use `FieldPath` arrays for nested access** — `['address', 'city']` descends; a dotted string like `'address.city'` is ONE literal key, never split.
 - **Choose `bail` deliberately** — the default (`true`) rethrows a reasoner throw after the `error` emit; `bail: false` degrades it to an empty failure result for batch pipelines that must keep going.
-- **Reach for the helpers to derive, the builders to accumulate** — a one-shot change is a pure helper call on plain data; a definition or subject built up across many steps (a builder UI, an MCP session) lives in a `createDefinitionBuilder` / `createSubjectBuilder` workspace.
+- **Reach for the helpers to derive, the workspace builders to accumulate** — a one-shot change is a pure helper call on plain data; a definition or subject built up across many steps (a builder UI, an MCP session) lives in a `createDefinitionBuilder` / `createSubjectBuilder` workspace.
 - **`build()` at the call site, always** — the engine takes only plain data; `reason.reason(subject.build(), draft.build())` makes the build step visible, and the payload is exactly what ran.
 - **Gate authoring verbs by `reasoning`** — managers are kind-free, so an off-kind mutation accumulates silently and never surfaces in `build()`; an authoring surface should offer only the current kind's verbs.
 - **Store `build()` output, not builders** — `JSON.stringify(draft.build())` out, `parseDefinition` back in, re-seed a fresh builder; the builder itself is a live workspace, not a payload.
-- **Mind the two meanings of `is…` at the boundary** — `isDefinition` / `isSubject` narrow the plain DATA; `isDefinitionBuilder` / `isSubjectBuilder` are the builder BRAND guards. A plain record carrying a `build` function is still data — only the brand makes a builder.
+- **Mind the two meanings of `is…` at the boundary** — `isDefinition` narrows the plain DATA; `isDefinitionBuilder` / `isSubjectBuilder` are the builder BRAND guards. A plain record carrying a `build` function is still data — only the brand makes a builder. A `Subject` is any plain record, so narrow one with `isRecord` from `@orkestrel/contract` — this package publishes no guard for it.
 - **Destroy when done** — `destroy()` releases the registry and the emitter (the builders cascade to their managers first); a destroyed instance throws `DESTROYED` on use (narrow with `isReasonError`).
 
 ## Tests
@@ -1014,9 +1088,9 @@ Prefer this at boundaries over the orchestrator's `validate: true` option (which
 - [`tests/src/core/Reason.test.ts`](../tests/src/core/Reason.test.ts) — the orchestrator: dispatch, batch order, `bail` both ways, the `MISSING` / `INVALID` / `DESTROYED` codes, event sequences, idempotent `destroy`, build-outside equivalence (a builder's `build()` output reasons identically to inline plain data).
 - [`tests/src/core/builders/DefinitionBuilder.test.ts`](../tests/src/core/builders/DefinitionBuilder.test.ts) — the definition builder: mutation → `build` round-trips per manager, inert off-kind managers, per-manager event pins, manager + builder destroy semantics, brand-forge negatives, seed immutability.
 - [`tests/src/core/builders/SubjectBuilder.test.ts`](../tests/src/core/builders/SubjectBuilder.test.ts) — the subject builder: id defaulting + immutability + anonymous builds, batch `remove`, incoming-wins `merge`, deterministic `repeat`, `build` determinism, destroy semantics.
-- [`tests/src/core/helpers.test.ts`](../tests/src/core/helpers.test.ts) — every builder's output shape (override merging, key omission), `clamp` / `roundTo` / `equalValues` / `sortByPriority` / `findDuplicates`, and the capability-layer engine (`appendById` placement + `TARGET`, per-kind append / prepend / replace / remove, `merge*` / `clear*`, `parseDefinition`, the subject helpers).
+- [`tests/src/core/helpers.test.ts`](../tests/src/core/helpers.test.ts) — `formatField`, `clamp` / `roundTo` / `matchesBounds` / `equalValues` / `sortByPriority` / `findDuplicates`, the fact and algebra machinery, and the capability-layer engine (`appendById` placement + `TARGET`, per-kind append / prepend / replace / remove, `merge*` / `clear*`, `parseDefinition`, the subject helpers).
 - [`tests/src/core/validators.test.ts`](../tests/src/core/validators.test.ts) — each guard accepts valid / rejects invalid + adversarial junk, exact-record semantics, `lazyOf` recursion containment.
-- [`tests/src/core/factories.test.ts`](../tests/src/core/factories.test.ts) — every factory wires a working instance; custom `id`s via the options objects.
+- [`tests/src/core/factories.test.ts`](../tests/src/core/factories.test.ts) — every value factory's output shape (override merging, key omission, `name` defaulting); every entity factory wires a working instance with custom `id`s through the options objects.
 - [`tests/src/core/operators/Evaluator.test.ts`](../tests/src/core/operators/Evaluator.test.ts) — all ten comparisons (strictness, numeric requirements, the `any` / `none` asymmetry vs the pure-negation `outside`), `FieldPath` resolution, unknown-operator totality.
 - [`tests/src/core/operators/Transformer.test.ts`](../tests/src/core/operators/Transformer.test.ts) — per-operation operand defaults, divide-by-zero `NaN`, unary operations, `chain` folding.
 - [`tests/src/core/operators/Aggregator.test.ts`](../tests/src/core/operators/Aggregator.test.ts) — empty-input identities, weight-as-exponent `product`, zero-total-weight `average`, length-mismatch weight fallback.

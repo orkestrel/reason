@@ -242,23 +242,6 @@ export const isLogicalOperator: Guard<LogicalOperator> = literalOf(
 export const isFieldPath: Guard<FieldPath> = orOf(isString, arrayOf(isString))
 
 /**
- * Determine whether a value is a `Subject` — a plain record of fields to reason
- * about.
- *
- * @param value - The value to test
- * @returns `true` when `value` is a plain record (arrays and class instances fail)
- *
- * @example
- * ```ts
- * import { isSubject } from '@src/core'
- *
- * isSubject({ age: 30 }) // true
- * isSubject([1, 2, 3])   // false — an array is not a subject
- * ```
- */
-export const isSubject: Guard<Readonly<Record<string, unknown>>> = isRecord
-
-/**
  * Determine whether a value is a record whose every value is a finite number —
  * the shape of a `LookupSource.table` and a `SymbolicDefinition.variables`.
  *
@@ -441,10 +424,10 @@ export function isFactor(value: unknown): value is Factor {
  *
  * @example
  * ```ts
- * import { isFactorGroup, staticFactor } from '@src/core'
+ * import { createStaticFactor, isFactorGroup } from '@src/core'
  *
- * isFactorGroup({ id: 'g1', name: 'g1', aggregation: 'sum', factors: [staticFactor('f1', 10)] }) // true
- * isFactorGroup({ id: 'g1', name: 'g1', aggregation: 'median', factors: [] })                    // false
+ * isFactorGroup({ id: 'g1', name: 'g1', aggregation: 'sum', factors: [createStaticFactor('f1', 10)] }) // true
+ * isFactorGroup({ id: 'g1', name: 'g1', aggregation: 'median', factors: [] })                          // false
  * ```
  */
 export function isFactorGroup(value: unknown): value is FactorGroup {
@@ -479,11 +462,11 @@ export function isFactorGroup(value: unknown): value is FactorGroup {
  *
  * @example
  * ```ts
- * import { atom, compound, isExpression } from '@src/core'
+ * import { createAtom, createCompound, isExpression } from '@src/core'
  *
- * isExpression(atom('age', 'from', 18))                    // true
- * isExpression(compound('and', [atom('age', 'from', 18)])) // true
- * isExpression({ form: 'compound', operator: 'and' })      // false — operands missing
+ * isExpression(createAtom('age', 'from', 18))                          // true
+ * isExpression(createCompound('and', [createAtom('age', 'from', 18)])) // true
+ * isExpression({ form: 'compound', operator: 'and' })                  // false — operands missing
  * ```
  */
 export function isExpression(value: unknown): value is Expression {
@@ -505,10 +488,10 @@ export function isExpression(value: unknown): value is Expression {
  *
  * @example
  * ```ts
- * import { atom, isRule, rule } from '@src/core'
+ * import { createAtom, createRule, isRule } from '@src/core'
  *
- * isRule(rule('adult', [atom('age', 'from', 18)], atom('adult', 'equals', true))) // true
- * isRule({ id: 'adult' })                                                         // false
+ * isRule(createRule('adult', [createAtom('age', 'from', 18)], createAtom('adult', 'equals', true))) // true
+ * isRule({ id: 'adult' })                                                                           // false
  * ```
  */
 export function isRule(value: unknown): value is Rule {
@@ -542,10 +525,10 @@ export function isRule(value: unknown): value is Rule {
  *
  * @example
  * ```ts
- * import { constant, isSymbolicExpression, operation, variable } from '@src/core'
+ * import { createConstant, createOperation, createVariable, isSymbolicExpression } from '@src/core'
  *
- * isSymbolicExpression(operation('add', variable('x'), constant(1))) // true
- * isSymbolicExpression({ form: 'variable' })                         // false — name missing
+ * isSymbolicExpression(createOperation('add', createVariable('x'), createConstant(1))) // true
+ * isSymbolicExpression({ form: 'variable' })                                           // false — name missing
  * ```
  */
 export function isSymbolicExpression(value: unknown): value is SymbolicExpression {
@@ -573,10 +556,10 @@ export function isSymbolicExpression(value: unknown): value is SymbolicExpressio
  *
  * @example
  * ```ts
- * import { constant, equation, isEquation, variable } from '@src/core'
+ * import { createConstant, createEquation, createVariable, isEquation } from '@src/core'
  *
- * isEquation(equation('e1', variable('x'), constant(42), 'x')) // true
- * isEquation({ id: 'e1', target: 'x' })                        // false — sides missing
+ * isEquation(createEquation('e1', createVariable('x'), createConstant(42), 'x')) // true
+ * isEquation({ id: 'e1', target: 'x' })                                          // false — sides missing
  * ```
  */
 export function isEquation(value: unknown): value is Equation {
@@ -628,10 +611,10 @@ export function isFact(value: unknown): value is Fact {
  *
  * @example
  * ```ts
- * import { fact, inference, isInference } from '@src/core'
+ * import { createFact, createInference, isInference } from '@src/core'
  *
- * isInference(inference('mortal', [fact('p1', 'human', ['?x'])], fact('c1', 'mortal', ['?x']))) // true
- * isInference({ id: 'mortal' })                                                                 // false
+ * isInference(createInference('mortal', [createFact('p1', 'human', ['?x'])], createFact('c1', 'mortal', ['?x']))) // true
+ * isInference({ id: 'mortal' })                                                                                   // false
  * ```
  */
 export function isInference(value: unknown): value is Inference {
@@ -657,10 +640,10 @@ export function isInference(value: unknown): value is Inference {
  *
  * @example
  * ```ts
- * import { isQuantitativeDefinition, quantitativeDefinition } from '@src/core'
+ * import { createQuantitativeDefinition, isQuantitativeDefinition } from '@src/core'
  *
- * isQuantitativeDefinition(quantitativeDefinition('risk', 'Risk', [])) // true
- * isQuantitativeDefinition({ reasoning: 'quantitative', id: 'risk' })  // false
+ * isQuantitativeDefinition(createQuantitativeDefinition('risk', 'Risk', [])) // true
+ * isQuantitativeDefinition({ reasoning: 'quantitative', id: 'risk' })        // false
  * ```
  */
 export function isQuantitativeDefinition(value: unknown): value is QuantitativeDefinition {
@@ -688,10 +671,10 @@ export function isQuantitativeDefinition(value: unknown): value is QuantitativeD
  *
  * @example
  * ```ts
- * import { isLogicalDefinition, logicalDefinition } from '@src/core'
+ * import { createLogicalDefinition, isLogicalDefinition } from '@src/core'
  *
- * isLogicalDefinition(logicalDefinition('eligibility', 'Eligibility', [])) // true
- * isLogicalDefinition({ reasoning: 'logical', id: 'eligibility' })         // false
+ * isLogicalDefinition(createLogicalDefinition('eligibility', 'Eligibility', [])) // true
+ * isLogicalDefinition({ reasoning: 'logical', id: 'eligibility' })               // false
  * ```
  */
 export function isLogicalDefinition(value: unknown): value is LogicalDefinition {
@@ -717,10 +700,10 @@ export function isLogicalDefinition(value: unknown): value is LogicalDefinition 
  *
  * @example
  * ```ts
- * import { isSymbolicDefinition, symbolicDefinition } from '@src/core'
+ * import { createSymbolicDefinition, isSymbolicDefinition } from '@src/core'
  *
- * isSymbolicDefinition(symbolicDefinition('rate', 'Rate', [])) // true
- * isSymbolicDefinition({ reasoning: 'symbolic', id: 'rate' })  // false
+ * isSymbolicDefinition(createSymbolicDefinition('rate', 'Rate', [])) // true
+ * isSymbolicDefinition({ reasoning: 'symbolic', id: 'rate' })        // false
  * ```
  */
 export function isSymbolicDefinition(value: unknown): value is SymbolicDefinition {
@@ -746,10 +729,10 @@ export function isSymbolicDefinition(value: unknown): value is SymbolicDefinitio
  *
  * @example
  * ```ts
- * import { inferentialDefinition, isInferentialDefinition } from '@src/core'
+ * import { createInferentialDefinition, isInferentialDefinition } from '@src/core'
  *
- * isInferentialDefinition(inferentialDefinition('birds', 'Birds', [], [])) // true
- * isInferentialDefinition({ reasoning: 'inferential', id: 'birds' })       // false
+ * isInferentialDefinition(createInferentialDefinition('birds', 'Birds', [], [])) // true
+ * isInferentialDefinition({ reasoning: 'inferential', id: 'birds' })             // false
  * ```
  */
 export function isInferentialDefinition(value: unknown): value is InferentialDefinition {
@@ -777,10 +760,10 @@ export function isInferentialDefinition(value: unknown): value is InferentialDef
  *
  * @example
  * ```ts
- * import { isDefinition, logicalDefinition } from '@src/core'
+ * import { createLogicalDefinition, isDefinition } from '@src/core'
  *
- * isDefinition(logicalDefinition('eligibility', 'Eligibility', [])) // true
- * isDefinition({ reasoning: 'quantum' })                            // false
+ * isDefinition(createLogicalDefinition('eligibility', 'Eligibility', [])) // true
+ * isDefinition({ reasoning: 'quantum' })                                  // false
  * ```
  */
 export function isDefinition(value: unknown): value is Definition {
@@ -880,7 +863,7 @@ export const isInferentialClearKey: Guard<InferentialClearKey> = literalOf('desc
  * import { isResultFact } from '@src/core'
  *
  * isResultFact({ id: 'f1', predicate: 'bird', terms: ['tweety'], note: 'derived' }) // true
- * isResultFact({ id: 'f1', predicate: 'bird' }) // false
+ * isResultFact({ id: 'f1', predicate: 'bird' })                                     // false
  * ```
  */
 export function isResultFact(value: unknown): value is Fact {
@@ -906,7 +889,7 @@ export function isResultFact(value: unknown): value is Fact {
  * ```ts
  * import { isCheckResult } from '@src/core'
  *
- * isCheckResult({ field: 'age', met: true, actual: 30 }) // true
+ * isCheckResult({ field: 'age', met: true, actual: 30 })  // true
  * isCheckResult({ field: 'age', met: 'yes', actual: 30 }) // false
  * ```
  */
@@ -933,7 +916,7 @@ export function isCheckResult(value: unknown): value is CheckResult {
  * ```ts
  * import { isFactorResult } from '@src/core'
  *
- * isFactorResult({ id: 'age', applied: true, value: 5 }) // true
+ * isFactorResult({ id: 'age', applied: true, value: 5 })   // true
  * isFactorResult({ id: 'age', applied: true, value: '5' }) // false
  * ```
  */
@@ -963,7 +946,7 @@ export function isFactorResult(value: unknown): value is FactorResult {
  * import { isGroupResult } from '@src/core'
  *
  * isGroupResult({ id: 'risk', applied: true, value: 5, factors: [] }) // true
- * isGroupResult({ id: 'risk', applied: true, value: 5 }) // false
+ * isGroupResult({ id: 'risk', applied: true, value: 5 })              // false
  * ```
  */
 export function isGroupResult(value: unknown): value is GroupResult {
@@ -989,7 +972,7 @@ export function isGroupResult(value: unknown): value is GroupResult {
  * import { isRuleResult } from '@src/core'
  *
  * isRuleResult({ id: 'adult', applied: true, premises: [true], conclusion: true }) // true
- * isRuleResult({ id: 'adult', applied: true, premises: [1], conclusion: true }) // false
+ * isRuleResult({ id: 'adult', applied: true, premises: [1], conclusion: true })    // false
  * ```
  */
 export function isRuleResult(value: unknown): value is RuleResult {
@@ -1023,7 +1006,7 @@ export function isRuleResult(value: unknown): value is RuleResult {
  * import { isProofNode } from '@src/core'
  *
  * isProofNode({ fact: 'bird', depth: 0, children: [{ fact: 'feathers', depth: 1 }] }) // true
- * isProofNode({ fact: 'bird', children: [] }) // false
+ * isProofNode({ fact: 'bird', children: [] })                                         // false
  * ```
  */
 export function isProofNode(value: unknown): value is ProofNode {
@@ -1082,7 +1065,7 @@ export function isProofNode(value: unknown): value is ProofNode {
  * import { isQuantitativeResult } from '@src/core'
  *
  * isQuantitativeResult({ reasoning: 'quantitative', value: 0, groups: [], count: 0, success: true, trace: [], errors: [] }) // true
- * isQuantitativeResult({ reasoning: 'quantitative' }) // false
+ * isQuantitativeResult({ reasoning: 'quantitative' })                                                                       // false
  * ```
  */
 export function isQuantitativeResult(value: unknown): value is QuantitativeResult {
@@ -1111,7 +1094,7 @@ export function isQuantitativeResult(value: unknown): value is QuantitativeResul
  * import { isLogicalResult } from '@src/core'
  *
  * isLogicalResult({ reasoning: 'logical', conclusion: false, rules: [], count: 0, success: true, trace: [], errors: [] }) // true
- * isLogicalResult({ reasoning: 'logical', rules: [] }) // false
+ * isLogicalResult({ reasoning: 'logical', rules: [] })                                                                    // false
  * ```
  */
 export function isLogicalResult(value: unknown): value is LogicalResult {
@@ -1144,7 +1127,7 @@ export function isLogicalResult(value: unknown): value is LogicalResult {
  * ```ts
  * import { isSymbolicResult } from '@src/core'
  *
- * isSymbolicResult({ reasoning: 'symbolic', solutions: { x: 4 }, success: true, trace: [], errors: [] }) // true
+ * isSymbolicResult({ reasoning: 'symbolic', solutions: { x: 4 }, success: true, trace: [], errors: [] })   // true
  * isSymbolicResult({ reasoning: 'symbolic', solutions: { x: '4' }, success: true, trace: [], errors: [] }) // false
  * ```
  */
@@ -1178,7 +1161,7 @@ export function isSymbolicResult(value: unknown): value is SymbolicResult {
  * ```ts
  * import { isInferentialResult } from '@src/core'
  *
- * isInferentialResult({ reasoning: 'inferential', derived: [], success: true, trace: [], errors: [] }) // true
+ * isInferentialResult({ reasoning: 'inferential', derived: [], success: true, trace: [], errors: [] })     // true
  * isInferentialResult({ reasoning: 'inferential', derived: [null], success: true, trace: [], errors: [] }) // false
  * ```
  */
@@ -1208,7 +1191,7 @@ export function isInferentialResult(value: unknown): value is InferentialResult 
  * import { isReasonResult } from '@src/core'
  *
  * isReasonResult({ reasoning: 'symbolic', solutions: {}, success: true, trace: [], errors: [] }) // true
- * isReasonResult({ reasoning: 'unknown' }) // false
+ * isReasonResult({ reasoning: 'unknown' })                                                       // false
  * ```
  */
 export function isReasonResult(value: unknown): value is ReasonResult {
@@ -1231,7 +1214,7 @@ export function isReasonResult(value: unknown): value is ReasonResult {
  * import { isReasonValidationResult } from '@src/core'
  *
  * isReasonValidationResult({ valid: true, errors: [], warnings: [] }) // true
- * isReasonValidationResult({ valid: true, errors: [] }) // false
+ * isReasonValidationResult({ valid: true, errors: [] })               // false
  * ```
  */
 export function isReasonValidationResult(value: unknown): value is ReasonValidationResult {
@@ -1264,12 +1247,12 @@ export function isReasonValidationResult(value: unknown): value is ReasonValidat
  *
  * @example
  * ```ts
- * import { createDefinitionBuilder, isDefinitionBuilder, quantitativeDefinition } from '@src/core'
+ * import { createDefinitionBuilder, createQuantitativeDefinition, isDefinitionBuilder } from '@src/core'
  *
- * const definition = createDefinitionBuilder(quantitativeDefinition('risk', 'Risk', []))
- * isDefinitionBuilder(definition)                       // true
- * isDefinitionBuilder({ build: () => undefined })       // false — forged build field
- * isDefinitionBuilder(quantitativeDefinition('r', 'R', []))  // false — plain data, not the entity
+ * const definition = createDefinitionBuilder(createQuantitativeDefinition('risk', 'Risk', []))
+ * isDefinitionBuilder(definition)                                 // true
+ * isDefinitionBuilder({ build: () => undefined })                 // false — forged build field
+ * isDefinitionBuilder(createQuantitativeDefinition('r', 'R', [])) // false — plain data, not the entity
  * ```
  */
 export function isDefinitionBuilder(value: unknown): value is DefinitionBuilderInterface {

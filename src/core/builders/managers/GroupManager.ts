@@ -16,10 +16,10 @@ import { Collection } from './Collection.js'
  * OWNS its `groups` as a private {@link Collection} — copy-on-write state
  * shared by composition with the other list managers — plus its own
  * {@link Emitter} over {@link GroupManagerEventMap}. Every write verb delegates
- * to the collection, then emits (the affected group id) AFTER the mutation. The
- * write-only `collection` setter is the owning builder's silent bulk re-seat
- * channel (used by `merge`). `destroy()` is idempotent and tears the emitter
- * down LAST; any other call after it throws `ReasonError('DESTROYED', …)`.
+ * to the collection, then emits (the affected group id) AFTER the mutation.
+ * `seat` is the owning builder's silent bulk re-seat channel (used by `merge`).
+ * `destroy()` is idempotent and tears the emitter down LAST; any other call
+ * after it throws `ReasonError('DESTROYED', …)`.
  */
 export class GroupManager implements GroupManagerInterface {
 	readonly #groups: Collection<FactorGroup>
@@ -32,12 +32,6 @@ export class GroupManager implements GroupManagerInterface {
 
 	get emitter(): EmitterInterface<GroupManagerEventMap> {
 		return this.#emitter
-	}
-
-	// The owning builder's bulk re-seat channel — replaces the whole collection
-	// in one silent assignment (no per-element events); used by `merge`.
-	set collection(value: readonly FactorGroup[]) {
-		this.#groups.seat(value)
 	}
 
 	group(id: string): FactorGroup | undefined {
@@ -66,6 +60,12 @@ export class GroupManager implements GroupManagerInterface {
 	remove(id: string): void {
 		this.#groups.remove(id)
 		this.#emitter.emit('remove', id)
+	}
+
+	// The owning builder's bulk re-seat channel — replaces the whole collection
+	// in one silent call (no per-element events); used by `merge`.
+	seat(items: readonly FactorGroup[]): void {
+		this.#groups.seat(items)
 	}
 
 	destroy(): void {

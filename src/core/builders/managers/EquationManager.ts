@@ -17,10 +17,9 @@ import { Collection } from './Collection.js'
  * shared by composition with the other list managers — plus its own
  * {@link Emitter} over {@link EquationManagerEventMap}. Equation order is
  * STRONGLY load-bearing — equations solve strictly in order and each rounded
- * solution feeds forward. The write-only `collection` setter is the owning
- * builder's silent bulk re-seat channel (used by `merge`). `destroy()` is
- * idempotent and tears the emitter down LAST; any other call after it throws
- * `ReasonError('DESTROYED', …)`.
+ * solution feeds forward. `seat` is the owning builder's silent bulk re-seat
+ * channel (used by `merge`). `destroy()` is idempotent and tears the emitter
+ * down LAST; any other call after it throws `ReasonError('DESTROYED', …)`.
  */
 export class EquationManager implements EquationManagerInterface {
 	readonly #equations: Collection<Equation>
@@ -33,10 +32,6 @@ export class EquationManager implements EquationManagerInterface {
 
 	get emitter(): EmitterInterface<EquationManagerEventMap> {
 		return this.#emitter
-	}
-
-	set collection(value: readonly Equation[]) {
-		this.#equations.seat(value)
 	}
 
 	equation(id: string): Equation | undefined {
@@ -65,6 +60,12 @@ export class EquationManager implements EquationManagerInterface {
 	remove(id: string): void {
 		this.#equations.remove(id)
 		this.#emitter.emit('remove', id)
+	}
+
+	// The owning builder's bulk re-seat channel — replaces the whole collection
+	// in one silent call (no per-element events); used by `merge`.
+	seat(items: readonly Equation[]): void {
+		this.#equations.seat(items)
 	}
 
 	destroy(): void {

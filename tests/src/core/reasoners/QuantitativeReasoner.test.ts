@@ -1,20 +1,20 @@
 import type { Factor, FactorGroup, ReasonResult, ReasonValidationResult } from '@src/core'
 import {
-	bounds,
-	check,
-	createQuantitativeReasoner,
+	createBounds,
+	createCheck,
 	createDefinitionBuilder,
+	createFactorGroup,
+	createFieldFactor,
+	createLogicalDefinition,
+	createLookupFactor,
+	createQuantitativeDefinition,
+	createQuantitativeReasoner,
+	createRangeFactor,
+	createStaticFactor,
 	createSubjectBuilder,
-	factorGroup,
-	fieldFactor,
+	createTransform,
 	isReasonError,
-	logicalDefinition,
-	lookupFactor,
 	QuantitativeReasoner,
-	quantitativeDefinition,
-	rangeFactor,
-	staticFactor,
-	transform,
 } from '@src/core'
 import { describe, expect, it } from 'vitest'
 import { captureError, invokeUnchecked } from '@orkestrel/test'
@@ -57,28 +57,30 @@ describe('QuantitativeReasoner — identity', () => {
 
 describe('QuantitativeReasoner — supports', () => {
 	it('supports quantitative definitions only', () => {
-		expect(reasoner.supports(quantitativeDefinition('d', 'd', []))).toBe(true)
-		expect(reasoner.supports(logicalDefinition('d', 'd', []))).toBe(false)
+		expect(reasoner.supports(createQuantitativeDefinition('d', 'd', []))).toBe(true)
+		expect(reasoner.supports(createLogicalDefinition('d', 'd', []))).toBe(false)
 	})
 })
 
 describe('QuantitativeReasoner — validate', () => {
 	it('accepts a well-formed definition', () => {
 		const validation = reasoner.validate(
-			quantitativeDefinition('risk', 'Risk', [factorGroup('g1', 'sum', [staticFactor('f1', 1)])]),
+			createQuantitativeDefinition('risk', 'Risk', [
+				createFactorGroup('g1', 'sum', [createStaticFactor('f1', 1)]),
+			]),
 		)
 		expect(validation.valid).toBe(true)
 		expect(validation.errors).toEqual([])
 	})
 
 	it('rejects the wrong reasoning with the renamed message', () => {
-		const validation = reasoner.validate(logicalDefinition('d', 'd', []))
+		const validation = reasoner.validate(createLogicalDefinition('d', 'd', []))
 		expect(validation.valid).toBe(false)
 		expect(validation.errors[0]).toBe('Expected reasoning "quantitative", got "logical"')
 	})
 
 	it('demands an id, a name, and at least one group', () => {
-		const validation = reasoner.validate(quantitativeDefinition('', '', []))
+		const validation = reasoner.validate(createQuantitativeDefinition('', '', []))
 		expect(validation.valid).toBe(false)
 		expect(validation.errors).toContain('Definition must have an id')
 		expect(validation.errors).toContain('Definition must have a name')
@@ -87,7 +89,9 @@ describe('QuantitativeReasoner — validate', () => {
 
 	it('demands group and factor ids', () => {
 		const validation = reasoner.validate(
-			quantitativeDefinition('d', 'd', [factorGroup('', 'sum', [staticFactor('', 1)])]),
+			createQuantitativeDefinition('d', 'd', [
+				createFactorGroup('', 'sum', [createStaticFactor('', 1)]),
+			]),
 		)
 		expect(validation.errors).toContain('Group must have an id')
 		expect(validation.errors).toContain('Factor must have an id')
@@ -95,7 +99,7 @@ describe('QuantitativeReasoner — validate', () => {
 
 	it('a factorless group is a WARNING, not an error', () => {
 		const validation = reasoner.validate(
-			quantitativeDefinition('d', 'd', [factorGroup('g1', 'sum', [])]),
+			createQuantitativeDefinition('d', 'd', [createFactorGroup('g1', 'sum', [])]),
 		)
 		expect(validation.valid).toBe(true)
 		expect(validation.warnings).toContain('Group "g1" has no factors')
@@ -116,10 +120,14 @@ describe('QuantitativeReasoner — validate', () => {
 
 	it('duplicate group and factor ids are WARNINGS, once per duplicated id', () => {
 		const validation = reasoner.validate(
-			quantitativeDefinition('d', 'd', [
-				factorGroup('g', 'sum', [staticFactor('f', 1), staticFactor('f', 2), staticFactor('f', 3)]),
-				factorGroup('g', 'sum', [staticFactor('solo', 1)]),
-				factorGroup('g', 'sum', []),
+			createQuantitativeDefinition('d', 'd', [
+				createFactorGroup('g', 'sum', [
+					createStaticFactor('f', 1),
+					createStaticFactor('f', 2),
+					createStaticFactor('f', 3),
+				]),
+				createFactorGroup('g', 'sum', [createStaticFactor('solo', 1)]),
+				createFactorGroup('g', 'sum', []),
 			]),
 		)
 		expect(validation.valid).toBe(true)
@@ -133,9 +141,9 @@ describe('QuantitativeReasoner — validate', () => {
 
 	it('the same factor id in DIFFERENT groups does not warn (uniqueness is per group)', () => {
 		const validation = reasoner.validate(
-			quantitativeDefinition('d', 'd', [
-				factorGroup('g1', 'sum', [staticFactor('base', 1)]),
-				factorGroup('g2', 'sum', [staticFactor('base', 2)]),
+			createQuantitativeDefinition('d', 'd', [
+				createFactorGroup('g1', 'sum', [createStaticFactor('base', 1)]),
+				createFactorGroup('g2', 'sum', [createStaticFactor('base', 2)]),
 			]),
 		)
 		expect(validation.warnings).toEqual([])
@@ -144,63 +152,68 @@ describe('QuantitativeReasoner — validate', () => {
 
 describe('QuantitativeReasoner — reason (core pipeline)', () => {
 	it('adds a static factor onto the definition base', () => {
-		const definition = quantitativeDefinition(
+		const definition = createQuantitativeDefinition(
 			'd',
 			'd',
-			[factorGroup('g1', 'sum', [staticFactor('f1', 50)])],
+			[createFactorGroup('g1', 'sum', [createStaticFactor('f1', 50)])],
 			{ base: 100 },
 		)
 		expect(expectQuantitative(reasoner.reason({}, definition)).value).toBe(150)
 	})
 
 	it('reads a field factor from the subject', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [fieldFactor('price', 'price')]),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [createFieldFactor('price', 'price')]),
 		])
 		expect(expectQuantitative(reasoner.reason({ price: 200 }, definition)).value).toBe(200)
 	})
 
 	it('applies transforms to the factor value', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [
-				staticFactor('f1', 100, { transforms: [transform('multiply', 2)] }),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createStaticFactor('f1', 100, { transforms: [createTransform('multiply', 2)] }),
 			]),
 		])
 		expect(expectQuantitative(reasoner.reason({}, definition)).value).toBe(200)
 	})
 
 	it('sums multiple factors in a group and multiple groups at the top', () => {
-		const summed = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [
-				staticFactor('f1', 10),
-				staticFactor('f2', 20),
-				staticFactor('f3', 30),
+		const summed = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createStaticFactor('f1', 10),
+				createStaticFactor('f2', 20),
+				createStaticFactor('f3', 30),
 			]),
 		])
 		expect(expectQuantitative(reasoner.reason({}, summed)).value).toBe(60)
 
-		const grouped = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [staticFactor('f1', 100)]),
-			factorGroup('g2', 'sum', [staticFactor('f2', 200)]),
+		const grouped = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [createStaticFactor('f1', 100)]),
+			createFactorGroup('g2', 'sum', [createStaticFactor('f2', 200)]),
 		])
 		expect(expectQuantitative(reasoner.reason({}, grouped)).value).toBe(300)
 	})
 
 	it('multiplies under product aggregation at group and definition level', () => {
-		const definition = quantitativeDefinition(
+		const definition = createQuantitativeDefinition(
 			'd',
 			'd',
-			[factorGroup('g1', 'product', [staticFactor('f1', 2), staticFactor('f2', 3)])],
+			[
+				createFactorGroup('g1', 'product', [
+					createStaticFactor('f1', 2),
+					createStaticFactor('f2', 3),
+				]),
+			],
 			{ aggregation: 'product' },
 		)
 		expect(expectQuantitative(reasoner.reason({}, definition)).value).toBe(6)
 	})
 
 	it('excludes a disabled group (with a skip trace) and a disabled factor', () => {
-		const groupOff = quantitativeDefinition(
+		const groupOff = createQuantitativeDefinition(
 			'd',
 			'd',
-			[factorGroup('off', 'sum', [staticFactor('f1', 50)], { enabled: false })],
+			[createFactorGroup('off', 'sum', [createStaticFactor('f1', 50)], { enabled: false })],
 			{ base: 100 },
 		)
 		const groupResult = expectQuantitative(reasoner.reason({}, groupOff))
@@ -208,10 +221,10 @@ describe('QuantitativeReasoner — reason (core pipeline)', () => {
 		expect(groupResult.groups).toEqual([])
 		expect(groupResult.trace).toContain('Skipped group "off" (disabled)')
 
-		const factorOff = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [
-				staticFactor('f1', 10),
-				staticFactor('f2', 20, { enabled: false }),
+		const factorOff = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createStaticFactor('f1', 10),
+				createStaticFactor('f2', 20, { enabled: false }),
 			]),
 		])
 		const factorResult = expectQuantitative(reasoner.reason({}, factorOff))
@@ -220,27 +233,27 @@ describe('QuantitativeReasoner — reason (core pipeline)', () => {
 	})
 
 	it('clamps the final value to the definition bounds', () => {
-		const definition = quantitativeDefinition(
+		const definition = createQuantitativeDefinition(
 			'd',
 			'd',
-			[factorGroup('g1', 'sum', [staticFactor('f1', 100)])],
-			{ bounds: bounds(undefined, 50) },
+			[createFactorGroup('g1', 'sum', [createStaticFactor('f1', 100)])],
+			{ bounds: createBounds(undefined, 50) },
 		)
 		expect(expectQuantitative(reasoner.reason({}, definition)).value).toBe(50)
 	})
 
 	it('uses the fallback when a field is missing', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [fieldFactor('f1', 'missing', { fallback: 25 })]),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [createFieldFactor('f1', 'missing', { fallback: 25 })]),
 		])
 		expect(expectQuantitative(reasoner.reason({}, definition)).value).toBe(25)
 	})
 
 	it('produces a non-empty trace with the pipeline formats', () => {
-		const definition = quantitativeDefinition(
+		const definition = createQuantitativeDefinition(
 			'd',
 			'd',
-			[factorGroup('g1', 'sum', [staticFactor('f1', 10)])],
+			[createFactorGroup('g1', 'sum', [createStaticFactor('f1', 10)])],
 			{ base: 100 },
 		)
 		const result = expectQuantitative(reasoner.reason({}, definition))
@@ -251,15 +264,21 @@ describe('QuantitativeReasoner — reason (core pipeline)', () => {
 	})
 
 	it('checks gate a factor in or out (with the renamed trace)', () => {
-		const met = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [staticFactor('f1', 100, { checks: [check('age', 'from', 18)] })]),
+		const met = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createStaticFactor('f1', 100, { checks: [createCheck('age', 'from', 18)] }),
+			]),
 		])
 		expect(expectQuantitative(reasoner.reason({ age: 25 }, met)).value).toBe(100)
 
-		const unmet = quantitativeDefinition(
+		const unmet = createQuantitativeDefinition(
 			'd',
 			'd',
-			[factorGroup('g1', 'sum', [staticFactor('f1', 100, { checks: [check('age', 'from', 18)] })])],
+			[
+				createFactorGroup('g1', 'sum', [
+					createStaticFactor('f1', 100, { checks: [createCheck('age', 'from', 18)] }),
+				]),
+			],
 			{ base: 50 },
 		)
 		const result = expectQuantitative(reasoner.reason({ age: 10 }, unmet))
@@ -268,10 +287,10 @@ describe('QuantitativeReasoner — reason (core pipeline)', () => {
 	})
 
 	it('ANDs every check on a factor', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [
-				staticFactor('f1', 100, {
-					checks: [check('age', 'from', 18), check('state', 'equals', 'CA')],
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createStaticFactor('f1', 100, {
+					checks: [createCheck('age', 'from', 18), createCheck('state', 'equals', 'CA')],
 				}),
 			]),
 		])
@@ -281,8 +300,10 @@ describe('QuantitativeReasoner — reason (core pipeline)', () => {
 })
 
 describe('QuantitativeReasoner — lookup & range sources', () => {
-	const stateLookup = quantitativeDefinition('d', 'd', [
-		factorGroup('g1', 'sum', [lookupFactor('f1', 'state', { CA: 1.2, NY: 0.8 }, { fallback: 1 })]),
+	const stateLookup = createQuantitativeDefinition('d', 'd', [
+		createFactorGroup('g1', 'sum', [
+			createLookupFactor('f1', 'state', { CA: 1.2, NY: 0.8 }, { fallback: 1 }),
+		]),
 	])
 
 	it('a lookup hit maps through the table; a miss and a missing field take the fallback', () => {
@@ -292,15 +313,17 @@ describe('QuantitativeReasoner — lookup & range sources', () => {
 	})
 
 	it('a numeric field value coerces to a string table key', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [lookupFactor('f1', 'code', { '42': 99 })]),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [createLookupFactor('f1', 'code', { '42': 99 })]),
 		])
 		expect(expectQuantitative(reasoner.reason({ code: 42 }, definition)).value).toBe(99)
 	})
 
 	it('a missing or null field takes the FALLBACK — an "" table key never intercepts it', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [lookupFactor('f1', 'missing', { '': 9 }, { fallback: 3 })]),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createLookupFactor('f1', 'missing', { '': 9 }, { fallback: 3 }),
+			]),
 		])
 		// Absent field and explicit null both bypass the '' key.
 		expect(expectQuantitative(reasoner.reason({}, definition)).value).toBe(3)
@@ -310,8 +333,8 @@ describe('QuantitativeReasoner — lookup & range sources', () => {
 	})
 
 	it('only OWN table keys hit — an inherited key (toString / constructor) falls back', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [lookupFactor('f1', 'key', {}, { fallback: 7 })]),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [createLookupFactor('f1', 'key', {}, { fallback: 7 })]),
 		])
 		const result = expectQuantitative(reasoner.reason({ key: 'toString' }, definition))
 		expect(result.value).toBe(7)
@@ -319,12 +342,12 @@ describe('QuantitativeReasoner — lookup & range sources', () => {
 		expect(expectQuantitative(reasoner.reason({ key: 'constructor' }, definition)).value).toBe(7)
 	})
 
-	const ageBands = quantitativeDefinition('d', 'd', [
-		factorGroup('g1', 'sum', [
-			rangeFactor('f1', 'age', [
-				{ bounds: bounds(undefined, 25), value: 1.5 },
-				{ bounds: bounds(26, 65), value: 1 },
-				{ bounds: bounds(66), value: 1.3 },
+	const ageBands = createQuantitativeDefinition('d', 'd', [
+		createFactorGroup('g1', 'sum', [
+			createRangeFactor('f1', 'age', [
+				{ bounds: createBounds(undefined, 25), value: 1.5 },
+				{ bounds: createBounds(26, 65), value: 1 },
+				{ bounds: createBounds(66), value: 1.3 },
 			]),
 		]),
 	])
@@ -336,27 +359,27 @@ describe('QuantitativeReasoner — lookup & range sources', () => {
 	})
 
 	it('no matching band takes the fallback', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [
-				rangeFactor('f1', 'age', [{ bounds: bounds(100), value: 5 }], { fallback: 0 }),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createRangeFactor('f1', 'age', [{ bounds: createBounds(100), value: 5 }], { fallback: 0 }),
 			]),
 		])
 		expect(expectQuantitative(reasoner.reason({ age: 30 }, definition)).value).toBe(0)
 	})
 
 	it('a boundless band is a catch-all', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [rangeFactor('f1', 'age', [{ value: 42 }])]),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [createRangeFactor('f1', 'age', [{ value: 42 }])]),
 		])
 		expect(expectQuantitative(reasoner.reason({ age: 999 }, definition)).value).toBe(42)
 	})
 
 	it('overlapping bands resolve to the FIRST match', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [
-				rangeFactor('f1', 'age', [
-					{ bounds: bounds(0, 100), value: 1 },
-					{ bounds: bounds(50, 150), value: 2 },
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createRangeFactor('f1', 'age', [
+					{ bounds: createBounds(0, 100), value: 1 },
+					{ bounds: createBounds(50, 150), value: 2 },
 				]),
 			]),
 		])
@@ -366,13 +389,13 @@ describe('QuantitativeReasoner — lookup & range sources', () => {
 
 describe('QuantitativeReasoner — strict groups & required factors', () => {
 	it('a strict group contributes nothing when any factor fails its checks', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup(
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup(
 				'g1',
 				'sum',
 				[
-					staticFactor('always', 10),
-					staticFactor('gated', 20, { checks: [check('missing', 'equals', true)] }),
+					createStaticFactor('always', 10),
+					createStaticFactor('gated', 20, { checks: [createCheck('missing', 'equals', true)] }),
 				],
 				{ strict: true },
 			),
@@ -384,8 +407,8 @@ describe('QuantitativeReasoner — strict groups & required factors', () => {
 	})
 
 	it('a strict group passes when every factor applies', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [staticFactor('f1', 10), staticFactor('f2', 20)], {
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [createStaticFactor('f1', 10), createStaticFactor('f2', 20)], {
 				strict: true,
 			}),
 		])
@@ -393,8 +416,8 @@ describe('QuantitativeReasoner — strict groups & required factors', () => {
 	})
 
 	it('a required factor with an unresolvable source fails the run (renamed error)', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [fieldFactor('f1', 'missing', { required: true })]),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [createFieldFactor('f1', 'missing', { required: true })]),
 		])
 		const result = expectQuantitative(reasoner.reason({}, definition))
 		expect(result.success).toBe(false)
@@ -403,9 +426,9 @@ describe('QuantitativeReasoner — strict groups & required factors', () => {
 	})
 
 	it('a required factor with unmet checks fails the run (checks, not conditions)', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [
-				staticFactor('f1', 10, { required: true, checks: [check('age', 'from', 18)] }),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createStaticFactor('f1', 10, { required: true, checks: [createCheck('age', 'from', 18)] }),
 			]),
 		])
 		const result = expectQuantitative(reasoner.reason({ age: 10 }, definition))
@@ -414,10 +437,10 @@ describe('QuantitativeReasoner — strict groups & required factors', () => {
 	})
 
 	it('a required failure does NOT zero the other factors', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [
-				fieldFactor('gone', 'missing', { required: true }),
-				staticFactor('kept', 50),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createFieldFactor('gone', 'missing', { required: true }),
+				createStaticFactor('kept', 50),
 			]),
 		])
 		const result = expectQuantitative(reasoner.reason({}, definition))
@@ -428,8 +451,8 @@ describe('QuantitativeReasoner — strict groups & required factors', () => {
 
 describe('QuantitativeReasoner — result shape, bases & weights', () => {
 	it('factor results expose raw / value / applied', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [staticFactor('f1', 10)]),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [createStaticFactor('f1', 10)]),
 		])
 		const result = expectQuantitative(reasoner.reason({}, definition))
 		expect(result.groups[0]?.factors[0]).toEqual({ id: 'f1', applied: true, value: 10, raw: 10 })
@@ -437,45 +460,49 @@ describe('QuantitativeReasoner — result shape, bases & weights', () => {
 	})
 
 	it('group base adds to the group aggregation and group bounds clamp it', () => {
-		const based = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [staticFactor('f1', 5)], { base: 100 }),
+		const based = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [createStaticFactor('f1', 5)], { base: 100 }),
 		])
 		expect(expectQuantitative(reasoner.reason({}, based)).value).toBe(105)
 
-		const clamped = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [staticFactor('f1', 500)], { bounds: bounds(undefined, 100) }),
+		const clamped = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [createStaticFactor('f1', 500)], {
+				bounds: createBounds(undefined, 100),
+			}),
 		])
 		expect(expectQuantitative(reasoner.reason({}, clamped)).value).toBe(100)
 
-		const baseAndFactors = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [staticFactor('f1', 10), staticFactor('f2', 20)], { base: 100 }),
+		const baseAndFactors = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [createStaticFactor('f1', 10), createStaticFactor('f2', 20)], {
+				base: 100,
+			}),
 		])
 		expect(expectQuantitative(reasoner.reason({}, baseAndFactors)).value).toBe(130)
 	})
 
 	it('definition base and group base STACK', () => {
-		const definition = quantitativeDefinition(
+		const definition = createQuantitativeDefinition(
 			'd',
 			'd',
-			[factorGroup('g1', 'sum', [staticFactor('f1', 10)], { base: 50 })],
+			[createFactorGroup('g1', 'sum', [createStaticFactor('f1', 10)], { base: 50 })],
 			{ base: 100 },
 		)
 		expect(expectQuantitative(reasoner.reason({}, definition)).value).toBe(160)
 	})
 
 	it('weights feed the group aggregation — weighted averages', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'average', [
-				staticFactor('f1', 100, { weight: 3 }),
-				staticFactor('f2', 0, { weight: 1 }),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'average', [
+				createStaticFactor('f1', 100, { weight: 3 }),
+				createStaticFactor('f2', 0, { weight: 1 }),
 			]),
 		])
 		expect(expectQuantitative(reasoner.reason({}, definition)).value).toBe(75)
 
-		const second = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'average', [
-				staticFactor('f1', 100, { weight: 3 }),
-				staticFactor('f2', 200, { weight: 1 }),
+		const second = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'average', [
+				createStaticFactor('f1', 100, { weight: 3 }),
+				createStaticFactor('f2', 200, { weight: 1 }),
 			]),
 		])
 		expect(expectQuantitative(reasoner.reason({}, second)).value).toBe(125)
@@ -483,11 +510,11 @@ describe('QuantitativeReasoner — result shape, bases & weights', () => {
 
 	it('weights multiply into SUM aggregation too (the full pipeline combined)', () => {
 		// raw 10 → ×3 = 30 → clamped to 25 → weight 2 in a sum → 50.
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [
-				staticFactor('f1', 10, {
-					transforms: [transform('multiply', 3)],
-					bounds: bounds(undefined, 25),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createStaticFactor('f1', 10, {
+					transforms: [createTransform('multiply', 3)],
+					bounds: createBounds(undefined, 25),
 					weight: 2,
 				}),
 			]),
@@ -496,39 +523,51 @@ describe('QuantitativeReasoner — result shape, bases & weights', () => {
 	})
 
 	it('mixed group aggregations combine at the top level', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'product', [staticFactor('f1', 2), staticFactor('f2', 3)]),
-			factorGroup('g2', 'average', [staticFactor('f3', 10), staticFactor('f4', 20)]),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'product', [
+				createStaticFactor('f1', 2),
+				createStaticFactor('f2', 3),
+			]),
+			createFactorGroup('g2', 'average', [
+				createStaticFactor('f3', 10),
+				createStaticFactor('f4', 20),
+			]),
 		])
 		expect(expectQuantitative(reasoner.reason({}, definition)).value).toBe(21)
 	})
 
 	it('product / minimum / maximum groups aggregate their factors', () => {
-		const product = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'product', [
-				staticFactor('f1', 3),
-				staticFactor('f2', 4),
-				staticFactor('f3', 5),
+		const product = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'product', [
+				createStaticFactor('f1', 3),
+				createStaticFactor('f2', 4),
+				createStaticFactor('f3', 5),
 			]),
 		])
 		expect(expectQuantitative(reasoner.reason({}, product)).value).toBe(60)
 
-		const minimum = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'minimum', [staticFactor('f1', 10), staticFactor('f2', 50)]),
+		const minimum = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'minimum', [
+				createStaticFactor('f1', 10),
+				createStaticFactor('f2', 50),
+			]),
 		])
 		expect(expectQuantitative(reasoner.reason({}, minimum)).value).toBe(10)
 
-		const maximum = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'maximum', [staticFactor('f1', 10), staticFactor('f2', 50)]),
+		const maximum = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'maximum', [
+				createStaticFactor('f1', 10),
+				createStaticFactor('f2', 50),
+			]),
 		])
 		expect(expectQuantitative(reasoner.reason({}, maximum)).value).toBe(50)
 	})
 
 	it('factors evaluate in stable ascending priority order (trace-observable)', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [
-				staticFactor('slow', 1, { priority: 10 }),
-				staticFactor('fast', 2, { priority: 1 }),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createStaticFactor('slow', 1, { priority: 10 }),
+				createStaticFactor('fast', 2, { priority: 1 }),
 			]),
 		])
 		const result = expectQuantitative(reasoner.reason({}, definition))
@@ -539,10 +578,10 @@ describe('QuantitativeReasoner — result shape, bases & weights', () => {
 	})
 
 	it('a NEGATIVE priority sorts before the default-0 factor', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [
-				staticFactor('unprioritized', 1),
-				staticFactor('negative', 2, { priority: -5 }),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createStaticFactor('unprioritized', 1),
+				createStaticFactor('negative', 2, { priority: -5 }),
 			]),
 		])
 		const result = expectQuantitative(reasoner.reason({}, definition))
@@ -553,11 +592,11 @@ describe('QuantitativeReasoner — result shape, bases & weights', () => {
 	})
 
 	it('EQUAL priorities keep declaration order (the sort is stable)', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [
-				staticFactor('first', 1, { priority: 1 }),
-				staticFactor('second', 2, { priority: 1 }),
-				staticFactor('third', 3, { priority: 1 }),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createStaticFactor('first', 1, { priority: 1 }),
+				createStaticFactor('second', 2, { priority: 1 }),
+				createStaticFactor('third', 3, { priority: 1 }),
 			]),
 		])
 		const result = expectQuantitative(reasoner.reason({}, definition))
@@ -572,10 +611,10 @@ describe('QuantitativeReasoner — result shape, bases & weights', () => {
 	it('duplicate factor ids: the weight lookup takes the FIRST twin (runtime quirk, warned by validate)', () => {
 		// Values 10 and 100 with declared weights 2 and 5 — BOTH resolve weight 2
 		// (the by-id lookup finds the first twin): 10·2 + 100·2 = 220, not 520.
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [
-				staticFactor('dup', 10, { weight: 2 }),
-				staticFactor('dup', 100, { weight: 5 }),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createStaticFactor('dup', 10, { weight: 2 }),
+				createStaticFactor('dup', 100, { weight: 5 }),
 			]),
 		])
 		expect(expectQuantitative(reasoner.reason({}, definition)).value).toBe(220)
@@ -584,20 +623,20 @@ describe('QuantitativeReasoner — result shape, bases & weights', () => {
 
 describe('QuantitativeReasoner — field paths (FieldPath semantics)', () => {
 	it('an ARRAY path descends into nested objects', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [fieldFactor('f1', ['data', 'score'])]),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [createFieldFactor('f1', ['data', 'score'])]),
 		])
 		expect(expectQuantitative(reasoner.reason({ data: { score: 95 } }, definition)).value).toBe(95)
 
-		const deep = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [fieldFactor('f1', ['a', 'b', 'c', 'd'])]),
+		const deep = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [createFieldFactor('f1', ['a', 'b', 'c', 'd'])]),
 		])
 		expect(expectQuantitative(reasoner.reason({ a: { b: { c: { d: 42 } } } }, deep)).value).toBe(42)
 	})
 
 	it('a dotted STRING is ONE key — it reads the flat key, never the nested shape', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [fieldFactor('f1', 'data.score', { fallback: 0 })]),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [createFieldFactor('f1', 'data.score', { fallback: 0 })]),
 		])
 		expect(expectQuantitative(reasoner.reason({ 'data.score': 95 }, definition)).value).toBe(95)
 		expect(expectQuantitative(reasoner.reason({ data: { score: 95 } }, definition)).value).toBe(0)
@@ -606,9 +645,9 @@ describe('QuantitativeReasoner — field paths (FieldPath semantics)', () => {
 
 describe('QuantitativeReasoner — parseNumber coercion (contracts semantics)', () => {
 	const readValue = (fallback?: number) =>
-		quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [
-				fieldFactor('f1', 'value', fallback === undefined ? undefined : { fallback }),
+		createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createFieldFactor('f1', 'value', fallback === undefined ? undefined : { fallback }),
 			]),
 		])
 
@@ -640,8 +679,8 @@ describe('QuantitativeReasoner — parseNumber coercion (contracts semantics)', 
 
 describe('QuantitativeReasoner — non-finite guard', () => {
 	it('a static NaN source errors with the NaN description', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [staticFactor('f1', Number.NaN)]),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [createStaticFactor('f1', Number.NaN)]),
 		])
 		const result = expectQuantitative(reasoner.reason({}, definition))
 		expect(result.success).toBe(false)
@@ -651,15 +690,15 @@ describe('QuantitativeReasoner — non-finite guard', () => {
 	})
 
 	it('static ±Infinity sources error with their signed description', () => {
-		const positive = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [staticFactor('f1', Number.POSITIVE_INFINITY)]),
+		const positive = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [createStaticFactor('f1', Number.POSITIVE_INFINITY)]),
 		])
 		expect(expectQuantitative(reasoner.reason({}, positive)).errors[0]).toBe(
 			'Factor "f1" produced non-finite value: Infinity',
 		)
 
-		const negative = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [staticFactor('f1', Number.NEGATIVE_INFINITY)]),
+		const negative = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [createStaticFactor('f1', Number.NEGATIVE_INFINITY)]),
 		])
 		expect(expectQuantitative(reasoner.reason({}, negative)).errors[0]).toBe(
 			'Factor "f1" produced non-finite value: -Infinity',
@@ -667,10 +706,10 @@ describe('QuantitativeReasoner — non-finite guard', () => {
 	})
 
 	it('a non-finite factor does not contaminate its siblings', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [
-				staticFactor('bad', Number.POSITIVE_INFINITY),
-				staticFactor('good', 42),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createStaticFactor('bad', Number.POSITIVE_INFINITY),
+				createStaticFactor('good', 42),
 			]),
 		])
 		const result = expectQuantitative(reasoner.reason({}, definition))
@@ -680,8 +719,10 @@ describe('QuantitativeReasoner — non-finite guard', () => {
 	})
 
 	it('a divide-by-zero transform trips the post-transform finite recheck', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [staticFactor('f1', 10, { transforms: [transform('divide', 0)] })]),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createStaticFactor('f1', 10, { transforms: [createTransform('divide', 0)] }),
+			]),
 		])
 		const result = expectQuantitative(reasoner.reason({}, definition))
 		expect(result.success).toBe(false)
@@ -690,8 +731,10 @@ describe('QuantitativeReasoner — non-finite guard', () => {
 	})
 
 	it('a NaN fallback feeds the non-finite error path (it IS the resolved value)', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [fieldFactor('f1', 'missing', { fallback: Number.NaN })]),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createFieldFactor('f1', 'missing', { fallback: Number.NaN }),
+			]),
 		])
 		const result = expectQuantitative(reasoner.reason({}, definition))
 		expect(result.success).toBe(false)
@@ -702,7 +745,7 @@ describe('QuantitativeReasoner — non-finite guard', () => {
 	it('minimum/maximum over ZERO applied groups is a definition-level non-finite error, value NaN', () => {
 		for (const aggregation of ['minimum', 'maximum'] as const) {
 			const result = expectQuantitative(
-				reasoner.reason({}, quantitativeDefinition('d', 'd', [], { aggregation })),
+				reasoner.reason({}, createQuantitativeDefinition('d', 'd', [], { aggregation })),
 			)
 			expect(Number.isNaN(result.value)).toBe(true)
 			expect(result.success).toBe(false)
@@ -716,9 +759,9 @@ describe('QuantitativeReasoner — non-finite guard', () => {
 	it('an UNAPPLIED group may carry a NaN value — excluded from the definition aggregate', () => {
 		// The gated-out factor leaves a minimum aggregation over zero values:
 		// base 0 + NaN. The group is unapplied, so the definition (sum) ignores it.
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'minimum', [
-				staticFactor('gated', 5, { checks: [check('missing', 'equals', true)] }),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'minimum', [
+				createStaticFactor('gated', 5, { checks: [createCheck('missing', 'equals', true)] }),
 			]),
 		])
 		const result = expectQuantitative(reasoner.reason({}, definition))
@@ -731,19 +774,22 @@ describe('QuantitativeReasoner — non-finite guard', () => {
 
 describe('QuantitativeReasoner — precision, scale & scenarios', () => {
 	it('sums negative values', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [
-				staticFactor('f1', 10),
-				staticFactor('f2', -5),
-				staticFactor('f3', 3),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createStaticFactor('f1', 10),
+				createStaticFactor('f2', -5),
+				createStaticFactor('f3', 3),
 			]),
 		])
 		expect(expectQuantitative(reasoner.reason({}, definition)).value).toBe(8)
 	})
 
 	it('GROUP values are never rounded — only the definition value rounds', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [staticFactor('f1', 0.1), staticFactor('f2', 0.2)]),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createStaticFactor('f1', 0.1),
+				createStaticFactor('f2', 0.2),
+			]),
 		])
 		const result = expectQuantitative(reasoner.reason({}, definition))
 		expect(result.groups[0]?.value).toBe(0.30000000000000004)
@@ -751,45 +797,47 @@ describe('QuantitativeReasoner — precision, scale & scenarios', () => {
 	})
 
 	it('precision 0 rounds to an integer; the default precision is 4 decimal places', () => {
-		const integer = quantitativeDefinition(
+		const integer = createQuantitativeDefinition(
 			'd',
 			'd',
-			[factorGroup('g1', 'sum', [staticFactor('f1', 3.14159)])],
+			[createFactorGroup('g1', 'sum', [createStaticFactor('f1', 3.14159)])],
 			{ precision: 0 },
 		)
 		expect(expectQuantitative(reasoner.reason({}, integer)).value).toBe(3)
 
-		const defaulted = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [staticFactor('f1', 0.123456)]),
+		const defaulted = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [createStaticFactor('f1', 0.123456)]),
 		])
 		expect(expectQuantitative(reasoner.reason({}, defaulted)).value).toBe(0.1235)
 	})
 
 	it('50 factors of 1 sum to 50', () => {
-		const factors = Array.from({ length: 50 }, (_, index) => staticFactor(`f${index}`, 1))
-		const definition = quantitativeDefinition('d', 'd', [factorGroup('g1', 'sum', factors)])
+		const factors = Array.from({ length: 50 }, (_, index) => createStaticFactor(`f${index}`, 1))
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', factors),
+		])
 		expect(expectQuantitative(reasoner.reason({}, definition)).value).toBe(50)
 	})
 
 	it('all four source origins combine in one definition', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [
-				staticFactor('static', 10),
-				fieldFactor('field', 'score'),
-				lookupFactor('lookup', 'state', { CA: 5 }),
-				rangeFactor('range', 'age', [{ bounds: bounds(26, 65), value: 2 }]),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createStaticFactor('static', 10),
+				createFieldFactor('field', 'score'),
+				createLookupFactor('lookup', 'state', { CA: 5 }),
+				createRangeFactor('range', 'age', [{ bounds: createBounds(26, 65), value: 2 }]),
 			]),
 		])
 		expect(expectQuantitative(reasoner.reason(BASIC_SUBJECT, definition)).value).toBe(102)
 	})
 
 	it('the driver scenario spans two groups (sum + product)', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('penalties', 'sum', [
-				fieldFactor('age', 'driverAge'),
-				fieldFactor('violations', 'violationCount'),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('penalties', 'sum', [
+				createFieldFactor('age', 'driverAge'),
+				createFieldFactor('violations', 'violationCount'),
 			]),
-			factorGroup('vehicle', 'product', [fieldFactor('year', 'vehicleYear')]),
+			createFactorGroup('vehicle', 'product', [createFieldFactor('year', 'vehicleYear')]),
 		])
 		const result = expectQuantitative(reasoner.reason(DRIVER_SUBJECT, definition))
 		expect(result.value).toBe(2042)
@@ -797,10 +845,10 @@ describe('QuantitativeReasoner — precision, scale & scenarios', () => {
 	})
 
 	it('a group with no ENABLED factors leaves only the definition base', () => {
-		const definition = quantitativeDefinition(
+		const definition = createQuantitativeDefinition(
 			'd',
 			'd',
-			[factorGroup('g1', 'sum', [staticFactor('f1', 10, { enabled: false })])],
+			[createFactorGroup('g1', 'sum', [createStaticFactor('f1', 10, { enabled: false })])],
 			{ base: 50 },
 		)
 		expect(expectQuantitative(reasoner.reason({}, definition)).value).toBe(50)
@@ -809,7 +857,9 @@ describe('QuantitativeReasoner — precision, scale & scenarios', () => {
 
 describe('QuantitativeReasoner — mismatch vs malformed shape', () => {
 	it('MISMATCH: the wrong reasoning THROWS a coded ReasonError with context', () => {
-		const error = captureError(() => reasoner.reason({}, logicalDefinition('other', 'Other', [])))
+		const error = captureError(() =>
+			reasoner.reason({}, createLogicalDefinition('other', 'Other', [])),
+		)
 		if (!isReasonError(error)) throw new Error('expected a ReasonError')
 		expect(error.code).toBe('MISMATCH')
 		expect(error.message).toBe('Expected quantitative definition, got "logical"')
@@ -828,7 +878,9 @@ describe('QuantitativeReasoner — mismatch vs malformed shape', () => {
 	})
 
 	it('an empty-factors group traces "no factors defined" and stays unapplied', () => {
-		const definition = quantitativeDefinition('d', 'd', [factorGroup('empty', 'sum', [])])
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('empty', 'sum', []),
+		])
 		const result = expectQuantitative(reasoner.reason({}, definition))
 		expect(result.trace).toContain('Group "empty": no factors defined')
 		expect(result.groups[0]?.applied).toBe(false)
@@ -869,8 +921,8 @@ describe('QuantitativeReasoner — mismatch vs malformed shape', () => {
 	})
 
 	it('an unresolved-source factor result OMITS the raw key entirely', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [fieldFactor('f1', 'missing')]),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [createFieldFactor('f1', 'missing')]),
 		])
 		const result = expectQuantitative(reasoner.reason({}, definition))
 		const factorResult = result.groups[0]?.factors[0]
@@ -882,8 +934,12 @@ describe('QuantitativeReasoner — mismatch vs malformed shape', () => {
 
 describe('QuantitativeReasoner — scale & stress', () => {
 	it('sums 2000 factors in one group to an EXACT integer', () => {
-		const factors = repeatValue(2000, 1).map((value, index) => staticFactor(`f${index}`, value))
-		const definition = quantitativeDefinition('d', 'd', [factorGroup('g1', 'sum', factors)])
+		const factors = repeatValue(2000, 1).map((value, index) =>
+			createStaticFactor(`f${index}`, value),
+		)
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', factors),
+		])
 		const result = expectQuantitative(reasoner.reason({}, definition))
 		expect(result.value).toBe(2000)
 		expect(result.success).toBe(true)
@@ -893,9 +949,11 @@ describe('QuantitativeReasoner — scale & stress', () => {
 
 	it('aggregates 150 single-factor groups at the definition level', () => {
 		const groups = sequence(150).map((index) =>
-			factorGroup(`g${index}`, 'sum', [staticFactor(`f${index}`, 1)]),
+			createFactorGroup(`g${index}`, 'sum', [createStaticFactor(`f${index}`, 1)]),
 		)
-		const result = expectQuantitative(reasoner.reason({}, quantitativeDefinition('d', 'd', groups)))
+		const result = expectQuantitative(
+			reasoner.reason({}, createQuantitativeDefinition('d', 'd', groups)),
+		)
 		expect(result.value).toBe(150)
 		expect(result.count).toBe(150)
 		expect(result.groups).toHaveLength(150)
@@ -904,8 +962,12 @@ describe('QuantitativeReasoner — scale & stress', () => {
 	it('sums a SINGLE 20,000-factor group exactly (O(1) hoisted weight lookup, was O(n²))', () => {
 		// One group of 20k factors — before the id→weight Map hoist the per-applied-factor
 		// `group.factors.find` made this O(n²); now the whole group is O(n). Σ of 20k ones.
-		const factors = repeatValue(20000, 1).map((value, index) => staticFactor(`f${index}`, value))
-		const definition = quantitativeDefinition('d', 'd', [factorGroup('g1', 'sum', factors)])
+		const factors = repeatValue(20000, 1).map((value, index) =>
+			createStaticFactor(`f${index}`, value),
+		)
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', factors),
+		])
 		const result = expectQuantitative(reasoner.reason({}, definition))
 		expect(result.value).toBe(20000)
 		expect(result.success).toBe(true)
@@ -919,15 +981,17 @@ describe('QuantitativeReasoner — scale & stress', () => {
 		// precision-4 rounding cannot perturb it. (Kept per-group small: the source's
 		// weight lookup is a linear scan per applied factor, so one 50k group is O(n²).)
 		const groups = sequence(500).map((groupIndex) =>
-			factorGroup(
+			createFactorGroup(
 				`g${groupIndex}`,
 				'sum',
 				sequence(100, groupIndex * 100).map((value) =>
-					staticFactor(`f${groupIndex}_${value}`, value),
+					createStaticFactor(`f${groupIndex}_${value}`, value),
 				),
 			),
 		)
-		const result = expectQuantitative(reasoner.reason({}, quantitativeDefinition('d', 'd', groups)))
+		const result = expectQuantitative(
+			reasoner.reason({}, createQuantitativeDefinition('d', 'd', groups)),
+		)
 		expect(result.value).toBe(1249975000)
 		expect(result.success).toBe(true)
 		expect(result.count).toBe(500)
@@ -940,13 +1004,13 @@ describe('QuantitativeReasoner — numeric extremes', () => {
 	it('accumulates two MAX_SAFE_INTEGER factors across the 2^53 boundary (precision 0)', () => {
 		// Precision 0 keeps the roundTo scale factor at 1 — a precision-4 factor would
 		// multiply the ~2^54 sum past 2^53 and corrupt it on the round-trip.
-		const definition = quantitativeDefinition(
+		const definition = createQuantitativeDefinition(
 			'd',
 			'd',
 			[
-				factorGroup('g1', 'sum', [
-					staticFactor('a', Number.MAX_SAFE_INTEGER),
-					staticFactor('b', Number.MAX_SAFE_INTEGER),
+				createFactorGroup('g1', 'sum', [
+					createStaticFactor('a', Number.MAX_SAFE_INTEGER),
+					createStaticFactor('b', Number.MAX_SAFE_INTEGER),
 				]),
 			],
 			{ precision: 0 },
@@ -958,8 +1022,8 @@ describe('QuantitativeReasoner — numeric extremes', () => {
 	})
 
 	it('a MIN_VALUE subnormal survives the group but rounds to 0 at the definition', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [staticFactor('tiny', Number.MIN_VALUE)]),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [createStaticFactor('tiny', Number.MIN_VALUE)]),
 		])
 		const result = expectQuantitative(reasoner.reason({}, definition))
 		// Groups are never rounded, so the subnormal is intact there…
@@ -971,19 +1035,19 @@ describe('QuantitativeReasoner — numeric extremes', () => {
 
 	it('an overflow-scale precision passes the MIN_VALUE subnormal through untouched', () => {
 		// 10^400 is Infinity, so roundTo short-circuits to the value unchanged.
-		const definition = quantitativeDefinition(
+		const definition = createQuantitativeDefinition(
 			'd',
 			'd',
-			[factorGroup('g1', 'sum', [staticFactor('tiny', Number.MIN_VALUE)])],
+			[createFactorGroup('g1', 'sum', [createStaticFactor('tiny', Number.MIN_VALUE)])],
 			{ precision: 400 },
 		)
 		expect(expectQuantitative(reasoner.reason({}, definition)).value).toBe(Number.MIN_VALUE)
 	})
 
 	it('a factor transform overflowing to Infinity trips the post-transform finite recheck', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [
-				staticFactor('over', 1e308, { transforms: [transform('multiply', 10)] }),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createStaticFactor('over', 1e308, { transforms: [createTransform('multiply', 10)] }),
 			]),
 		])
 		const result = expectQuantitative(reasoner.reason({}, definition))
@@ -1000,8 +1064,11 @@ describe('QuantitativeReasoner — numeric extremes', () => {
 		// Each 1e308 factor is finite (passes its own recheck); the overflow happens
 		// in the group aggregation, so the group applies with an Infinity value and the
 		// error surfaces at the definition finite-check after rounding.
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [staticFactor('a', 1e308), staticFactor('b', 1e308)]),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createStaticFactor('a', 1e308),
+				createStaticFactor('b', 1e308),
+			]),
 		])
 		const result = expectQuantitative(reasoner.reason({}, definition))
 		expect(result.groups[0]?.value).toBe(Number.POSITIVE_INFINITY)
@@ -1015,11 +1082,11 @@ describe('QuantitativeReasoner — numeric extremes', () => {
 	it('catastrophic cancellation [1e16, 1, -1e16] loses the 1 to exactly 0', () => {
 		// 1e16 + 1 === 1e16 in IEEE double, so the middle term vanishes before the
 		// subtraction — the sum is +0, not 1.
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [
-				staticFactor('big', 1e16),
-				staticFactor('one', 1),
-				staticFactor('negBig', -1e16),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createStaticFactor('big', 1e16),
+				createStaticFactor('one', 1),
+				createStaticFactor('negBig', -1e16),
 			]),
 		])
 		const result = expectQuantitative(reasoner.reason({}, definition))
@@ -1031,8 +1098,10 @@ describe('QuantitativeReasoner — numeric extremes', () => {
 	it('summing every EXTREME_NUMBERS factor overflows to Infinity (each applies first)', () => {
 		// MAX_VALUE + 1e308 overflows during aggregation, though all 14 factors are
 		// individually finite and applied.
-		const factors = EXTREME_NUMBERS.map((value, index) => staticFactor(`e${index}`, value))
-		const definition = quantitativeDefinition('d', 'd', [factorGroup('g1', 'sum', factors)])
+		const factors = EXTREME_NUMBERS.map((value, index) => createStaticFactor(`e${index}`, value))
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', factors),
+		])
 		const result = expectQuantitative(reasoner.reason({}, definition))
 		expect(result.groups[0]?.factors).toHaveLength(14)
 		expect(result.groups[0]?.factors.every((factor) => factor.applied)).toBe(true)
@@ -1044,8 +1113,10 @@ describe('QuantitativeReasoner — numeric extremes', () => {
 
 describe('QuantitativeReasoner — signed zero', () => {
 	it('a multiply-by-(-0) transform yields a -0 FACTOR value that the group base washes to +0', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [staticFactor('z', 5, { transforms: [transform('multiply', -0)] })]),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createStaticFactor('z', 5, { transforms: [createTransform('multiply', -0)] }),
+			]),
 		])
 		const result = expectQuantitative(reasoner.reason({}, definition))
 		expect(Object.is(result.groups[0]?.factors[0]?.value, -0)).toBe(true)
@@ -1055,8 +1126,8 @@ describe('QuantitativeReasoner — signed zero', () => {
 	})
 
 	it('clamping to a minimum of -0 produces a -0 factor value', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [staticFactor('c', -5, { bounds: bounds(-0) })]),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [createStaticFactor('c', -5, { bounds: createBounds(-0) })]),
 		])
 		const result = expectQuantitative(reasoner.reason({}, definition))
 		expect(Object.is(result.groups[0]?.factors[0]?.value, -0)).toBe(true)
@@ -1065,10 +1136,10 @@ describe('QuantitativeReasoner — signed zero', () => {
 	it('a -0 propagates all the way to the definition value under product aggregation', () => {
 		// Product reduce starts at 1 (1 * -0 === -0) and every base is -0, so no +0
 		// addition ever washes the sign — the final rounded value is -0.
-		const definition = quantitativeDefinition(
+		const definition = createQuantitativeDefinition(
 			'd',
 			'd',
-			[factorGroup('g1', 'product', [staticFactor('z', -0)], { base: -0 })],
+			[createFactorGroup('g1', 'product', [createStaticFactor('z', -0)], { base: -0 })],
 			{ aggregation: 'product', base: -0 },
 		)
 		const result = expectQuantitative(reasoner.reason({}, definition))
@@ -1084,19 +1155,19 @@ describe('QuantitativeReasoner — deep & adversarial field paths', () => {
 			(inner, key) => ({ [key]: inner }),
 			{ deepest: 42 },
 		)
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [fieldFactor('f1', [...deepKeys, 'deepest'])]),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [createFieldFactor('f1', [...deepKeys, 'deepest'])]),
 		])
 		expect(expectQuantitative(reasoner.reason(deepSubject, definition)).value).toBe(42)
 	})
 
 	it('a dotted STRING key "a.b" reads flat and NEVER equals the array path ["a", "b"]', () => {
 		const subject: Record<string, unknown> = { 'a.b': 11, a: { b: 22 } }
-		const flat = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [fieldFactor('f1', 'a.b', { fallback: -1 })]),
+		const flat = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [createFieldFactor('f1', 'a.b', { fallback: -1 })]),
 		])
-		const nested = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [fieldFactor('f1', ['a', 'b'], { fallback: -1 })]),
+		const nested = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [createFieldFactor('f1', ['a', 'b'], { fallback: -1 })]),
 		])
 		expect(expectQuantitative(reasoner.reason(subject, flat)).value).toBe(11)
 		expect(expectQuantitative(reasoner.reason(subject, nested)).value).toBe(22)
@@ -1109,8 +1180,8 @@ describe('QuantitativeReasoner — deep & adversarial field paths', () => {
 			TRICKY_KEYS.map((key, index): [string, number] => [key, index]),
 		)
 		TRICKY_KEYS.forEach((key, index) => {
-			const definition = quantitativeDefinition('d', 'd', [
-				factorGroup('g1', 'sum', [fieldFactor('f1', key, { fallback: -1 })]),
+			const definition = createQuantitativeDefinition('d', 'd', [
+				createFactorGroup('g1', 'sum', [createFieldFactor('f1', key, { fallback: -1 })]),
 			])
 			expect(expectQuantitative(reasoner.reason(subject, definition)).value).toBe(index)
 		})
@@ -1126,8 +1197,10 @@ describe('QuantitativeReasoner — adversarial lookup keys', () => {
 	)
 
 	it('an OWN "__proto__" table key and a unicode key both hit through the lookup', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [lookupFactor('f1', 'code', trickyTable, { fallback: -1 })]),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createLookupFactor('f1', 'code', trickyTable, { fallback: -1 }),
+			]),
 		])
 		expect(expectQuantitative(reasoner.reason({ code: '__proto__' }, definition)).value).toBe(0)
 		expect(expectQuantitative(reasoner.reason({ code: '\u{1F600}' }, definition)).value).toBe(60)
@@ -1135,15 +1208,17 @@ describe('QuantitativeReasoner — adversarial lookup keys', () => {
 	})
 
 	it('a "__proto__" field value against a table WITHOUT that own key takes the fallback', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [lookupFactor('f1', 'code', {}, { fallback: 7 })]),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [createLookupFactor('f1', 'code', {}, { fallback: 7 })]),
 		])
 		expect(expectQuantitative(reasoner.reason({ code: '__proto__' }, definition)).value).toBe(7)
 	})
 
 	it('a numeric field and its numeric-string twin collide on the same String() key', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [lookupFactor('f1', 'code', { '42': 99 }, { fallback: -1 })]),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createLookupFactor('f1', 'code', { '42': 99 }, { fallback: -1 }),
+			]),
 		])
 		expect(expectQuantitative(reasoner.reason({ code: 42 }, definition)).value).toBe(99)
 		expect(expectQuantitative(reasoner.reason({ code: '42' }, definition)).value).toBe(99)
@@ -1153,16 +1228,18 @@ describe('QuantitativeReasoner — adversarial lookup keys', () => {
 		const table: Readonly<Record<string, number>> = Object.fromEntries(
 			sequence(1000).map((value): [string, number] => [String(value), value * 2]),
 		)
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [lookupFactor('f1', 'code', table, { fallback: -1 })]),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [createLookupFactor('f1', 'code', table, { fallback: -1 })]),
 		])
 		expect(expectQuantitative(reasoner.reason({ code: 500 }, definition)).value).toBe(1000)
 		expect(expectQuantitative(reasoner.reason({ code: 9999 }, definition)).value).toBe(-1)
 	})
 
 	it('an OWN "toString" table key DOES hit (unlike the inherited method)', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [lookupFactor('f1', 'key', { toString: 55 }, { fallback: 7 })]),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createLookupFactor('f1', 'key', { toString: 55 }, { fallback: 7 }),
+			]),
 		])
 		expect(expectQuantitative(reasoner.reason({ key: 'toString' }, definition)).value).toBe(55)
 	})
@@ -1170,9 +1247,11 @@ describe('QuantitativeReasoner — adversarial lookup keys', () => {
 
 describe('QuantitativeReasoner — range band quirks', () => {
 	it('a reversed band (minimum > maximum) never matches, so the fallback wins', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [
-				rangeFactor('f1', 'age', [{ bounds: bounds(50, 10), value: 5 }], { fallback: 0 }),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createRangeFactor('f1', 'age', [{ bounds: createBounds(50, 10), value: 5 }], {
+					fallback: 0,
+				}),
 			]),
 		])
 		expect(expectQuantitative(reasoner.reason({ age: 30 }, definition)).value).toBe(0)
@@ -1181,18 +1260,21 @@ describe('QuantitativeReasoner — range band quirks', () => {
 	})
 
 	it('a NaN band bound is dead (every comparison false) — a later catch-all wins', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [
-				rangeFactor('f1', 'age', [{ bounds: bounds(Number.NaN), value: 5 }, { value: 9 }]),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createRangeFactor('f1', 'age', [
+					{ bounds: createBounds(Number.NaN), value: 5 },
+					{ value: 9 },
+				]),
 			]),
 		])
 		expect(expectQuantitative(reasoner.reason({ age: 30 }, definition)).value).toBe(9)
 	})
 
 	it('a boundless band placed FIRST short-circuits every later band', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [
-				rangeFactor('f1', 'age', [{ value: 1 }, { bounds: bounds(0, 100), value: 2 }]),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createRangeFactor('f1', 'age', [{ value: 1 }, { bounds: createBounds(0, 100), value: 2 }]),
 			]),
 		])
 		expect(expectQuantitative(reasoner.reason({ age: 50 }, definition)).value).toBe(1)
@@ -1201,10 +1283,10 @@ describe('QuantitativeReasoner — range band quirks', () => {
 
 describe('QuantitativeReasoner — weight & priority extremes', () => {
 	it('a NaN weight poisons the weighted sum into a definition NaN error', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [
-				staticFactor('a', 10, { weight: Number.NaN }),
-				staticFactor('b', 20, { weight: 1 }),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createStaticFactor('a', 10, { weight: Number.NaN }),
+				createStaticFactor('b', 20, { weight: 1 }),
 			]),
 		])
 		const result = expectQuantitative(reasoner.reason({}, definition))
@@ -1214,10 +1296,10 @@ describe('QuantitativeReasoner — weight & priority extremes', () => {
 	})
 
 	it('an Infinity weight drives the sum to a definition Infinity error', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [
-				staticFactor('a', 10, { weight: Number.POSITIVE_INFINITY }),
-				staticFactor('b', 20, { weight: 1 }),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createStaticFactor('a', 10, { weight: Number.POSITIVE_INFINITY }),
+				createStaticFactor('b', 20, { weight: 1 }),
 			]),
 		])
 		const result = expectQuantitative(reasoner.reason({}, definition))
@@ -1227,20 +1309,20 @@ describe('QuantitativeReasoner — weight & priority extremes', () => {
 	})
 
 	it('a -0 weight zeroes its factor contribution (5·-0 + 20·1 = 20)', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [
-				staticFactor('a', 5, { weight: -0 }),
-				staticFactor('b', 20, { weight: 1 }),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createStaticFactor('a', 5, { weight: -0 }),
+				createStaticFactor('b', 20, { weight: 1 }),
 			]),
 		])
 		expect(expectQuantitative(reasoner.reason({}, definition)).value).toBe(20)
 	})
 
 	it('fractional priorities sort ascending (0.1 before 0.5)', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [
-				staticFactor('high', 1, { priority: 0.5 }),
-				staticFactor('low', 2, { priority: 0.1 }),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createStaticFactor('high', 1, { priority: 0.5 }),
+				createStaticFactor('low', 2, { priority: 0.1 }),
 			]),
 		])
 		const result = expectQuantitative(reasoner.reason({}, definition))
@@ -1251,10 +1333,10 @@ describe('QuantitativeReasoner — weight & priority extremes', () => {
 	})
 
 	it('a NaN priority neither throws nor drops a factor — both still apply', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [
-				staticFactor('normal', 1, { priority: 5 }),
-				staticFactor('nanp', 2, { priority: Number.NaN }),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createStaticFactor('normal', 1, { priority: 5 }),
+				createStaticFactor('nanp', 2, { priority: Number.NaN }),
 			]),
 		])
 		const result = expectQuantitative(reasoner.reason({}, definition))
@@ -1267,12 +1349,12 @@ describe('QuantitativeReasoner — weight & priority extremes', () => {
 describe('QuantitativeReasoner — sparse range sources', () => {
 	it('a present band inside a sparse ranges array applies; a hole-only position falls back (no throw, twice)', () => {
 		const buildAndRun = () => {
-			const ranges = sparse<{ bounds: ReturnType<typeof bounds>; value: number }>(5, [
-				[0, { bounds: bounds(0, 10), value: 1 }],
-				[4, { bounds: bounds(90, 100), value: 99 }],
+			const ranges = sparse<{ bounds: ReturnType<typeof createBounds>; value: number }>(5, [
+				[0, { bounds: createBounds(0, 10), value: 1 }],
+				[4, { bounds: createBounds(90, 100), value: 99 }],
 			])
-			const definition = quantitativeDefinition('d', 'd', [
-				factorGroup('g1', 'sum', [rangeFactor('f1', 'age', ranges, { fallback: 0 })]),
+			const definition = createQuantitativeDefinition('d', 'd', [
+				createFactorGroup('g1', 'sum', [createRangeFactor('f1', 'age', ranges, { fallback: 0 })]),
 			])
 			return {
 				inBand: expectQuantitative(reasoner.reason({ age: 5 }, definition)).value,
@@ -1290,10 +1372,10 @@ describe('QuantitativeReasoner — sparse range sources', () => {
 describe('QuantitativeReasoner — sparse groups & factors arrays', () => {
 	it('a sparse groups array aggregates the definition value from only the present groups', () => {
 		const groups = sparse<FactorGroup>(3, [
-			[0, factorGroup('g1', 'sum', [staticFactor('f1', 10)])],
-			[2, factorGroup('g2', 'sum', [staticFactor('f2', 20)])],
+			[0, createFactorGroup('g1', 'sum', [createStaticFactor('f1', 10)])],
+			[2, createFactorGroup('g2', 'sum', [createStaticFactor('f2', 20)])],
 		])
-		const definition = quantitativeDefinition('d', 'd', groups)
+		const definition = createQuantitativeDefinition('d', 'd', groups)
 
 		const result = expectQuantitative(reasoner.reason({}, definition))
 		expect(result.value).toBe(30)
@@ -1303,10 +1385,12 @@ describe('QuantitativeReasoner — sparse groups & factors arrays', () => {
 
 	it('a sparse factors array aggregates a group value from only the present factors', () => {
 		const factors = sparse<Factor>(3, [
-			[0, staticFactor('f1', 10)],
-			[2, staticFactor('f2', 20)],
+			[0, createStaticFactor('f1', 10)],
+			[2, createStaticFactor('f2', 20)],
 		])
-		const definition = quantitativeDefinition('d', 'd', [factorGroup('g1', 'sum', factors)])
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', factors),
+		])
 
 		const result = expectQuantitative(reasoner.reason({}, definition))
 		expect(result.value).toBe(30)
@@ -1317,8 +1401,8 @@ describe('QuantitativeReasoner — sparse groups & factors arrays', () => {
 
 describe('QuantitativeReasoner — field-source coercion divergences', () => {
 	it('a Date field value does not coerce to a timestamp — the factor falls back', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [fieldFactor('f1', 'when', { fallback: -1 })]),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [createFieldFactor('f1', 'when', { fallback: -1 })]),
 		])
 		expect(
 			expectQuantitative(reasoner.reason({ when: new Date(2020, 0, 1) }, definition)).value,
@@ -1326,8 +1410,8 @@ describe('QuantitativeReasoner — field-source coercion divergences', () => {
 	})
 
 	it('a non-numeric string field value takes the fallback', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [fieldFactor('f1', 'when', { fallback: -1 })]),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [createFieldFactor('f1', 'when', { fallback: -1 })]),
 		])
 		expect(expectQuantitative(reasoner.reason({ when: 'not-a-number' }, definition)).value).toBe(-1)
 	})
@@ -1335,21 +1419,25 @@ describe('QuantitativeReasoner — field-source coercion divergences', () => {
 
 describe('QuantitativeReasoner — lookup-site stringification of non-record field values', () => {
 	it('an array field value stringifies via String() to the joined key', () => {
-		const definition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [lookupFactor('f1', 'code', { '1,2': 77 }, { fallback: -1 })]),
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createLookupFactor('f1', 'code', { '1,2': 77 }, { fallback: -1 }),
+			]),
 		])
 		expect(expectQuantitative(reasoner.reason({ code: [1, 2] }, definition)).value).toBe(77)
 	})
 
 	it('a plain-object field value stringifies to "[object Object]" — pin both the hit and the miss', () => {
 		const hitTable = { '[object Object]': 88 }
-		const hitDefinition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [lookupFactor('f1', 'code', hitTable, { fallback: -1 })]),
+		const hitDefinition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createLookupFactor('f1', 'code', hitTable, { fallback: -1 }),
+			]),
 		])
 		expect(expectQuantitative(reasoner.reason({ code: {} }, hitDefinition)).value).toBe(88)
 
-		const missDefinition = quantitativeDefinition('d', 'd', [
-			factorGroup('g1', 'sum', [lookupFactor('f1', 'code', {}, { fallback: -1 })]),
+		const missDefinition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [createLookupFactor('f1', 'code', {}, { fallback: -1 })]),
 		])
 		expect(expectQuantitative(reasoner.reason({ code: {} }, missDefinition)).value).toBe(-1)
 	})
@@ -1364,8 +1452,8 @@ describe('QuantitativeReasoner — large lookup table (2000 keys, TRICKY_KEYS mi
 				...sequence(2000).map((value): [string, number] => [`gen-${value}`, value]),
 				...TRICKY_KEYS.map((key, index): [string, number] => [key, 100000 + index]),
 			])
-			const definition = quantitativeDefinition('d', 'd', [
-				factorGroup('g1', 'sum', [lookupFactor('f1', 'code', table, { fallback: -1 })]),
+			const definition = createQuantitativeDefinition('d', 'd', [
+				createFactorGroup('g1', 'sum', [createLookupFactor('f1', 'code', table, { fallback: -1 })]),
 			])
 			return {
 				genHit: expectQuantitative(reasoner.reason({ code: 'gen-1500' }, definition)).value,
@@ -1390,8 +1478,12 @@ describe('QuantitativeReasoner — large lookup table (2000 keys, TRICKY_KEYS mi
 
 describe('QuantitativeReasoner — precision drift then roundTo', () => {
 	it('1000 factors of 0.1 drift below 100 raw, but the definition value rounds to EXACTLY 100', () => {
-		const factors = repeatValue(1000, 0.1).map((value, index) => staticFactor(`f${index}`, value))
-		const definition = quantitativeDefinition('d', 'd', [factorGroup('g1', 'sum', factors)])
+		const factors = repeatValue(1000, 0.1).map((value, index) =>
+			createStaticFactor(`f${index}`, value),
+		)
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', factors),
+		])
 		const result = expectQuantitative(reasoner.reason({}, definition))
 		// The group-level value is clamped but NEVER rounded — pin the actual drifted float.
 		expect(result.groups[0]?.value).toBe(99.9999999999986)
@@ -1408,15 +1500,15 @@ describe('QuantitativeReasoner — scale: 300 groups × 30 factors, arithmetic s
 		const factorsPerGroup = 30
 		const run = () => {
 			const groups = sequence(groupCount).map((groupIndex) =>
-				factorGroup(
+				createFactorGroup(
 					`g${groupIndex}`,
 					'sum',
 					sequence(factorsPerGroup, groupIndex * factorsPerGroup).map((value) =>
-						staticFactor(`f${groupIndex}_${value}`, value),
+						createStaticFactor(`f${groupIndex}_${value}`, value),
 					),
 				),
 			)
-			return expectQuantitative(reasoner.reason({}, quantitativeDefinition('d', 'd', groups)))
+			return expectQuantitative(reasoner.reason({}, createQuantitativeDefinition('d', 'd', groups)))
 		}
 		const totalCount = groupCount * factorsPerGroup
 		const expectedTotal = (totalCount * (totalCount - 1)) / 2
@@ -1436,12 +1528,12 @@ describe('QuantitativeReasoner — empty min/max aggregate over unapplied groups
 	it('a minimum definition over only-unapplied groups is a NaN finite error', () => {
 		// The group exists but its sole factor is gated out, so zero groups apply and
 		// the minimum aggregation signals "no data" with NaN.
-		const definition = quantitativeDefinition(
+		const definition = createQuantitativeDefinition(
 			'd',
 			'd',
 			[
-				factorGroup('g1', 'sum', [
-					staticFactor('gated', 5, { checks: [check('missing', 'equals', true)] }),
+				createFactorGroup('g1', 'sum', [
+					createStaticFactor('gated', 5, { checks: [createCheck('missing', 'equals', true)] }),
 				]),
 			],
 			{ aggregation: 'minimum' },
@@ -1456,8 +1548,8 @@ describe('QuantitativeReasoner — empty min/max aggregate over unapplied groups
 })
 
 describe('QuantitativeReasoner — builder build() output passed to supports/validate/reason (§15)', () => {
-	const definition = quantitativeDefinition('d', 'd', [
-		factorGroup('g1', 'sum', [fieldFactor('age', 'age')]),
+	const definition = createQuantitativeDefinition('d', 'd', [
+		createFactorGroup('g1', 'sum', [createFieldFactor('age', 'age')]),
 	])
 
 	it('a built definition + built subject behave identically to the same data written inline (run twice)', () => {

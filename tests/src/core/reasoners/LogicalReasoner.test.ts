@@ -1,15 +1,15 @@
 import type { Expression, ReasonResult, ReasonValidationResult, Rule } from '@src/core'
 import {
-	atom,
-	compound,
-	createLogicalReasoner,
+	createAtom,
+	createCompound,
 	createDefinitionBuilder,
+	createLogicalDefinition,
+	createLogicalReasoner,
+	createQuantitativeDefinition,
+	createRule,
 	createSubjectBuilder,
 	isReasonError,
 	LogicalReasoner,
-	logicalDefinition,
-	quantitativeDefinition,
-	rule,
 } from '@src/core'
 import { describe, expect, it } from 'vitest'
 import { captureError, invokeUnchecked } from '@orkestrel/test'
@@ -47,7 +47,12 @@ function derivationRule(
 	derived: string,
 	overrides?: { readonly priority?: number; readonly enabled?: boolean },
 ) {
-	return rule(id, [atom(field, 'equals', value)], atom(derived, 'equals', true), overrides)
+	return createRule(
+		id,
+		[createAtom(field, 'equals', value)],
+		createAtom(derived, 'equals', true),
+		overrides,
+	)
 }
 
 describe('LogicalReasoner — identity', () => {
@@ -64,27 +69,27 @@ describe('LogicalReasoner — identity', () => {
 
 describe('LogicalReasoner — supports', () => {
 	it('supports logical definitions only', () => {
-		expect(reasoner.supports(logicalDefinition('d', 'd', []))).toBe(true)
-		expect(reasoner.supports(quantitativeDefinition('d', 'd', []))).toBe(false)
+		expect(reasoner.supports(createLogicalDefinition('d', 'd', []))).toBe(true)
+		expect(reasoner.supports(createQuantitativeDefinition('d', 'd', []))).toBe(false)
 	})
 })
 
 describe('LogicalReasoner — validate', () => {
 	it('accepts a well-formed rule set', () => {
 		const validation = reasoner.validate(
-			logicalDefinition('d', 'd', [derivationRule('r1', 'a', true, 'b')]),
+			createLogicalDefinition('d', 'd', [derivationRule('r1', 'a', true, 'b')]),
 		)
 		expect(validation.valid).toBe(true)
 		expect(validation.errors).toEqual([])
 	})
 
 	it('rejects the wrong reasoning with the renamed message', () => {
-		const validation = reasoner.validate(quantitativeDefinition('d', 'd', []))
+		const validation = reasoner.validate(createQuantitativeDefinition('d', 'd', []))
 		expect(validation.errors[0]).toBe('Expected reasoning "logical", got "quantitative"')
 	})
 
 	it('demands an id, a name, and at least one rule', () => {
-		const validation = reasoner.validate(logicalDefinition('', '', []))
+		const validation = reasoner.validate(createLogicalDefinition('', '', []))
 		expect(validation.errors).toContain('Definition must have an id')
 		expect(validation.errors).toContain('Definition must have a name')
 		expect(validation.errors).toContain('Definition must have at least one rule')
@@ -92,7 +97,7 @@ describe('LogicalReasoner — validate', () => {
 
 	it('a premise-less rule is a WARNING; a conclusion-less rule is an ERROR', () => {
 		const warned = reasoner.validate(
-			logicalDefinition('d', 'd', [rule('r1', [], atom('x', 'equals', 1))]),
+			createLogicalDefinition('d', 'd', [createRule('r1', [], createAtom('x', 'equals', 1))]),
 		)
 		expect(warned.valid).toBe(true)
 		expect(warned.warnings).toContain('Rule "r1" has no premises')
@@ -103,7 +108,7 @@ describe('LogicalReasoner — validate', () => {
 				id: 'd',
 				name: 'd',
 				strategy: 'forward',
-				rules: [{ id: 'r1', name: 'r1', premises: [atom('a', 'equals', 1)] }],
+				rules: [{ id: 'r1', name: 'r1', premises: [createAtom('a', 'equals', 1)] }],
 			},
 		])
 		expect(errored.valid).toBe(false)
@@ -112,7 +117,7 @@ describe('LogicalReasoner — validate', () => {
 
 	it('duplicate rule ids are a WARNING, once per duplicated id', () => {
 		const validation = reasoner.validate(
-			logicalDefinition('d', 'd', [
+			createLogicalDefinition('d', 'd', [
 				derivationRule('dup', 'a', true, 'x'),
 				derivationRule('dup', 'b', true, 'y'),
 				derivationRule('dup', 'c', true, 'z'),
@@ -125,9 +130,13 @@ describe('LogicalReasoner — validate', () => {
 	})
 
 	it('an array-path conclusion overlay key also read via an array-path premise is a WARNING (runnable)', () => {
-		const footgun = logicalDefinition('d', 'd', [
-			rule('a', [], atom(['address', 'city'], 'equals', 'NYC')),
-			rule('b', [atom(['address', 'city'], 'equals', 'NYC')], atom('eligible', 'equals', true)),
+		const footgun = createLogicalDefinition('d', 'd', [
+			createRule('a', [], createAtom(['address', 'city'], 'equals', 'NYC')),
+			createRule(
+				'b',
+				[createAtom(['address', 'city'], 'equals', 'NYC')],
+				createAtom('eligible', 'equals', true),
+			),
 		])
 		const validation = reasoner.validate(footgun)
 		expect(validation.valid).toBe(true)
@@ -137,17 +146,21 @@ describe('LogicalReasoner — validate', () => {
 	})
 
 	it('stays silent on the overlay-mismatch warning for a clean (dotted-string-read) definition', () => {
-		const clean = logicalDefinition('d', 'd', [
-			rule('a', [], atom(['address', 'city'], 'equals', 'NYC')),
-			rule('b', [atom('address.city', 'equals', 'NYC')], atom('eligible', 'equals', true)),
+		const clean = createLogicalDefinition('d', 'd', [
+			createRule('a', [], createAtom(['address', 'city'], 'equals', 'NYC')),
+			createRule(
+				'b',
+				[createAtom('address.city', 'equals', 'NYC')],
+				createAtom('eligible', 'equals', true),
+			),
 		])
 		const validation = reasoner.validate(clean)
 		expect(validation.warnings.filter((warning) => warning.startsWith('Overlay key'))).toEqual([])
 	})
 
 	it('keeps the existing empty-premises warning (ii) unaffected by the new overlay-mismatch check', () => {
-		const definition = logicalDefinition('d', 'd', [
-			rule('r1', [], atom('x', 'equals', 1)),
+		const definition = createLogicalDefinition('d', 'd', [
+			createRule('r1', [], createAtom('x', 'equals', 1)),
 			derivationRule('r2', 'a', true, 'b'),
 		])
 		const validation = reasoner.validate(definition)
@@ -157,9 +170,13 @@ describe('LogicalReasoner — validate', () => {
 	})
 
 	it('duplicate-id and overlay-mismatch warnings coexist without interference', () => {
-		const definition = logicalDefinition('d', 'd', [
-			rule('dup', [], atom(['x', 'y'], 'equals', 1)),
-			rule('dup', [atom(['x', 'y'], 'equals', 1)], atom('eligible', 'equals', true)),
+		const definition = createLogicalDefinition('d', 'd', [
+			createRule('dup', [], createAtom(['x', 'y'], 'equals', 1)),
+			createRule(
+				'dup',
+				[createAtom(['x', 'y'], 'equals', 1)],
+				createAtom('eligible', 'equals', true),
+			),
 		])
 		const validation = reasoner.validate(definition)
 		expect(validation.warnings).toContain('Duplicate rule id "dup"')
@@ -171,7 +188,7 @@ describe('LogicalReasoner — validate', () => {
 
 describe('LogicalReasoner — forward chaining', () => {
 	it('a met premise fires the rule; an unmet one does not', () => {
-		const definition = logicalDefinition('d', 'd', [
+		const definition = createLogicalDefinition('d', 'd', [
 			derivationRule('activate', 'active', true, 'result'),
 		])
 		const met = expectLogical(reasoner.reason({ active: true }, definition))
@@ -186,7 +203,7 @@ describe('LogicalReasoner — forward chaining', () => {
 	})
 
 	it('counts every fired rule', () => {
-		const definition = logicalDefinition('d', 'd', [
+		const definition = createLogicalDefinition('d', 'd', [
 			derivationRule('r1', 'a', true, 'x'),
 			derivationRule('r2', 'b', true, 'y'),
 		])
@@ -194,13 +211,21 @@ describe('LogicalReasoner — forward chaining', () => {
 	})
 
 	it('derived conclusions become facts for later passes (multi-iteration chaining)', () => {
-		const definition = logicalDefinition('d', 'd', [
-			rule('income', [atom('annualIncome', 'from', 50000)], atom('incomeOk', 'equals', true)),
-			rule('credit', [atom('creditScore', 'from', 700)], atom('creditOk', 'equals', true)),
-			rule(
+		const definition = createLogicalDefinition('d', 'd', [
+			createRule(
+				'income',
+				[createAtom('annualIncome', 'from', 50000)],
+				createAtom('incomeOk', 'equals', true),
+			),
+			createRule(
+				'credit',
+				[createAtom('creditScore', 'from', 700)],
+				createAtom('creditOk', 'equals', true),
+			),
+			createRule(
 				'approve',
-				[atom('incomeOk', 'equals', true), atom('creditOk', 'equals', true)],
-				atom('approved', 'equals', true),
+				[createAtom('incomeOk', 'equals', true), createAtom('creditOk', 'equals', true)],
+				createAtom('approved', 'equals', true),
 			),
 		])
 		const result = expectLogical(
@@ -211,7 +236,7 @@ describe('LogicalReasoner — forward chaining', () => {
 	})
 
 	it('chains a three-hop derivation a → b → c → d', () => {
-		const definition = logicalDefinition('d', 'd', [
+		const definition = createLogicalDefinition('d', 'd', [
 			derivationRule('ra', 'a', true, 'b'),
 			derivationRule('rb', 'b', true, 'c'),
 			derivationRule('rc', 'c', true, 'd'),
@@ -224,7 +249,7 @@ describe('LogicalReasoner — forward chaining', () => {
 	it('the depth cap TRUNCATES the fixpoint — one hop per iteration, no convergence trace', () => {
 		// The overlay snapshots per iteration, so depth 1 derives ONLY b; the final
 		// re-evaluation then sees {a, b} — ra and rb fire, rc (needing c) does not.
-		const definition = logicalDefinition(
+		const definition = createLogicalDefinition(
 			'd',
 			'd',
 			[
@@ -243,7 +268,7 @@ describe('LogicalReasoner — forward chaining', () => {
 	})
 
 	it('depth 0 runs ZERO fixpoint iterations — results still evaluate the raw subject', () => {
-		const chain = logicalDefinition(
+		const chain = createLogicalDefinition(
 			'd',
 			'd',
 			[
@@ -259,7 +284,9 @@ describe('LogicalReasoner — forward chaining', () => {
 		expect(truncated.conclusion).toBe(false)
 
 		// A directly-satisfied LAST rule still concludes true without any iteration.
-		const direct = logicalDefinition('d', 'd', [derivationRule('ra', 'a', true, 'b')], { depth: 0 })
+		const direct = createLogicalDefinition('d', 'd', [derivationRule('ra', 'a', true, 'b')], {
+			depth: 0,
+		})
 		const satisfied = expectLogical(reasoner.reason({ a: true }, direct))
 		expect(satisfied.trace).toEqual([])
 		expect(satisfied.count).toBe(1)
@@ -267,8 +294,8 @@ describe('LogicalReasoner — forward chaining', () => {
 	})
 
 	it('a NaN-valued conclusion derives ONCE and the fixpoint converges (SameValueZero)', () => {
-		const definition = logicalDefinition('d', 'd', [
-			rule('rn', [atom('x', 'equals', true)], atom('n', 'equals', Number.NaN)),
+		const definition = createLogicalDefinition('d', 'd', [
+			createRule('rn', [createAtom('x', 'equals', true)], createAtom('n', 'equals', Number.NaN)),
 		])
 		const result = expectLogical(reasoner.reason({ x: true }, definition))
 		const derivations = result.trace.filter((entry) => entry.includes('derived: n=NaN'))
@@ -278,11 +305,11 @@ describe('LogicalReasoner — forward chaining', () => {
 	})
 
 	it('multiple premises on one rule are AND-ed', () => {
-		const definition = logicalDefinition('d', 'd', [
-			rule(
+		const definition = createLogicalDefinition('d', 'd', [
+			createRule(
 				'both',
-				[atom('a', 'equals', true), atom('b', 'equals', true)],
-				atom('ok', 'equals', true),
+				[createAtom('a', 'equals', true), createAtom('b', 'equals', true)],
+				createAtom('ok', 'equals', true),
 			),
 		])
 		const result = expectLogical(reasoner.reason({ a: true, b: false }, definition))
@@ -291,9 +318,17 @@ describe('LogicalReasoner — forward chaining', () => {
 	})
 
 	it('an ARRAY-path conclusion derives the dot-joined key a dotted-STRING premise reads', () => {
-		const definition = logicalDefinition('d', 'd', [
-			rule('flag', [atom('go', 'equals', true)], atom(['flags', 'ok'], 'equals', true)),
-			rule('done', [atom('flags.ok', 'equals', true)], atom('done', 'equals', true)),
+		const definition = createLogicalDefinition('d', 'd', [
+			createRule(
+				'flag',
+				[createAtom('go', 'equals', true)],
+				createAtom(['flags', 'ok'], 'equals', true),
+			),
+			createRule(
+				'done',
+				[createAtom('flags.ok', 'equals', true)],
+				createAtom('done', 'equals', true),
+			),
 		])
 		const result = expectLogical(reasoner.reason({ go: true }, definition))
 		expect(result.conclusion).toBe(true)
@@ -302,8 +337,10 @@ describe('LogicalReasoner — forward chaining', () => {
 	})
 
 	it('disabled rules are excluded from the results ENTIRELY (not just unapplied)', () => {
-		const definition = logicalDefinition('d', 'd', [
-			rule('off', [atom('a', 'equals', true)], atom('b', 'equals', true), { enabled: false }),
+		const definition = createLogicalDefinition('d', 'd', [
+			createRule('off', [createAtom('a', 'equals', true)], createAtom('b', 'equals', true), {
+				enabled: false,
+			}),
 		])
 		const result = expectLogical(reasoner.reason({ a: true }, definition))
 		expect(result.rules).toHaveLength(0)
@@ -312,7 +349,7 @@ describe('LogicalReasoner — forward chaining', () => {
 	})
 
 	it('traces convergence — after firing once and when nothing fires at all', () => {
-		const oneRule = logicalDefinition('d', 'd', [derivationRule('r1', 'a', true, 'b')])
+		const oneRule = createLogicalDefinition('d', 'd', [derivationRule('r1', 'a', true, 'b')])
 		const firing = expectLogical(reasoner.reason({ a: true }, oneRule))
 		expect(firing.trace.some((entry) => entry.includes('converged'))).toBe(true)
 
@@ -322,16 +359,20 @@ describe('LogicalReasoner — forward chaining', () => {
 	})
 
 	it('exposes the rule-result shape (id / applied / premises / conclusion)', () => {
-		const definition = logicalDefinition('d', 'd', [derivationRule('r1', 'a', true, 'b')])
+		const definition = createLogicalDefinition('d', 'd', [derivationRule('r1', 'a', true, 'b')])
 		const result = expectLogical(reasoner.reason({ a: true }, definition))
 		expect(result.rules).toHaveLength(1)
 		expect(result.rules[0]).toEqual({ id: 'r1', applied: true, premises: [true], conclusion: true })
 	})
 
 	it('runs rules in ascending priority order — lower number first (trace-observable)', () => {
-		const definition = logicalDefinition('d', 'd', [
-			rule('r-low', [atom('x', 'equals', true)], atom('low', 'equals', true), { priority: 10 }),
-			rule('r-high', [atom('x', 'equals', true)], atom('high', 'equals', true), { priority: 1 }),
+		const definition = createLogicalDefinition('d', 'd', [
+			createRule('r-low', [createAtom('x', 'equals', true)], createAtom('low', 'equals', true), {
+				priority: 10,
+			}),
+			createRule('r-high', [createAtom('x', 'equals', true)], createAtom('high', 'equals', true), {
+				priority: 1,
+			}),
 		])
 		const result = expectLogical(reasoner.reason({ x: true }, definition))
 		expect(result.count).toBe(2)
@@ -342,7 +383,7 @@ describe('LogicalReasoner — forward chaining', () => {
 	})
 
 	it('a NEGATIVE priority sorts before the default-0 rule', () => {
-		const definition = logicalDefinition('d', 'd', [
+		const definition = createLogicalDefinition('d', 'd', [
 			derivationRule('r-default', 'x', true, 'a'),
 			derivationRule('r-negative', 'x', true, 'b', { priority: -5 }),
 		])
@@ -354,7 +395,7 @@ describe('LogicalReasoner — forward chaining', () => {
 	})
 
 	it('an empty rule set traces "No rules defined" and concludes false', () => {
-		const result = expectLogical(reasoner.reason({}, logicalDefinition('d', 'd', [])))
+		const result = expectLogical(reasoner.reason({}, createLogicalDefinition('d', 'd', [])))
 		expect(result.trace).toContain('No rules defined')
 		expect(result.conclusion).toBe(false)
 		expect(result.success).toBe(true)
@@ -364,35 +405,37 @@ describe('LogicalReasoner — forward chaining', () => {
 describe('LogicalReasoner — compound operators (eager evaluation)', () => {
 	// One rule whose single premise is the given compound; conclusion `ok`.
 	function compoundDefinition(premise: Expression) {
-		return logicalDefinition('d', 'd', [rule('r1', [premise], atom('ok', 'equals', true))])
+		return createLogicalDefinition('d', 'd', [
+			createRule('r1', [premise], createAtom('ok', 'equals', true)),
+		])
 	}
 
 	it('and / or resolve over their operands', () => {
 		const both = compoundDefinition(
-			compound('and', [atom('a', 'equals', true), atom('b', 'equals', true)]),
+			createCompound('and', [createAtom('a', 'equals', true), createAtom('b', 'equals', true)]),
 		)
 		expect(expectLogical(reasoner.reason({ a: true, b: true }, both)).conclusion).toBe(true)
 		expect(expectLogical(reasoner.reason({ a: true, b: false }, both)).conclusion).toBe(false)
 
 		const either = compoundDefinition(
-			compound('or', [atom('a', 'equals', true), atom('b', 'equals', true)]),
+			createCompound('or', [createAtom('a', 'equals', true), createAtom('b', 'equals', true)]),
 		)
 		expect(expectLogical(reasoner.reason({ a: false, b: true }, either)).conclusion).toBe(true)
 		expect(expectLogical(reasoner.reason({ a: false, b: false }, either)).conclusion).toBe(false)
 	})
 
 	it('not negates its first operand — and is vacuously true on empty operands', () => {
-		const negated = compoundDefinition(compound('not', [atom('a', 'equals', true)]))
+		const negated = compoundDefinition(createCompound('not', [createAtom('a', 'equals', true)]))
 		expect(expectLogical(reasoner.reason({ a: false }, negated)).conclusion).toBe(true)
 		expect(expectLogical(reasoner.reason({ a: true }, negated)).conclusion).toBe(false)
 
-		const vacuous = compoundDefinition(compound('not', []))
+		const vacuous = compoundDefinition(createCompound('not', []))
 		expect(expectLogical(reasoner.reason({}, vacuous)).conclusion).toBe(true)
 	})
 
 	it('implies follows the material-implication truth table (vacuous truth included)', () => {
 		const implication = compoundDefinition(
-			compound('implies', [atom('p', 'equals', true), atom('q', 'equals', true)]),
+			createCompound('implies', [createAtom('p', 'equals', true), createAtom('q', 'equals', true)]),
 		)
 		expect(expectLogical(reasoner.reason({ p: true, q: true }, implication)).conclusion).toBe(true)
 		expect(expectLogical(reasoner.reason({ p: false, q: false }, implication)).conclusion).toBe(
@@ -405,7 +448,7 @@ describe('LogicalReasoner — compound operators (eager evaluation)', () => {
 
 	it('xor follows the full exclusive-or truth table', () => {
 		const exclusive = compoundDefinition(
-			compound('xor', [atom('p', 'equals', true), atom('q', 'equals', true)]),
+			createCompound('xor', [createAtom('p', 'equals', true), createAtom('q', 'equals', true)]),
 		)
 		expect(expectLogical(reasoner.reason({ p: true, q: false }, exclusive)).conclusion).toBe(true)
 		expect(expectLogical(reasoner.reason({ p: false, q: true }, exclusive)).conclusion).toBe(true)
@@ -415,9 +458,9 @@ describe('LogicalReasoner — compound operators (eager evaluation)', () => {
 
 	it('evaluates deeply nested compounds', () => {
 		const nested = compoundDefinition(
-			compound('and', [
-				compound('or', [atom('a', 'equals', true), atom('b', 'equals', true)]),
-				compound('not', [atom('c', 'equals', true)]),
+			createCompound('and', [
+				createCompound('or', [createAtom('a', 'equals', true), createAtom('b', 'equals', true)]),
+				createCompound('not', [createAtom('c', 'equals', true)]),
 			]),
 		)
 		expect(expectLogical(reasoner.reason({ a: true, b: false, c: false }, nested)).conclusion).toBe(
@@ -431,10 +474,16 @@ describe('LogicalReasoner — compound operators (eager evaluation)', () => {
 
 describe('LogicalReasoner — backward chaining', () => {
 	it('proves a goal whose premise the subject satisfies', () => {
-		const definition = logicalDefinition(
+		const definition = createLogicalDefinition(
 			'd',
 			'd',
-			[rule('adult', [atom('age', 'equals', 25)], atom('isAdult', 'equals', true))],
+			[
+				createRule(
+					'adult',
+					[createAtom('age', 'equals', 25)],
+					createAtom('isAdult', 'equals', true),
+				),
+			],
 			{ strategy: 'backward' },
 		)
 		expect(expectLogical(reasoner.reason({ age: 25 }, definition)).conclusion).toBe(true)
@@ -442,7 +491,7 @@ describe('LogicalReasoner — backward chaining', () => {
 	})
 
 	it('proves multiple independent rules', () => {
-		const definition = logicalDefinition(
+		const definition = createLogicalDefinition(
 			'd',
 			'd',
 			[
@@ -458,7 +507,7 @@ describe('LogicalReasoner — backward chaining', () => {
 	})
 
 	it('chains a three-hop backward derivation from a single base fact', () => {
-		const definition = logicalDefinition(
+		const definition = createLogicalDefinition(
 			'd',
 			'd',
 			[
@@ -475,7 +524,7 @@ describe('LogicalReasoner — backward chaining', () => {
 
 	it('recursively proves sub-goals through rules declared AFTER the goal', () => {
 		// rc needs b, which only rb can derive — goal-driven search finds it.
-		const definition = logicalDefinition(
+		const definition = createLogicalDefinition(
 			'd',
 			'd',
 			[derivationRule('rc', 'b', true, 'c'), derivationRule('rb', 'a', true, 'b')],
@@ -487,7 +536,7 @@ describe('LogicalReasoner — backward chaining', () => {
 	})
 
 	it('skips disabled rules (one result of two)', () => {
-		const definition = logicalDefinition(
+		const definition = createLogicalDefinition(
 			'd',
 			'd',
 			[
@@ -502,19 +551,22 @@ describe('LogicalReasoner — backward chaining', () => {
 	})
 
 	it('handles compound premises backward', () => {
-		const definition = logicalDefinition(
+		const definition = createLogicalDefinition(
 			'd',
 			'd',
 			[
-				rule(
+				createRule(
 					'r1',
 					[
-						compound('and', [
-							atom('a', 'equals', true),
-							compound('or', [atom('b', 'equals', true), atom('c', 'equals', true)]),
+						createCompound('and', [
+							createAtom('a', 'equals', true),
+							createCompound('or', [
+								createAtom('b', 'equals', true),
+								createAtom('c', 'equals', true),
+							]),
 						]),
 					],
-					atom('ok', 'equals', true),
+					createAtom('ok', 'equals', true),
 				),
 			],
 			{ strategy: 'backward' },
@@ -528,7 +580,7 @@ describe('LogicalReasoner — backward chaining', () => {
 	})
 
 	it('is CYCLE-SAFE — mutually recursive rules terminate', () => {
-		const definition = logicalDefinition(
+		const definition = createLogicalDefinition(
 			'd',
 			'd',
 			[derivationRule('ra', 'a', true, 'b'), derivationRule('rb', 'b', true, 'a')],
@@ -540,7 +592,7 @@ describe('LogicalReasoner — backward chaining', () => {
 	})
 
 	it('traces the exact backward formats — derived and does-not-hold', () => {
-		const definition = logicalDefinition(
+		const definition = createLogicalDefinition(
 			'd',
 			'd',
 			[derivationRule('r1', 'a', true, 'b'), derivationRule('r2', 'z', true, 'y')],
@@ -552,9 +604,14 @@ describe('LogicalReasoner — backward chaining', () => {
 	})
 
 	it('an EMPTY-premises rule fires VACUOUSLY backward (forward reports it instead)', () => {
-		const definition = logicalDefinition('d', 'd', [rule('vac', [], atom('v', 'equals', true))], {
-			strategy: 'backward',
-		})
+		const definition = createLogicalDefinition(
+			'd',
+			'd',
+			[createRule('vac', [], createAtom('v', 'equals', true))],
+			{
+				strategy: 'backward',
+			},
+		)
 		const result = expectLogical(reasoner.reason({}, definition))
 		expect(result.success).toBe(true)
 		expect(result.errors).toEqual([])
@@ -573,8 +630,8 @@ describe('LogicalReasoner — backward chaining', () => {
 					name: 'd',
 					strategy: 'backward',
 					rules: [
-						{ id: 'r1', name: 'r1', conclusion: atom('x', 'equals', true) },
-						rule('ok', [atom('a', 'equals', true)], atom('b', 'equals', true)),
+						{ id: 'r1', name: 'r1', conclusion: createAtom('x', 'equals', true) },
+						createRule('ok', [createAtom('a', 'equals', true)], createAtom('b', 'equals', true)),
 					],
 				},
 			]),
@@ -589,7 +646,9 @@ describe('LogicalReasoner — backward chaining', () => {
 
 describe('LogicalReasoner — degenerate rules & malformed shapes', () => {
 	it('a premise-less rule errors once and is excluded (forward)', () => {
-		const definition = logicalDefinition('d', 'd', [rule('r1', [], atom('x', 'equals', true))])
+		const definition = createLogicalDefinition('d', 'd', [
+			createRule('r1', [], createAtom('x', 'equals', true)),
+		])
 		const result = expectLogical(reasoner.reason({}, definition))
 		expect(result.success).toBe(false)
 		expect(result.errors).toContain('Rule "r1" has no premises — skipped')
@@ -599,8 +658,8 @@ describe('LogicalReasoner — degenerate rules & malformed shapes', () => {
 	it('duplicate ids: a degenerate rule ID-POISONS its valid twin (forward quirk, warned by validate)', () => {
 		// The forward exclusion set is keyed by rule id — the premise-less 'dup'
 		// silently disables the satisfiable 'dup' sharing its id.
-		const definition = logicalDefinition('d', 'd', [
-			rule('dup', [], atom('x', 'equals', true)),
+		const definition = createLogicalDefinition('d', 'd', [
+			createRule('dup', [], createAtom('x', 'equals', true)),
 			derivationRule('dup', 'a', true, 'b'),
 		])
 		const result = expectLogical(reasoner.reason({ a: true }, definition))
@@ -614,7 +673,7 @@ describe('LogicalReasoner — degenerate rules & malformed shapes', () => {
 			reasoning: 'logical',
 			id: 'd',
 			name: 'd',
-			rules: [{ id: 'r1', name: 'r1', premises: [atom('a', 'equals', true)] }],
+			rules: [{ id: 'r1', name: 'r1', premises: [createAtom('a', 'equals', true)] }],
 		}
 		const forward = expectLogical(
 			invokeUnchecked<ReasonResult>(reasoner, reasoner.reason, [
@@ -635,7 +694,7 @@ describe('LogicalReasoner — degenerate rules & malformed shapes', () => {
 
 	it('MISMATCH: the wrong reasoning THROWS a coded ReasonError with context', () => {
 		const error = captureError(() =>
-			reasoner.reason({}, quantitativeDefinition('other', 'Other', [])),
+			reasoner.reason({}, createQuantitativeDefinition('other', 'Other', [])),
 		)
 		if (!isReasonError(error)) throw new Error('expected a ReasonError')
 		expect(error.code).toBe('MISMATCH')
@@ -663,7 +722,7 @@ describe('LogicalReasoner — forward depth-boundary sweep (6-hop chain)', () =>
 
 	function runAtDepth(depth: number) {
 		return expectLogical(
-			reasoner.reason({ k0: true }, logicalDefinition('d', 'd', sixHopChain, { depth })),
+			reasoner.reason({ k0: true }, createLogicalDefinition('d', 'd', sixHopChain, { depth })),
 		)
 	}
 
@@ -710,12 +769,12 @@ describe('LogicalReasoner — runaway rulesets still terminate at the depth cap'
 	it('two rules oscillating one key never converge, but the depth cap bounds the run', () => {
 		// setX1/setX2 fire every pass (premise is the constant `flag`), each overwriting
 		// the other's `x` — a fixpoint that NEVER settles, terminated only by `depth`.
-		const oscillating = logicalDefinition(
+		const oscillating = createLogicalDefinition(
 			'd',
 			'd',
 			[
-				rule('setX1', [atom('flag', 'equals', true)], atom('x', 'equals', 1)),
-				rule('setX2', [atom('flag', 'equals', true)], atom('x', 'equals', 2)),
+				createRule('setX1', [createAtom('flag', 'equals', true)], createAtom('x', 'equals', 1)),
+				createRule('setX2', [createAtom('flag', 'equals', true)], createAtom('x', 'equals', 2)),
 			],
 			{ depth: 50 },
 		)
@@ -735,7 +794,7 @@ describe('LogicalReasoner — large fixpoints', () => {
 			derivationRule(`r${index}`, `k${index - 1}`, true, `k${index}`),
 		)
 		const result = expectLogical(
-			reasoner.reason({ k0: true }, logicalDefinition('d', 'd', chain, { depth: 200 })),
+			reasoner.reason({ k0: true }, createLogicalDefinition('d', 'd', chain, { depth: 200 })),
 		)
 		expect(result.trace).toContain('Forward chaining converged at iteration 101')
 		expect(result.count).toBe(100)
@@ -747,7 +806,9 @@ describe('LogicalReasoner — large fixpoints', () => {
 		const wide = sequence(100, 1).map((index) =>
 			derivationRule(`w${index}`, 'base', true, `d${index}`),
 		)
-		const result = expectLogical(reasoner.reason({ base: true }, logicalDefinition('d', 'd', wide)))
+		const result = expectLogical(
+			reasoner.reason({ base: true }, createLogicalDefinition('d', 'd', wide)),
+		)
 		expect(result.count).toBe(100)
 		expect(result.conclusion).toBe(true)
 		expect(result.trace).toContain('Forward chaining converged at iteration 2')
@@ -758,11 +819,11 @@ describe('LogicalReasoner — deep compound nesting', () => {
 	// A 500-deep single-operand `and` chain around one atom — the eager evaluator
 	// recurses one frame per level and returns (no stack overflow at this depth).
 	const deeplyNested = sequence(500).reduce<Expression>(
-		(inner) => compound('and', [inner]),
-		atom('deep', 'equals', true),
+		(inner) => createCompound('and', [inner]),
+		createAtom('deep', 'equals', true),
 	)
-	const definition = logicalDefinition('d', 'd', [
-		rule('nest', [deeplyNested], atom('ok', 'equals', true)),
+	const definition = createLogicalDefinition('d', 'd', [
+		createRule('nest', [deeplyNested], createAtom('ok', 'equals', true)),
 	])
 
 	it('evaluates a 500-deep compound to its innermost atom (true branch)', () => {
@@ -780,16 +841,18 @@ describe('LogicalReasoner — deep compound nesting', () => {
 
 describe('LogicalReasoner — empty-premises forward/backward divergence', () => {
 	it('the SAME empty-premises rule errors+excludes forward but applies vacuously backward', () => {
-		const emptyRule = rule('vac', [], atom('v', 'equals', true))
+		const emptyRule = createRule('vac', [], createAtom('v', 'equals', true))
 
-		const forward = expectLogical(reasoner.reason({}, logicalDefinition('d', 'd', [emptyRule])))
+		const forward = expectLogical(
+			reasoner.reason({}, createLogicalDefinition('d', 'd', [emptyRule])),
+		)
 		expect(forward.success).toBe(false)
 		expect(forward.errors).toEqual(['Rule "vac" has no premises — skipped'])
 		expect(forward.rules).toEqual([])
 		expect(forward.conclusion).toBe(false)
 
 		const backward = expectLogical(
-			reasoner.reason({}, logicalDefinition('d', 'd', [emptyRule], { strategy: 'backward' })),
+			reasoner.reason({}, createLogicalDefinition('d', 'd', [emptyRule], { strategy: 'backward' })),
 		)
 		expect(backward.success).toBe(true)
 		expect(backward.errors).toEqual([])
@@ -805,9 +868,9 @@ describe('LogicalReasoner — unicode & adversarial derived keys round-trip', ()
 	it.each([...TRICKY_KEYS.slice(6)])(
 		'round-trips the derived key %j through a downstream premise',
 		(key) => {
-			const definition = logicalDefinition('d', 'd', [
-				rule('emit', [atom('go', 'equals', true)], atom(key, 'equals', true)),
-				rule('read', [atom(key, 'equals', true)], atom('done', 'equals', true)),
+			const definition = createLogicalDefinition('d', 'd', [
+				createRule('emit', [createAtom('go', 'equals', true)], createAtom(key, 'equals', true)),
+				createRule('read', [createAtom(key, 'equals', true)], createAtom('done', 'equals', true)),
 			])
 			const result = expectLogical(reasoner.reason({ go: true }, definition))
 			expect(result.conclusion).toBe(true)
@@ -821,9 +884,17 @@ describe('LogicalReasoner — SameValueZero convergence on signed zero', () => {
 	it('deriving +0 then -0 to one key does NOT oscillate — it converges after one set', () => {
 		// EXTREME_NUMBERS[0] = +0, [1] = -0. equalValues(+0, -0) is true, so the second
 		// rule sees no change and the fixpoint settles (contrast the 1-vs-2 oscillation).
-		const definition = logicalDefinition('d', 'd', [
-			rule('setZero', [atom('go', 'equals', true)], atom('z', 'equals', EXTREME_NUMBERS[0])),
-			rule('setNegZero', [atom('go', 'equals', true)], atom('z', 'equals', EXTREME_NUMBERS[1])),
+		const definition = createLogicalDefinition('d', 'd', [
+			createRule(
+				'setZero',
+				[createAtom('go', 'equals', true)],
+				createAtom('z', 'equals', EXTREME_NUMBERS[0]),
+			),
+			createRule(
+				'setNegZero',
+				[createAtom('go', 'equals', true)],
+				createAtom('z', 'equals', EXTREME_NUMBERS[1]),
+			),
 		])
 		const result = expectLogical(reasoner.reason({ go: true }, definition))
 		expect(result.trace.filter((entry) => entry.includes('derived: z='))).toEqual([
@@ -839,14 +910,14 @@ describe('LogicalReasoner — backward long cycle terminates', () => {
 		// c_i needs k_{i+1} to conclude k_i, closing k1←k2←…←k20←k1 — unprovable, must not recurse forever.
 		const cycle = sequence(20, 1).map((index) => {
 			const next = (index % 20) + 1
-			return rule(
+			return createRule(
 				`c${index}`,
-				[atom(`k${next}`, 'equals', true)],
-				atom(`k${index}`, 'equals', true),
+				[createAtom(`k${next}`, 'equals', true)],
+				createAtom(`k${index}`, 'equals', true),
 			)
 		})
 		const result = expectLogical(
-			reasoner.reason({}, logicalDefinition('d', 'd', cycle, { strategy: 'backward' })),
+			reasoner.reason({}, createLogicalDefinition('d', 'd', cycle, { strategy: 'backward' })),
 		)
 		expect(result.success).toBe(true)
 		expect(result.conclusion).toBe(false)
@@ -856,7 +927,7 @@ describe('LogicalReasoner — backward long cycle terminates', () => {
 
 describe('LogicalReasoner — priority extremes', () => {
 	it('fractional and ±Infinity priorities order forward firing ascending', () => {
-		const definition = logicalDefinition('d', 'd', [
+		const definition = createLogicalDefinition('d', 'd', [
 			derivationRule('rPosInf', 'x', true, 'a', { priority: Number.POSITIVE_INFINITY }),
 			derivationRule('rNegInf', 'x', true, 'b', { priority: Number.NEGATIVE_INFINITY }),
 			derivationRule('rZero', 'x', true, 'c'),
@@ -874,7 +945,7 @@ describe('LogicalReasoner — priority extremes', () => {
 	})
 
 	it('a NaN priority does not drop the rule from the sort — it still fires', () => {
-		const definition = logicalDefinition('d', 'd', [
+		const definition = createLogicalDefinition('d', 'd', [
 			derivationRule('rNaN', 'x', true, 'a', { priority: Number.NaN }),
 			derivationRule('rB', 'x', true, 'b'),
 			derivationRule('rC', 'x', true, 'c'),
@@ -888,16 +959,26 @@ describe('LogicalReasoner — priority extremes', () => {
 	it('priority decides the LAST backward-sorted rule, which sets the conclusion', () => {
 		// Backward conclusion = last priority-sorted rule. `provable` holds; `unprovable` does not.
 		function backwardConclusion(provablePriority: number, unprovablePriority: number): boolean {
-			const definition = logicalDefinition(
+			const definition = createLogicalDefinition(
 				'd',
 				'd',
 				[
-					rule('provable', [atom('a', 'equals', true)], atom('x', 'equals', true), {
-						priority: provablePriority,
-					}),
-					rule('unprovable', [atom('missing', 'equals', true)], atom('y', 'equals', true), {
-						priority: unprovablePriority,
-					}),
+					createRule(
+						'provable',
+						[createAtom('a', 'equals', true)],
+						createAtom('x', 'equals', true),
+						{
+							priority: provablePriority,
+						},
+					),
+					createRule(
+						'unprovable',
+						[createAtom('missing', 'equals', true)],
+						createAtom('y', 'equals', true),
+						{
+							priority: unprovablePriority,
+						},
+					),
 				],
 				{ strategy: 'backward' },
 			)
@@ -927,7 +1008,7 @@ describe('LogicalReasoner — backward depth-cap enforcement (sub-goal proving)'
 	}
 
 	function ruleConclusion(id: string, depth: number | undefined) {
-		const definition = logicalDefinition('d', 'd', sixHopChain(), {
+		const definition = createLogicalDefinition('d', 'd', sixHopChain(), {
 			strategy: 'backward',
 			...(depth === undefined ? {} : { depth }),
 		})
@@ -936,7 +1017,7 @@ describe('LogicalReasoner — backward depth-cap enforcement (sub-goal proving)'
 	}
 
 	it('depth 3 is insufficient — the goal (r6, needing 5 hops) is NOT proven', () => {
-		const definition = logicalDefinition('d', 'd', sixHopChain(), {
+		const definition = createLogicalDefinition('d', 'd', sixHopChain(), {
 			strategy: 'backward',
 			depth: 3,
 		})
@@ -979,9 +1060,9 @@ describe('LogicalReasoner — sparse compound operands', () => {
 	it('a sparse "and" operand array is deterministic — holes are skipped, not thrown on', () => {
 		// sparse(3, [[1, atom]]) leaves indices 0 and 2 as real holes; `.map`/`.every`
 		// both skip holes, so only the atom at index 1 gates the conclusion.
-		const sparseOperands = sparse<Expression>(3, [[1, atom('a', 'equals', true)]])
-		const definition = logicalDefinition('d', 'd', [
-			rule('r1', [compound('and', sparseOperands)], atom('ok', 'equals', true)),
+		const sparseOperands = sparse<Expression>(3, [[1, createAtom('a', 'equals', true)]])
+		const definition = createLogicalDefinition('d', 'd', [
+			createRule('r1', [createCompound('and', sparseOperands)], createAtom('ok', 'equals', true)),
 		])
 
 		const met = expectLogical(reasoner.reason({ a: true }, definition))
@@ -1000,7 +1081,7 @@ describe('LogicalReasoner — sparse / junk rules array', () => {
 			[0, derivationRule('r1', 'a', true, 'x1')],
 			[2, derivationRule('r2', 'b', true, 'x2')],
 		])
-		const definition = logicalDefinition('d', 'd', sparseRules)
+		const definition = createLogicalDefinition('d', 'd', sparseRules)
 
 		const result = expectLogical(reasoner.reason({ a: true, b: true }, definition))
 		expect(result.count).toBe(2)
@@ -1055,9 +1136,9 @@ describe('LogicalReasoner — sparse / junk rules array', () => {
 describe('LogicalReasoner — deep-but-safe compound evaluation', () => {
 	it('evaluates a deepCompound(1000, atom) expression without error (true and false leaves, run twice)', () => {
 		function evaluate(leafValue: boolean) {
-			const deep = deepCompound(1000, atom('deep', 'equals', true))
-			const definition = logicalDefinition('d', 'd', [
-				rule('nest', [deep], atom('ok', 'equals', true)),
+			const deep = deepCompound(1000, createAtom('deep', 'equals', true))
+			const definition = createLogicalDefinition('d', 'd', [
+				createRule('nest', [deep], createAtom('ok', 'equals', true)),
 			])
 			return expectLogical(reasoner.reason({ deep: leafValue }, definition))
 		}
@@ -1080,9 +1161,17 @@ describe('LogicalReasoner — array-path conclusion vs array-path premise mismat
 	it('a flat derived key "flags.ok" is invisible to an ARRAY-path premise reading nested flags.ok', () => {
 		// `flag` derives the FLAT overlay key 'flags.ok'; `read` reads the NESTED path
 		// ['flags','ok'], which resolveField descends — the key shapes never meet.
-		const definition = logicalDefinition('d', 'd', [
-			rule('flag', [atom('go', 'equals', true)], atom(['flags', 'ok'], 'equals', true)),
-			rule('read', [atom(['flags', 'ok'], 'equals', true)], atom('done', 'equals', true)),
+		const definition = createLogicalDefinition('d', 'd', [
+			createRule(
+				'flag',
+				[createAtom('go', 'equals', true)],
+				createAtom(['flags', 'ok'], 'equals', true),
+			),
+			createRule(
+				'read',
+				[createAtom(['flags', 'ok'], 'equals', true)],
+				createAtom('done', 'equals', true),
+			),
 		])
 		const result = expectLogical(reasoner.reason({ go: true }, definition))
 		expect(result.trace).toContain('Rule "flag" derived: flags.ok=true (iteration 1)')
@@ -1093,8 +1182,12 @@ describe('LogicalReasoner — array-path conclusion vs array-path premise mismat
 })
 
 describe('LogicalReasoner — builder build() output passed to supports/validate/reason (§15)', () => {
-	const definition = logicalDefinition('activation', 'Activation', [
-		rule('activate', [atom('active', 'equals', true)], atom('result', 'equals', true)),
+	const definition = createLogicalDefinition('activation', 'Activation', [
+		createRule(
+			'activate',
+			[createAtom('active', 'equals', true)],
+			createAtom('result', 'equals', true),
+		),
 	])
 
 	it('a built definition + built subject behave identically to the same data written inline (run twice)', () => {

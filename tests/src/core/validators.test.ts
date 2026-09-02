@@ -1,21 +1,32 @@
 import {
-	atom,
-	bounds,
-	check,
-	compound,
-	constant,
+	createAtom,
+	createBounds,
+	createCheck,
+	createCompound,
+	createConstant,
+	createEquation,
+	createFact,
+	createFactorGroup,
+	createFieldFactor,
+	createInference,
+	createInferentialDefinition,
 	createInferentialReasoner,
+	createLogicalDefinition,
 	createLogicalReasoner,
+	createLookupSource,
+	createOperation,
+	createQuantitativeDefinition,
 	createQuantitativeReasoner,
+	createRangeSource,
 	createReason,
+	createRule,
+	createStaticFactor,
+	createStaticSource,
+	createSymbolicDefinition,
 	createSymbolicReasoner,
+	createTransform,
+	createVariable,
 	DEFINITION_BUILDER_BRAND,
-	equation,
-	fact,
-	factorGroup,
-	fieldFactor,
-	inference,
-	inferentialDefinition,
 	isAggregation,
 	isBounds,
 	isChainingStrategy,
@@ -23,6 +34,7 @@ import {
 	isCheckResult,
 	isComparison,
 	isDefinition,
+	isDefinitionBuilder,
 	isEquation,
 	isExpression,
 	isFact,
@@ -38,41 +50,28 @@ import {
 	isInferentialResult,
 	isLogicalClearKey,
 	isLogicalDefinition,
-	isLogicalResult,
 	isLogicalOperator,
+	isLogicalResult,
 	isMathOperation,
 	isNumberRecord,
 	isProofNode,
 	isQuantitativeClearKey,
 	isQuantitativeDefinition,
 	isQuantitativeResult,
+	isReasoning,
 	isReasonResult,
 	isReasonValidationResult,
-	isReasoning,
 	isResultFact,
-	isDefinitionBuilder,
-	isRuleResult,
-	isSubjectBuilder,
 	isRule,
+	isRuleResult,
 	isSource,
-	isSubject,
+	isSubjectBuilder,
 	isSymbolicClearKey,
 	isSymbolicDefinition,
 	isSymbolicExpression,
 	isSymbolicResult,
 	isTransform,
-	logicalDefinition,
-	lookupSource,
-	operation,
-	quantitativeDefinition,
-	rangeSource,
-	rule,
-	staticFactor,
-	staticSource,
 	SUBJECT_BUILDER_BRAND,
-	symbolicDefinition,
-	transform,
-	variable,
 } from '@src/core'
 import { parseJSON } from '@orkestrel/contract'
 import { describe, expect, it } from 'vitest'
@@ -204,7 +203,7 @@ describe('literal-union guards', () => {
 	})
 })
 
-describe('isFieldPath / isSubject / isNumberRecord', () => {
+describe('isFieldPath / isNumberRecord', () => {
 	it('isFieldPath accepts a string key and a string array (including empty)', () => {
 		expect(isFieldPath('age')).toBe(true)
 		expect(isFieldPath('a.b')).toBe(true)
@@ -220,14 +219,6 @@ describe('isFieldPath / isSubject / isNumberRecord', () => {
 		expect(accepted(isFieldPath)).toEqual(['junk', []])
 	})
 
-	it('isSubject accepts plain records and rejects arrays / class instances', () => {
-		expect(isSubject({})).toBe(true)
-		expect(isSubject({ age: 30 })).toBe(true)
-		expect(isSubject(Object.create(null))).toBe(true)
-		expect(isSubject([1, 2, 3])).toBe(false)
-		expect(accepted(isSubject)).toEqual([])
-	})
-
 	it('isNumberRecord demands finite-number values on every key', () => {
 		expect(isNumberRecord({})).toBe(true)
 		expect(isNumberRecord({ CA: 1.2, NY: 0.8 })).toBe(true)
@@ -240,8 +231,8 @@ describe('isFieldPath / isSubject / isNumberRecord', () => {
 
 describe('isCheck', () => {
 	it('accepts the builder output and any value type — but the value key must be PRESENT', () => {
-		expect(isCheck(check('age', 'above', 18))).toBe(true)
-		expect(isCheck(check('a', 'equals', null))).toBe(true)
+		expect(isCheck(createCheck('age', 'above', 18))).toBe(true)
+		expect(isCheck(createCheck('a', 'equals', null))).toBe(true)
 		expect(isCheck({ field: 'a', operator: 'equals', value: undefined })).toBe(true)
 		expect(isCheck({ field: 'a', operator: 'equals' })).toBe(false)
 	})
@@ -264,14 +255,14 @@ describe('isCheck', () => {
 
 	it('SYMBOL-keyed extras are invisible to exactness — accepted (string keys only)', () => {
 		const extra = Symbol('extra')
-		expect(isCheck({ ...check('a', 'equals', 1), [extra]: 1 })).toBe(true)
+		expect(isCheck({ ...createCheck('a', 'equals', 1), [extra]: 1 })).toBe(true)
 	})
 })
 
 describe('isTransform / isBounds / isFactorRange', () => {
 	it('isTransform accepts operand-less and operand-carrying transforms', () => {
-		expect(isTransform(transform('round'))).toBe(true)
-		expect(isTransform(transform('multiply', 2))).toBe(true)
+		expect(isTransform(createTransform('round'))).toBe(true)
+		expect(isTransform(createTransform('multiply', 2))).toBe(true)
 	})
 
 	it('isTransform rejects non-finite operands, extra keys, and junk', () => {
@@ -282,10 +273,10 @@ describe('isTransform / isBounds / isFactorRange', () => {
 	})
 
 	it('isBounds accepts empty / one-sided / two-sided bounds', () => {
-		expect(isBounds(bounds())).toBe(true)
-		expect(isBounds(bounds(0))).toBe(true)
-		expect(isBounds(bounds(undefined, 100))).toBe(true)
-		expect(isBounds(bounds(0, 100))).toBe(true)
+		expect(isBounds(createBounds())).toBe(true)
+		expect(isBounds(createBounds(0))).toBe(true)
+		expect(isBounds(createBounds(undefined, 100))).toBe(true)
+		expect(isBounds(createBounds(0, 100))).toBe(true)
 	})
 
 	it('isBounds rejects non-finite sides, extra keys, and junk', () => {
@@ -309,10 +300,10 @@ describe('isTransform / isBounds / isFactorRange', () => {
 
 describe('isSource', () => {
 	it('accepts all four origins (builder round-trip)', () => {
-		expect(isSource(staticSource(42))).toBe(true)
+		expect(isSource(createStaticSource(42))).toBe(true)
 		expect(isSource({ origin: 'field', field: ['profile', 'score'] })).toBe(true)
-		expect(isSource(lookupSource('state', { CA: 5 }))).toBe(true)
-		expect(isSource(rangeSource('age', [{ bounds: { maximum: 25 }, value: 10 }]))).toBe(true)
+		expect(isSource(createLookupSource('state', { CA: 5 }))).toBe(true)
+		expect(isSource(createRangeSource('age', [{ bounds: { maximum: 25 }, value: 10 }]))).toBe(true)
 	})
 
 	it('rejects an unknown origin, cross-shape mixes, and junk', () => {
@@ -327,15 +318,15 @@ describe('isSource', () => {
 
 describe('isFactor / isFactorGroup', () => {
 	it('isFactor accepts a minimal and a fully-loaded factor', () => {
-		expect(isFactor(staticFactor('f1', 10))).toBe(true)
+		expect(isFactor(createStaticFactor('f1', 10))).toBe(true)
 		expect(
 			isFactor(
-				fieldFactor('f2', 'income', {
+				createFieldFactor('f2', 'income', {
 					description: 'income score',
 					fallback: 0,
-					checks: [check('income', 'above', 0)],
-					transforms: [transform('divide', 1000)],
-					bounds: bounds(0, 40),
+					checks: [createCheck('income', 'above', 0)],
+					transforms: [createTransform('divide', 1000)],
+					bounds: createBounds(0, 40),
 					weight: 2,
 					priority: 1,
 					enabled: true,
@@ -347,15 +338,17 @@ describe('isFactor / isFactorGroup', () => {
 
 	it('isFactor rejects a missing source, extra keys, and junk', () => {
 		expect(isFactor({ id: 'f1', name: 'f1' })).toBe(false)
-		expect(isFactor({ ...staticFactor('f1', 10), label: 'legacy' })).toBe(false)
-		expect(isFactor({ ...staticFactor('f1', 10), weight: Number.NaN })).toBe(false)
+		expect(isFactor({ ...createStaticFactor('f1', 10), label: 'legacy' })).toBe(false)
+		expect(isFactor({ ...createStaticFactor('f1', 10), weight: Number.NaN })).toBe(false)
 		expect(accepted(isFactor)).toEqual([])
 	})
 
 	it('isFactorGroup accepts minimal and overridden groups', () => {
-		expect(isFactorGroup(factorGroup('g1', 'sum', [staticFactor('f1', 10)]))).toBe(true)
+		expect(isFactorGroup(createFactorGroup('g1', 'sum', [createStaticFactor('f1', 10)]))).toBe(true)
 		expect(
-			isFactorGroup(factorGroup('g1', 'product', [], { base: 1, strict: true, enabled: false })),
+			isFactorGroup(
+				createFactorGroup('g1', 'product', [], { base: 1, strict: true, enabled: false }),
+			),
 		).toBe(true)
 	})
 
@@ -364,28 +357,32 @@ describe('isFactor / isFactorGroup', () => {
 		expect(
 			isFactorGroup({ id: 'g1', name: 'g1', aggregation: 'sum', factors: [{ id: 'broken' }] }),
 		).toBe(false)
-		expect(isFactorGroup({ ...factorGroup('g1', 'sum', []), weight: 1 })).toBe(false)
+		expect(isFactorGroup({ ...createFactorGroup('g1', 'sum', []), weight: 1 })).toBe(false)
 		expect(accepted(isFactorGroup)).toEqual([])
 	})
 })
 
 describe('isExpression — recursive via lazyOf', () => {
 	it('accepts atoms, compounds, and deeply nested trees', () => {
-		expect(isExpression(atom('age', 'from', 18))).toBe(true)
-		expect(isExpression(compound('and', [atom('a', 'equals', 1), atom('b', 'equals', 2)]))).toBe(
-			true,
-		)
+		expect(isExpression(createAtom('age', 'from', 18))).toBe(true)
+		expect(
+			isExpression(
+				createCompound('and', [createAtom('a', 'equals', 1), createAtom('b', 'equals', 2)]),
+			),
+		).toBe(true)
 		// A 100-deep nest still validates (recursion is depth-tolerant at sane sizes).
-		let deep = atom('a', 'equals', 1)
-		for (let index = 0; index < 100; index++) deep = compound('not', [deep])
+		let deep = createAtom('a', 'equals', 1)
+		for (let index = 0; index < 100; index++) deep = createCompound('not', [deep])
 		expect(isExpression(deep)).toBe(true)
 	})
 
 	it('rejects missing operands, unknown forms, extra keys, and junk', () => {
 		expect(isExpression({ form: 'compound', operator: 'and' })).toBe(false)
 		expect(isExpression({ form: 'chain', operator: 'and', operands: [] })).toBe(false)
-		expect(isExpression({ form: 'atom', check: check('a', 'equals', 1), extra: true })).toBe(false)
-		expect(isExpression(compound('and', []))).toBe(true)
+		expect(isExpression({ form: 'atom', check: createCheck('a', 'equals', 1), extra: true })).toBe(
+			false,
+		)
+		expect(isExpression(createCompound('and', []))).toBe(true)
 		expect(accepted(isExpression)).toEqual([])
 	})
 
@@ -398,41 +395,61 @@ describe('isExpression — recursive via lazyOf', () => {
 	it('contains a BEYOND-STACK-BUDGET nest — false, never a RangeError (AGENTS §14)', () => {
 		// Recursion is stack-bounded, not unbounded: 100,000 levels of `not`
 		// overflow the engine stack; lazyOf contains the overflow as a non-match.
-		let deep = atom('a', 'equals', 1)
-		for (let index = 0; index < 100000; index++) deep = compound('not', [deep])
+		let deep = createAtom('a', 'equals', 1)
+		for (let index = 0; index < 100000; index++) deep = createCompound('not', [deep])
 		expect(isExpression(deep)).toBe(false)
 	})
 })
 
 describe('isRule', () => {
 	it('accepts the builder output (with and without overrides)', () => {
-		expect(isRule(rule('adult', [atom('age', 'from', 18)], atom('adult', 'equals', true)))).toBe(
-			true,
-		)
 		expect(
-			isRule(rule('adult', [], atom('adult', 'equals', true), { priority: 1, enabled: false })),
+			isRule(
+				createRule('adult', [createAtom('age', 'from', 18)], createAtom('adult', 'equals', true)),
+			),
+		).toBe(true)
+		expect(
+			isRule(
+				createRule('adult', [], createAtom('adult', 'equals', true), {
+					priority: 1,
+					enabled: false,
+				}),
+			),
 		).toBe(true)
 	})
 
 	it('rejects a missing conclusion, a bad premise, extra keys, and junk', () => {
 		expect(isRule({ id: 'adult', name: 'adult', premises: [] })).toBe(false)
 		expect(
-			isRule({ id: 'r', name: 'r', premises: [{ bad: true }], conclusion: atom('x', 'equals', 1) }),
+			isRule({
+				id: 'r',
+				name: 'r',
+				premises: [{ bad: true }],
+				conclusion: createAtom('x', 'equals', 1),
+			}),
 		).toBe(false)
-		expect(isRule({ ...rule('r', [], atom('x', 'equals', 1)), confidence: 0.5 })).toBe(false)
+		expect(isRule({ ...createRule('r', [], createAtom('x', 'equals', 1)), confidence: 0.5 })).toBe(
+			false,
+		)
 		expect(accepted(isRule)).toEqual([])
 	})
 })
 
 describe('isSymbolicExpression — recursive via lazyOf', () => {
 	it('accepts variables, constants, and nested operations (right optional)', () => {
-		expect(isSymbolicExpression(variable('x'))).toBe(true)
-		expect(isSymbolicExpression(constant(42))).toBe(true)
-		expect(isSymbolicExpression(operation('add', variable('x'), constant(1)))).toBe(true)
-		expect(isSymbolicExpression(operation('abs', variable('x')))).toBe(true)
+		expect(isSymbolicExpression(createVariable('x'))).toBe(true)
+		expect(isSymbolicExpression(createConstant(42))).toBe(true)
+		expect(
+			isSymbolicExpression(createOperation('add', createVariable('x'), createConstant(1))),
+		).toBe(true)
+		expect(isSymbolicExpression(createOperation('abs', createVariable('x')))).toBe(true)
 		expect(
 			isSymbolicExpression(
-				operation('add', operation('multiply', constant(2), variable('x')), constant(3)),
+				createOperation(
+					'add',
+					createOperation('multiply', createConstant(2), createVariable('x')),
+					createConstant(3),
+				),
 			),
 		).toBe(true)
 	})
@@ -441,7 +458,12 @@ describe('isSymbolicExpression — recursive via lazyOf', () => {
 		expect(isSymbolicExpression({ form: 'constant', value: Number.NaN })).toBe(false)
 		expect(isSymbolicExpression({ form: 'variable' })).toBe(false)
 		expect(
-			isSymbolicExpression({ form: 'operation', operator: 'add', left: variable('x'), extra: 1 }),
+			isSymbolicExpression({
+				form: 'operation',
+				operator: 'add',
+				left: createVariable('x'),
+				extra: 1,
+			}),
 		).toBe(false)
 		expect(isSymbolicExpression({ form: 'lambda', name: 'x' })).toBe(false)
 		expect(accepted(isSymbolicExpression)).toEqual([])
@@ -454,35 +476,44 @@ describe('isSymbolicExpression — recursive via lazyOf', () => {
 	})
 
 	it('contains a BEYOND-STACK-BUDGET nest — false, never a RangeError (AGENTS §14)', () => {
-		let deep = constant(1)
-		for (let index = 0; index < 100000; index++) deep = operation('abs', deep)
+		let deep = createConstant(1)
+		for (let index = 0; index < 100000; index++) deep = createOperation('abs', deep)
 		expect(isSymbolicExpression(deep)).toBe(false)
 	})
 })
 
 describe('isEquation', () => {
 	it('accepts the builder output', () => {
-		expect(isEquation(equation('e1', variable('x'), constant(42), 'x'))).toBe(true)
+		expect(isEquation(createEquation('e1', createVariable('x'), createConstant(42), 'x'))).toBe(
+			true,
+		)
 		expect(
-			isEquation(equation('e1', variable('x'), constant(42), 'x', { description: 'solve x' })),
+			isEquation(
+				createEquation('e1', createVariable('x'), createConstant(42), 'x', {
+					description: 'solve x',
+				}),
+			),
 		).toBe(true)
 	})
 
 	it('rejects missing sides, a missing target, extra keys, and junk', () => {
 		expect(isEquation({ id: 'e1', name: 'e1', target: 'x' })).toBe(false)
-		expect(isEquation({ id: 'e1', name: 'e1', left: variable('x'), right: constant(1) })).toBe(
-			false,
-		)
-		expect(isEquation({ ...equation('e1', variable('x'), constant(1), 'x'), label: 'x' })).toBe(
-			false,
-		)
+		expect(
+			isEquation({ id: 'e1', name: 'e1', left: createVariable('x'), right: createConstant(1) }),
+		).toBe(false)
+		expect(
+			isEquation({
+				...createEquation('e1', createVariable('x'), createConstant(1), 'x'),
+				label: 'x',
+			}),
+		).toBe(false)
 		expect(accepted(isEquation)).toEqual([])
 	})
 })
 
 describe('isFact / isInference', () => {
 	it('isFact accepts mixed unrestricted terms (confidence optional)', () => {
-		expect(isFact(fact('f1', 'human', ['socrates']))).toBe(true)
+		expect(isFact(createFact('f1', 'human', ['socrates']))).toBe(true)
 		expect(isFact({ id: 'f1', predicate: 'has', terms: ['age', 30, null, { deep: true }] })).toBe(
 			true,
 		)
@@ -491,17 +522,26 @@ describe('isFact / isInference', () => {
 	it('isFact rejects non-array terms, a non-finite confidence, extra keys, and junk', () => {
 		expect(isFact({ id: 'f1', predicate: 'human', terms: 'socrates' })).toBe(false)
 		expect(isFact({ id: 'f1', predicate: 'human', terms: [], confidence: Number.NaN })).toBe(false)
-		expect(isFact({ ...fact('f1', 'human', ['x']), arguments: ['x'] })).toBe(false)
+		expect(isFact({ ...createFact('f1', 'human', ['x']), arguments: ['x'] })).toBe(false)
 		expect(accepted(isFact)).toEqual([])
 	})
 
 	it('isInference accepts the builder output (with and without overrides)', () => {
 		expect(
-			isInference(inference('mortal', [fact('p1', 'human', ['?x'])], fact('c1', 'mortal', ['?x']))),
+			isInference(
+				createInference(
+					'mortal',
+					[createFact('p1', 'human', ['?x'])],
+					createFact('c1', 'mortal', ['?x']),
+				),
+			),
 		).toBe(true)
 		expect(
 			isInference(
-				inference('mortal', [], fact('c1', 'mortal', ['?x']), { confidence: 0.8, enabled: true }),
+				createInference('mortal', [], createFact('c1', 'mortal', ['?x']), {
+					confidence: 0.8,
+					enabled: true,
+				}),
 			),
 		).toBe(true)
 	})
@@ -509,95 +549,123 @@ describe('isFact / isInference', () => {
 	it('isInference rejects a missing conclusion, bad premises, extra keys, and junk', () => {
 		expect(isInference({ id: 'i1', name: 'i1', premises: [] })).toBe(false)
 		expect(
-			isInference({ id: 'i1', name: 'i1', premises: [{}], conclusion: fact('c', 'p', []) }),
+			isInference({ id: 'i1', name: 'i1', premises: [{}], conclusion: createFact('c', 'p', []) }),
 		).toBe(false)
-		expect(isInference({ ...inference('i1', [], fact('c', 'p', [])), priority: 1 })).toBe(false)
+		expect(
+			isInference({ ...createInference('i1', [], createFact('c', 'p', [])), priority: 1 }),
+		).toBe(false)
 		expect(accepted(isInference)).toEqual([])
 	})
 })
 
 describe('definition guards', () => {
 	it('isQuantitativeDefinition accepts builder output, minimal and loaded', () => {
-		expect(isQuantitativeDefinition(quantitativeDefinition('risk', 'Risk', []))).toBe(true)
+		expect(isQuantitativeDefinition(createQuantitativeDefinition('risk', 'Risk', []))).toBe(true)
 		expect(
 			isQuantitativeDefinition(
-				quantitativeDefinition('risk', 'Risk', [factorGroup('g1', 'sum', [staticFactor('f', 1)])], {
-					base: 10,
-					bounds: bounds(0, 100),
-					precision: 2,
-				}),
+				createQuantitativeDefinition(
+					'risk',
+					'Risk',
+					[createFactorGroup('g1', 'sum', [createStaticFactor('f', 1)])],
+					{
+						base: 10,
+						bounds: createBounds(0, 100),
+						precision: 2,
+					},
+				),
 			),
 		).toBe(true)
 	})
 
 	it('isQuantitativeDefinition rejects the wrong reasoning, missing groups, and extras', () => {
-		expect(isQuantitativeDefinition(logicalDefinition('x', 'x', []))).toBe(false)
+		expect(isQuantitativeDefinition(createLogicalDefinition('x', 'x', []))).toBe(false)
 		expect(isQuantitativeDefinition({ reasoning: 'quantitative', id: 'risk' })).toBe(false)
 		expect(
-			isQuantitativeDefinition({ ...quantitativeDefinition('r', 'r', []), strategy: 'forward' }),
+			isQuantitativeDefinition({
+				...createQuantitativeDefinition('r', 'r', []),
+				strategy: 'forward',
+			}),
 		).toBe(false)
 		expect(accepted(isQuantitativeDefinition)).toEqual([])
 	})
 
 	it('isLogicalDefinition accepts builder output and rejects drift', () => {
-		expect(isLogicalDefinition(logicalDefinition('elig', 'Eligibility', []))).toBe(true)
+		expect(isLogicalDefinition(createLogicalDefinition('elig', 'Eligibility', []))).toBe(true)
 		expect(
 			isLogicalDefinition(
-				logicalDefinition('elig', 'Eligibility', [rule('r', [], atom('x', 'equals', 1))], {
-					strategy: 'backward',
-					depth: 5,
-				}),
+				createLogicalDefinition(
+					'elig',
+					'Eligibility',
+					[createRule('r', [], createAtom('x', 'equals', 1))],
+					{
+						strategy: 'backward',
+						depth: 5,
+					},
+				),
 			),
 		).toBe(true)
 		expect(isLogicalDefinition({ reasoning: 'logical', id: 'elig' })).toBe(false)
-		expect(isLogicalDefinition({ ...logicalDefinition('e', 'e', []), depth: Number.NaN })).toBe(
-			false,
-		)
+		expect(
+			isLogicalDefinition({ ...createLogicalDefinition('e', 'e', []), depth: Number.NaN }),
+		).toBe(false)
 		expect(accepted(isLogicalDefinition)).toEqual([])
 	})
 
 	it('isSymbolicDefinition accepts builder output and rejects drift', () => {
-		expect(isSymbolicDefinition(symbolicDefinition('rate', 'Rate', []))).toBe(true)
+		expect(isSymbolicDefinition(createSymbolicDefinition('rate', 'Rate', []))).toBe(true)
 		expect(
 			isSymbolicDefinition(
-				symbolicDefinition('rate', 'Rate', [equation('e1', variable('x'), constant(1), 'x')], {
-					variables: { pi: 3.14 },
-					precision: 2,
-				}),
+				createSymbolicDefinition(
+					'rate',
+					'Rate',
+					[createEquation('e1', createVariable('x'), createConstant(1), 'x')],
+					{
+						variables: { pi: 3.14 },
+						precision: 2,
+					},
+				),
 			),
 		).toBe(true)
 		expect(isSymbolicDefinition({ reasoning: 'symbolic', id: 'rate' })).toBe(false)
 		expect(
-			isSymbolicDefinition({ ...symbolicDefinition('r', 'r', []), variables: { x: 'ten' } }),
+			isSymbolicDefinition({ ...createSymbolicDefinition('r', 'r', []), variables: { x: 'ten' } }),
 		).toBe(false)
 		expect(accepted(isSymbolicDefinition)).toEqual([])
 	})
 
 	it('isInferentialDefinition accepts builder output and rejects drift', () => {
-		expect(isInferentialDefinition(inferentialDefinition('birds', 'Birds', [], []))).toBe(true)
+		expect(isInferentialDefinition(createInferentialDefinition('birds', 'Birds', [], []))).toBe(
+			true,
+		)
 		expect(
 			isInferentialDefinition(
-				inferentialDefinition(
+				createInferentialDefinition(
 					'birds',
 					'Birds',
-					[fact('f1', 'hasFeathers', ['tweety'])],
-					[inference('i1', [fact('p1', 'hasFeathers', ['?x'])], fact('c1', 'isBird', ['?x']))],
+					[createFact('f1', 'hasFeathers', ['tweety'])],
+					[
+						createInference(
+							'i1',
+							[createFact('p1', 'hasFeathers', ['?x'])],
+							createFact('c1', 'isBird', ['?x']),
+						),
+					],
 					{ strategy: 'backward', depth: 5 },
 				),
 			),
 		).toBe(true)
 		expect(isInferentialDefinition({ reasoning: 'inferential', id: 'birds' })).toBe(false)
-		expect(isInferentialDefinition({ ...inferentialDefinition('b', 'b', [], []), rules: [] })).toBe(
-			false,
-		)
+		expect(
+			isInferentialDefinition({ ...createInferentialDefinition('b', 'b', [], []), rules: [] }),
+		).toBe(false)
 		expect(accepted(isInferentialDefinition)).toEqual([])
 	})
 
 	it('isDefinition unions the four (and rejects a fifth reasoning)', () => {
-		expect(isDefinition(quantitativeDefinition('a', 'a', []))).toBe(true)
-		expect(isDefinition(logicalDefinition('b', 'b', []))).toBe(true)
-		expect(isDefinition(symbolicDefinition('c', 'c', []))).toBe(true)
-		expect(isDefinition(inferentialDefinition('d', 'd', [], []))).toBe(true)
+		expect(isDefinition(createQuantitativeDefinition('a', 'a', []))).toBe(true)
+		expect(isDefinition(createLogicalDefinition('b', 'b', []))).toBe(true)
+		expect(isDefinition(createSymbolicDefinition('c', 'c', []))).toBe(true)
+		expect(isDefinition(createInferentialDefinition('d', 'd', [], []))).toBe(true)
 		expect(isDefinition({ reasoning: 'quantum', id: 'x', name: 'x' })).toBe(false)
 		expect(accepted(isDefinition)).toEqual([])
 	})
@@ -930,9 +998,9 @@ describe('isQuantitativeResult', () => {
 		const reason = createReason({ reasoners: [createQuantitativeReasoner()] })
 		const result = reason.reason(
 			{ enabled: true },
-			quantitativeDefinition('real', 'Real', [
-				factorGroup('group', 'sum', [
-					staticFactor('factor', 4, { checks: [check('enabled', 'equals', false)] }),
+			createQuantitativeDefinition('real', 'Real', [
+				createFactorGroup('group', 'sum', [
+					createStaticFactor('factor', 4, { checks: [createCheck('enabled', 'equals', false)] }),
 				]),
 			]),
 		)
@@ -993,8 +1061,8 @@ describe('isLogicalResult', () => {
 		const reason = createReason({ reasoners: [createLogicalReasoner()] })
 		const result = reason.reason(
 			{ age: 30 },
-			logicalDefinition('real', 'Real', [
-				rule('adult', [atom('age', 'from', 18)], atom('adult', 'equals', true)),
+			createLogicalDefinition('real', 'Real', [
+				createRule('adult', [createAtom('age', 'from', 18)], createAtom('adult', 'equals', true)),
 			]),
 		)
 		expect(isLogicalResult(result)).toBe(true)
@@ -1044,7 +1112,9 @@ describe('isSymbolicResult', () => {
 		const reason = createReason({ reasoners: [createSymbolicReasoner()] })
 		const result = reason.reason(
 			{},
-			symbolicDefinition('real', 'Real', [equation('x', variable('x'), constant(4), 'x')]),
+			createSymbolicDefinition('real', 'Real', [
+				createEquation('x', createVariable('x'), createConstant(4), 'x'),
+			]),
 		)
 		expect(isSymbolicResult(result)).toBe(true)
 		reason.destroy()
@@ -1092,15 +1162,15 @@ describe('isInferentialResult', () => {
 		const reason = createReason({ reasoners: [createInferentialReasoner()] })
 		const result = reason.reason(
 			{},
-			inferentialDefinition(
+			createInferentialDefinition(
 				'real',
 				'Real',
-				[fact('feathers', 'feathers', ['tweety'])],
+				[createFact('feathers', 'feathers', ['tweety'])],
 				[
-					inference(
+					createInference(
 						'bird-rule',
-						[fact('premise', 'feathers', ['?x'])],
-						fact('bird', 'bird', ['?x']),
+						[createFact('premise', 'feathers', ['?x'])],
+						createFact('bird', 'bird', ['?x']),
 					),
 				],
 				{ strategy: 'backward' },
@@ -1269,15 +1339,15 @@ describe('isReasonValidationResult', () => {
 	it('accepts a real engine validation result', () => {
 		const reason = createReason({ reasoners: [createInferentialReasoner()] })
 		const result = reason.validate(
-			inferentialDefinition(
+			createInferentialDefinition(
 				'real',
 				'Real',
-				[fact('feathers', 'feathers', ['tweety'])],
+				[createFact('feathers', 'feathers', ['tweety'])],
 				[
-					inference(
+					createInference(
 						'bird-rule',
-						[fact('premise', 'feathers', ['?x'])],
-						fact('bird', 'bird', ['?x']),
+						[createFact('premise', 'feathers', ['?x'])],
+						createFact('bird', 'bird', ['?x']),
 					),
 				],
 				{ strategy: 'backward' },
@@ -1300,7 +1370,7 @@ describe('isDefinitionBuilder / isSubjectBuilder — entity brand guards', () =>
 		expect(isDefinitionBuilder({ [DEFINITION_BUILDER_BRAND]: false })).toBe(false)
 		expect(isDefinitionBuilder({})).toBe(false)
 		// Plain definition DATA is not the entity — the guard is brand-based, not shape-based.
-		expect(isDefinitionBuilder(quantitativeDefinition('r', 'R', []))).toBe(false)
+		expect(isDefinitionBuilder(createQuantitativeDefinition('r', 'R', []))).toBe(false)
 		expect(accepted(isDefinitionBuilder)).toEqual([])
 	})
 
@@ -1343,13 +1413,13 @@ describe('isDefinitionBuilder / isSubjectBuilder — entity brand guards', () =>
 
 describe('recursion-depth boundary — isExpression / isSymbolicExpression', () => {
 	const nestExpression = (depth: number) => {
-		let deep = atom('a', 'equals', 1)
-		for (let index = 0; index < depth; index += 1) deep = compound('not', [deep])
+		let deep = createAtom('a', 'equals', 1)
+		for (let index = 0; index < depth; index += 1) deep = createCompound('not', [deep])
 		return deep
 	}
 	const nestSymbolic = (depth: number) => {
-		let deep = constant(1)
-		for (let index = 0; index < depth; index += 1) deep = operation('abs', deep)
+		let deep = createConstant(1)
+		for (let index = 0; index < depth; index += 1) deep = createOperation('abs', deep)
 		return deep
 	}
 
@@ -1430,7 +1500,7 @@ describe('recursion-depth boundary — isExpression / isSymbolicExpression', () 
 		const cyclic: Record<string, unknown> = {
 			form: 'operation',
 			operator: 'add',
-			left: constant(1),
+			left: createConstant(1),
 		}
 		cyclic.right = cyclic
 		expect(isSymbolicExpression(cyclic)).toBe(false)
@@ -1446,7 +1516,7 @@ describe('numeric-field guards — signed zero, safe-integer & subnormal extreme
 			expect(isFactorRange({ value })).toBe(true)
 			expect(isNumberRecord({ k: value })).toBe(true)
 			expect(isSource({ origin: 'static', value })).toBe(true)
-			expect(isFactor({ ...staticFactor('f', 1), weight: value })).toBe(true)
+			expect(isFactor({ ...createStaticFactor('f', 1), weight: value })).toBe(true)
 		}
 	})
 
@@ -1457,16 +1527,15 @@ describe('numeric-field guards — signed zero, safe-integer & subnormal extreme
 			expect(isFactorRange({ value })).toBe(false)
 			expect(isNumberRecord({ k: value })).toBe(false)
 			expect(isSource({ origin: 'static', value })).toBe(false)
-			expect(isFactor({ ...staticFactor('f', 1), weight: value })).toBe(false)
+			expect(isFactor({ ...createStaticFactor('f', 1), weight: value })).toBe(false)
 		}
 	})
 })
 
 describe('adversarial record keys — prototype names, unicode & exactness', () => {
-	it('isSubject / isNumberRecord accept a record of adversarial & unicode OWN keys', () => {
+	it('isNumberRecord accepts a record of adversarial & unicode OWN keys', () => {
 		const record: Record<string, unknown> = {}
 		for (const key of TRICKY_KEYS) record[key] = 1
-		expect(isSubject(record)).toBe(true)
 		expect(isNumberRecord(record)).toBe(true)
 	})
 

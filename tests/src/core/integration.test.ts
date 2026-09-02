@@ -1,24 +1,37 @@
 import {
-	atom,
-	bounds,
-	check,
-	compound,
-	constant,
 	createAggregator,
+	createAtom,
+	createBounds,
+	createCheck,
+	createCompound,
+	createConstant,
+	createEquation,
 	createEvaluator,
+	createFact,
+	createFactorGroup,
+	createFieldFactor,
+	createFieldSource,
+	createInference,
+	createInferentialDefinition,
 	createInferentialReasoner,
+	createLogicalDefinition,
 	createLogicalReasoner,
+	createLookupFactor,
+	createLookupSource,
+	createOperation,
+	createQuantitativeDefinition,
 	createQuantitativeReasoner,
+	createRangeFactor,
+	createRangeSource,
 	createReason,
+	createRule,
+	createStaticFactor,
+	createStaticSource,
+	createSymbolicDefinition,
 	createSymbolicReasoner,
+	createTransform,
 	createTransformer,
-	equation,
-	fact,
-	factorGroup,
-	fieldFactor,
-	fieldSource,
-	inference,
-	inferentialDefinition,
+	createVariable,
 	isBounds,
 	isCheck,
 	isDefinition,
@@ -26,23 +39,9 @@ import {
 	isFact,
 	isReasonError,
 	isSource,
-	isSubject,
 	isSymbolicExpression,
 	isTransform,
-	logicalDefinition,
-	lookupFactor,
-	lookupSource,
-	operation,
-	quantitativeDefinition,
-	rangeFactor,
-	rangeSource,
 	ReasonError,
-	rule,
-	staticFactor,
-	staticSource,
-	symbolicDefinition,
-	transform,
-	variable,
 } from '@src/core'
 import { describe, expect, it } from 'vitest'
 import { captureError } from '@orkestrel/test'
@@ -68,58 +67,62 @@ import {
 // orchestrator error surface (bail conversion, `isReasonError`, DESTROYED).
 
 // The underwriting fixtures, built exclusively with the public builders.
-const RISK_DEFINITION = quantitativeDefinition(
+const RISK_DEFINITION = createQuantitativeDefinition(
 	'risk-score',
 	'Risk Score',
 	[
-		factorGroup('age', 'sum', [
-			rangeFactor('age-band', 'age', [
-				{ bounds: bounds(undefined, 24), value: 30 },
-				{ bounds: bounds(25, 64), value: 15 },
-				{ bounds: bounds(65), value: 10 },
+		createFactorGroup('age', 'sum', [
+			createRangeFactor('age-band', 'age', [
+				{ bounds: createBounds(undefined, 24), value: 30 },
+				{ bounds: createBounds(25, 64), value: 15 },
+				{ bounds: createBounds(65), value: 10 },
 			]),
 		]),
-		factorGroup('financial', 'sum', [
-			fieldFactor('income-score', 'income', {
-				transforms: [transform('divide', 1000)],
-				bounds: bounds(0, 40),
+		createFactorGroup('financial', 'sum', [
+			createFieldFactor('income-score', 'income', {
+				transforms: [createTransform('divide', 1000)],
+				bounds: createBounds(0, 40),
 				fallback: 0,
 			}),
-			lookupFactor('state-score', 'state', { CA: 5, NY: 8, TX: 2 }, { fallback: 1 }),
+			createLookupFactor('state-score', 'state', { CA: 5, NY: 8, TX: 2 }, { fallback: 1 }),
 		]),
 	],
-	{ base: 10, bounds: bounds(0, 100), precision: 2 },
+	{ base: 10, bounds: createBounds(0, 100), precision: 2 },
 )
 
-const ELIGIBILITY_DEFINITION = logicalDefinition(
+const ELIGIBILITY_DEFINITION = createLogicalDefinition(
 	'eligibility',
 	'Eligibility',
 	[
-		rule('adult', [atom('age', 'from', 18)], atom('adult', 'equals', true)),
-		rule('risk', [atom('riskScore', 'from', 40)], atom('riskOk', 'equals', true)),
-		rule(
+		createRule('adult', [createAtom('age', 'from', 18)], createAtom('adult', 'equals', true)),
+		createRule('risk', [createAtom('riskScore', 'from', 40)], createAtom('riskOk', 'equals', true)),
+		createRule(
 			'eligible',
-			[atom('adult', 'equals', true), atom('riskOk', 'equals', true)],
-			atom('eligible', 'equals', true),
+			[createAtom('adult', 'equals', true), createAtom('riskOk', 'equals', true)],
+			createAtom('eligible', 'equals', true),
 		),
 	],
 	{ depth: 5 },
 )
 
-const RATE_DEFINITION = symbolicDefinition(
+const RATE_DEFINITION = createSymbolicDefinition(
 	'rate',
 	'Rate',
 	[
-		equation(
+		createEquation(
 			'base-rate',
-			variable('baseRate'),
-			operation('subtract', constant(15), operation('divide', variable('riskScore'), constant(10))),
+			createVariable('baseRate'),
+			createOperation(
+				'subtract',
+				createConstant(15),
+				createOperation('divide', createVariable('riskScore'), createConstant(10)),
+			),
 			'baseRate',
 		),
-		equation(
+		createEquation(
 			'final-rate',
-			variable('finalRate'),
-			operation('maximum', variable('baseRate'), constant(3)),
+			createVariable('finalRate'),
+			createOperation('maximum', createVariable('baseRate'), createConstant(3)),
 			'finalRate',
 		),
 	],
@@ -173,27 +176,32 @@ describe('reasons — quantitative → logical → symbolic pipeline', () => {
 
 describe('reasons — inferential forward + backward through the orchestrator', () => {
 	const baseFacts = [
-		fact('f1', 'hasFeathers', ['tweety'], 1),
-		fact('f2', 'laysEggs', ['tweety'], 0.9),
+		createFact('f1', 'hasFeathers', ['tweety'], 1),
+		createFact('f2', 'laysEggs', ['tweety'], 0.9),
 	]
-	const birdRule = inference(
+	const birdRule = createInference(
 		'bird-rule',
-		[fact('p1', 'hasFeathers', ['?x']), fact('p2', 'laysEggs', ['?x'])],
-		fact('c1', 'isBird', ['?x']),
+		[createFact('p1', 'hasFeathers', ['?x']), createFact('p2', 'laysEggs', ['?x'])],
+		createFact('c1', 'isBird', ['?x']),
 		{ confidence: 0.8 },
 	)
 
 	it('derives transitively forward (isBird, then canFly)', () => {
 		const reason = createReason({ reasoners: [createInferentialReasoner()] })
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'birds',
 			'Birds',
 			baseFacts,
 			[
 				birdRule,
-				inference('fly-rule', [fact('p3', 'isBird', ['?x'])], fact('c2', 'canFly', ['?x']), {
-					confidence: 0.5,
-				}),
+				createInference(
+					'fly-rule',
+					[createFact('p3', 'isBird', ['?x'])],
+					createFact('c2', 'canFly', ['?x']),
+					{
+						confidence: 0.5,
+					},
+				),
 			],
 			{ depth: 5 },
 		)
@@ -207,7 +215,7 @@ describe('reasons — inferential forward + backward through the orchestrator', 
 
 	it('proves backward with a proof tree naming the inference and conclusion fact', () => {
 		const reason = createReason({ reasoners: [createInferentialReasoner()] })
-		const definition = inferentialDefinition('birds', 'Birds', baseFacts, [birdRule], {
+		const definition = createInferentialDefinition('birds', 'Birds', baseFacts, [birdRule], {
 			strategy: 'backward',
 			depth: 5,
 		})
@@ -220,17 +228,20 @@ describe('reasons — inferential forward + backward through the orchestrator', 
 
 describe('reasons — builders round-trip their guards', () => {
 	it('every builder output satisfies its guard (the exact-record contract)', () => {
-		expect(isSubject({ age: 30 })).toBe(true)
-		expect(isCheck(check('age', 'from', 18))).toBe(true)
-		expect(isTransform(transform('multiply', 2))).toBe(true)
-		expect(isBounds(bounds(0, 100))).toBe(true)
-		expect(isSource(staticSource(42))).toBe(true)
-		expect(isSource(fieldSource(['profile', 'score']))).toBe(true)
-		expect(isSource(lookupSource('state', { CA: 5 }))).toBe(true)
-		expect(isSource(rangeSource('age', [{ bounds: bounds(undefined, 25), value: 10 }]))).toBe(true)
-		expect(isExpression(compound('and', [atom('age', 'from', 18)]))).toBe(true)
-		expect(isSymbolicExpression(operation('add', variable('x'), constant(1)))).toBe(true)
-		expect(isFact(fact('f1', 'has', ['state', 'CA']))).toBe(true)
+		expect(isCheck(createCheck('age', 'from', 18))).toBe(true)
+		expect(isTransform(createTransform('multiply', 2))).toBe(true)
+		expect(isBounds(createBounds(0, 100))).toBe(true)
+		expect(isSource(createStaticSource(42))).toBe(true)
+		expect(isSource(createFieldSource(['profile', 'score']))).toBe(true)
+		expect(isSource(createLookupSource('state', { CA: 5 }))).toBe(true)
+		expect(
+			isSource(createRangeSource('age', [{ bounds: createBounds(undefined, 25), value: 10 }])),
+		).toBe(true)
+		expect(isExpression(createCompound('and', [createAtom('age', 'from', 18)]))).toBe(true)
+		expect(
+			isSymbolicExpression(createOperation('add', createVariable('x'), createConstant(1))),
+		).toBe(true)
+		expect(isFact(createFact('f1', 'has', ['state', 'CA']))).toBe(true)
 	})
 
 	it('every full definition fixture satisfies isDefinition', () => {
@@ -239,21 +250,27 @@ describe('reasons — builders round-trip their guards', () => {
 		expect(isDefinition(RATE_DEFINITION)).toBe(true)
 		expect(
 			isDefinition(
-				logicalDefinition(
+				createLogicalDefinition(
 					'backward',
 					'Backward',
-					[rule('r', [atom('a', 'equals', 1)], atom('b', 'equals', 1))],
+					[createRule('r', [createAtom('a', 'equals', 1)], createAtom('b', 'equals', 1))],
 					{ strategy: 'backward' },
 				),
 			),
 		).toBe(true)
 		expect(
 			isDefinition(
-				inferentialDefinition(
+				createInferentialDefinition(
 					'birds',
 					'Birds',
-					[fact('f1', 'hasFeathers', ['tweety'])],
-					[inference('i1', [fact('p1', 'hasFeathers', ['?x'])], fact('c1', 'isBird', ['?x']))],
+					[createFact('f1', 'hasFeathers', ['tweety'])],
+					[
+						createInference(
+							'i1',
+							[createFact('p1', 'hasFeathers', ['?x'])],
+							createFact('c1', 'isBird', ['?x']),
+						),
+					],
 				),
 			),
 		).toBe(true)
@@ -267,11 +284,11 @@ describe('reasons — factory-created operator injection', () => {
 		const aggregator = createAggregator({ id: 'test-aggregator' })
 		const reasoner = createQuantitativeReasoner({ evaluator, transformer, aggregator })
 
-		const definition = quantitativeDefinition('injected', 'Injected', [
-			factorGroup('g1', 'sum', [
-				fieldFactor('score', 'score', {
-					checks: [check('score', 'above', 0)],
-					transforms: [transform('multiply', 3)],
+		const definition = createQuantitativeDefinition('injected', 'Injected', [
+			createFactorGroup('g1', 'sum', [
+				createFieldFactor('score', 'score', {
+					checks: [createCheck('score', 'above', 0)],
+					transforms: [createTransform('multiply', 3)],
 				}),
 			]),
 		])
@@ -288,7 +305,9 @@ describe('reasons — factory-created operator injection', () => {
 describe('reasons — error surface', () => {
 	it('bail false converts a reasoner throw into an error result', () => {
 		const reason = createReason({ reasoners: [createThrowingReasoner('boom')], bail: false })
-		const result = expectQuantitative(reason.reason({}, quantitativeDefinition('any', 'Any', [])))
+		const result = expectQuantitative(
+			reason.reason({}, createQuantitativeDefinition('any', 'Any', [])),
+		)
 		expect(result.success).toBe(false)
 		expect(result.errors).toContain('boom')
 		reason.destroy()
@@ -302,7 +321,9 @@ describe('reasons — error surface', () => {
 	it('a destroyed orchestrator surfaces the DESTROYED code through isReasonError', () => {
 		const reason = createReason({ reasoners: [createQuantitativeReasoner()] })
 		reason.destroy()
-		const error = captureError(() => reason.reason({}, quantitativeDefinition('late', 'Late', [])))
+		const error = captureError(() =>
+			reason.reason({}, createQuantitativeDefinition('late', 'Late', [])),
+		)
 		if (!isReasonError(error)) throw new Error('expected a ReasonError')
 		expect(error.code).toBe('DESTROYED')
 	})
@@ -316,99 +337,112 @@ describe('reasons — error surface', () => {
 
 // Stage A — weighted quantitative: risk (weighted sum 46) + loyalty (weighted
 // average 6.5) + bonus (5) + base 10 = 67.5.
-const SCORE_DEFINITION = quantitativeDefinition(
+const SCORE_DEFINITION = createQuantitativeDefinition(
 	'score',
 	'Score',
 	[
-		factorGroup('risk', 'sum', [
-			rangeFactor(
+		createFactorGroup('risk', 'sum', [
+			createRangeFactor(
 				'age',
 				'age',
 				[
-					{ bounds: bounds(undefined, 25), value: 30 },
-					{ bounds: bounds(26, 50), value: 15 },
-					{ bounds: bounds(51), value: 25 },
+					{ bounds: createBounds(undefined, 25), value: 30 },
+					{ bounds: createBounds(26, 50), value: 15 },
+					{ bounds: createBounds(51), value: 25 },
 				],
 				{ weight: 2 },
 			),
-			lookupFactor('region', 'region', { west: 10, east: 5, north: 8 }, { fallback: 0, weight: 1 }),
-			fieldFactor('claims', 'claims', { weight: 3 }),
+			createLookupFactor(
+				'region',
+				'region',
+				{ west: 10, east: 5, north: 8 },
+				{ fallback: 0, weight: 1 },
+			),
+			createFieldFactor('claims', 'claims', { weight: 3 }),
 		]),
-		factorGroup('loyalty', 'average', [
-			fieldFactor('tenure', 'tenure', { weight: 1 }),
-			fieldFactor('incomeScore', 'income', {
-				transforms: [transform('divide', 10000)],
-				bounds: bounds(0, 10),
+		createFactorGroup('loyalty', 'average', [
+			createFieldFactor('tenure', 'tenure', { weight: 1 }),
+			createFieldFactor('incomeScore', 'income', {
+				transforms: [createTransform('divide', 10000)],
+				bounds: createBounds(0, 10),
 				weight: 3,
 			}),
 		]),
-		factorGroup('bonus', 'sum', [staticFactor('flat', 5)]),
+		createFactorGroup('bonus', 'sum', [createStaticFactor('flat', 5)]),
 	],
 	{ base: 10, precision: 2 },
 )
 
 // Stage B — 11 interdependent forward rules; derivations cascade preferred →
 // premium → { discountEligible, vip } → tier, so 9 of 11 rules apply.
-const TIER_DEFINITION = logicalDefinition('tier', 'Tier', [
-	rule('adult', [atom('age', 'from', 18)], atom('adult', 'equals', true)),
-	rule('senior', [atom('age', 'from', 65)], atom('senior', 'equals', true)),
-	rule('scoreHigh', [atom('score', 'above', 60)], atom('highScore', 'equals', true)),
-	rule('scoreMid', [atom('score', 'between', [40, 60])], atom('midScore', 'equals', true)),
-	rule('lowClaims', [atom('claims', 'to', 3)], atom('lowClaims', 'equals', true)),
-	rule('loyal', [atom('tenure', 'from', 5)], atom('loyal', 'equals', true)),
-	rule(
+const TIER_DEFINITION = createLogicalDefinition('tier', 'Tier', [
+	createRule('adult', [createAtom('age', 'from', 18)], createAtom('adult', 'equals', true)),
+	createRule('senior', [createAtom('age', 'from', 65)], createAtom('senior', 'equals', true)),
+	createRule(
+		'scoreHigh',
+		[createAtom('score', 'above', 60)],
+		createAtom('highScore', 'equals', true),
+	),
+	createRule(
+		'scoreMid',
+		[createAtom('score', 'between', [40, 60])],
+		createAtom('midScore', 'equals', true),
+	),
+	createRule('lowClaims', [createAtom('claims', 'to', 3)], createAtom('lowClaims', 'equals', true)),
+	createRule('loyal', [createAtom('tenure', 'from', 5)], createAtom('loyal', 'equals', true)),
+	createRule(
 		'preferred',
-		[atom('highScore', 'equals', true), atom('lowClaims', 'equals', true)],
-		atom('preferred', 'equals', true),
+		[createAtom('highScore', 'equals', true), createAtom('lowClaims', 'equals', true)],
+		createAtom('preferred', 'equals', true),
 	),
-	rule(
+	createRule(
 		'premium',
-		[atom('preferred', 'equals', true), atom('loyal', 'equals', true)],
-		atom('premium', 'equals', true),
+		[createAtom('preferred', 'equals', true), createAtom('loyal', 'equals', true)],
+		createAtom('premium', 'equals', true),
 	),
-	rule(
+	createRule(
 		'discountEligible',
-		[atom('premium', 'equals', true), atom('adult', 'equals', true)],
-		atom('discountEligible', 'equals', true),
+		[createAtom('premium', 'equals', true), createAtom('adult', 'equals', true)],
+		createAtom('discountEligible', 'equals', true),
 	),
-	rule(
+	createRule(
 		'vip',
 		[
-			atom('premium', 'equals', true),
-			atom('highScore', 'equals', true),
-			atom('loyal', 'equals', true),
+			createAtom('premium', 'equals', true),
+			createAtom('highScore', 'equals', true),
+			createAtom('loyal', 'equals', true),
 		],
-		atom('vip', 'equals', true),
+		createAtom('vip', 'equals', true),
 	),
-	rule(
+	createRule(
 		'finalTier',
-		[atom('vip', 'equals', true), atom('discountEligible', 'equals', true)],
-		atom('tier', 'equals', 3),
+		[createAtom('vip', 'equals', true), createAtom('discountEligible', 'equals', true)],
+		createAtom('tier', 'equals', 3),
 	),
 ])
 
 // Stage C — a three-equation chain: premium = score / 10 = 6.75; adjusted =
 // premium + rules = 15.75; final = adjusted × 2 = 31.5.
-const RATE_CHAIN = symbolicDefinition(
+const RATE_CHAIN = createSymbolicDefinition(
 	'rateChain',
 	'Rate Chain',
 	[
-		equation(
+		createEquation(
 			'e1',
-			variable('premium'),
-			operation('divide', variable('score'), constant(10)),
+			createVariable('premium'),
+			createOperation('divide', createVariable('score'), createConstant(10)),
 			'premium',
 		),
-		equation(
+		createEquation(
 			'e2',
-			variable('adjusted'),
-			operation('add', variable('premium'), variable('rules')),
+			createVariable('adjusted'),
+			createOperation('add', createVariable('premium'), createVariable('rules')),
 			'adjusted',
 		),
-		equation(
+		createEquation(
 			'e3',
-			variable('final'),
-			operation('multiply', variable('adjusted'), constant(2)),
+			createVariable('final'),
+			createOperation('multiply', createVariable('adjusted'), createConstant(2)),
 			'final',
 		),
 	],
@@ -416,13 +450,21 @@ const RATE_CHAIN = symbolicDefinition(
 )
 
 // Stage D — derive classified(final) then reviewed(final) from the injected fact.
-const CLASSIFY = inferentialDefinition(
+const CLASSIFY = createInferentialDefinition(
 	'classify',
 	'Classify',
 	[],
 	[
-		inference('cls', [fact('p', 'has', ['final', '?f'])], fact('c', 'classified', ['?f'])),
-		inference('rev', [fact('p2', 'classified', ['?f'])], fact('c2', 'reviewed', ['?f'])),
+		createInference(
+			'cls',
+			[createFact('p', 'has', ['final', '?f'])],
+			createFact('c', 'classified', ['?f']),
+		),
+		createInference(
+			'rev',
+			[createFact('p2', 'classified', ['?f'])],
+			createFact('c2', 'reviewed', ['?f']),
+		),
 	],
 )
 
@@ -501,12 +543,12 @@ describe('reasons — mixed pipeline failure-recovery', () => {
 		// Stage 1 — quantitative deliberately produces a non-finite (NaN) value: a
 		// gated-out factor leaves its only group unapplied, so a definition-level
 		// `minimum` over zero applied groups is NaN (success false).
-		const broken = quantitativeDefinition(
+		const broken = createQuantitativeDefinition(
 			'broken',
 			'Broken',
 			[
-				factorGroup('g', 'sum', [
-					fieldFactor('f', 'missing', { checks: [check('gate', 'equals', true)] }),
+				createFactorGroup('g', 'sum', [
+					createFieldFactor('f', 'missing', { checks: [createCheck('gate', 'equals', true)] }),
 				]),
 			],
 			{ aggregation: 'minimum' },
@@ -517,8 +559,8 @@ describe('reasons — mixed pipeline failure-recovery', () => {
 		expect(quantitative.count).toBe(0)
 
 		// Stage 2 — logical still runs on the failed NaN value without crashing.
-		const gate = logicalDefinition('gate', 'Gate', [
-			rule('ok', [atom('risk', 'above', 0)], atom('ok', 'equals', true)),
+		const gate = createLogicalDefinition('gate', 'Gate', [
+			createRule('ok', [createAtom('risk', 'above', 0)], createAtom('ok', 'equals', true)),
 		])
 		const logical = expectLogical(reason.reason({ risk: quantitative.value }, gate))
 		expect(logical.reasoning).toBe('logical')
@@ -527,10 +569,17 @@ describe('reasons — mixed pipeline failure-recovery', () => {
 
 		// Stage 3 — symbolic copes with the NaN input (dropped by parseNumber) and
 		// solves from its own seed: y = x × 2 = 10.
-		const rate = symbolicDefinition(
+		const rate = createSymbolicDefinition(
 			'rate',
 			'Rate',
-			[equation('e', variable('y'), operation('multiply', variable('x'), constant(2)), 'y')],
+			[
+				createEquation(
+					'e',
+					createVariable('y'),
+					createOperation('multiply', createVariable('x'), createConstant(2)),
+					'y',
+				),
+			],
 			{ variables: { x: 5 }, precision: 2 },
 		)
 		const symbolic = expectSymbolic(reason.reason({ risk: quantitative.value }, rate))
@@ -538,11 +587,17 @@ describe('reasons — mixed pipeline failure-recovery', () => {
 		expect(symbolic.solutions.y).toBe(10)
 
 		// Stage 4 — inferential derives from the recovered symbolic solution.
-		const derive = inferentialDefinition(
+		const derive = createInferentialDefinition(
 			'derive',
 			'Derive',
 			[],
-			[inference('d', [fact('p', 'has', ['y', '?v'])], fact('c', 'doubled', ['?v']))],
+			[
+				createInference(
+					'd',
+					[createFact('p', 'has', ['y', '?v'])],
+					createFact('c', 'doubled', ['?v']),
+				),
+			],
 		)
 		const inferential = expectInferential(reason.reason({ y: symbolic.solutions.y }, derive))
 		expect(inferential.success).toBe(true)
@@ -559,16 +614,16 @@ describe('reasons — deep transitive inferential proof', () => {
 		const reason = createReason({ reasoners: [createInferentialReasoner()] })
 		// f ⇐ e ⇐ d ⇐ c ⇐ b ⇐ a(socrates): the top goal (declared first) drives a
 		// deep recursive proof; backward returns on the first provable conclusion.
-		const definition = inferentialDefinition(
+		const definition = createInferentialDefinition(
 			'chain',
 			'Chain',
-			[fact('fa', 'a', ['socrates'])],
+			[createFact('fa', 'a', ['socrates'])],
 			[
-				inference('i_top', [fact('pe', 'e', ['?x'])], fact('cf', 'f', ['?x'])),
-				inference('i2', [fact('pd', 'd', ['?x'])], fact('ce', 'e', ['?x'])),
-				inference('i3', [fact('pc', 'c', ['?x'])], fact('cd', 'd', ['?x'])),
-				inference('i4', [fact('pb', 'b', ['?x'])], fact('cc', 'c', ['?x'])),
-				inference('i5', [fact('pa', 'a', ['?x'])], fact('cb', 'b', ['?x'])),
+				createInference('i_top', [createFact('pe', 'e', ['?x'])], createFact('cf', 'f', ['?x'])),
+				createInference('i2', [createFact('pd', 'd', ['?x'])], createFact('ce', 'e', ['?x'])),
+				createInference('i3', [createFact('pc', 'c', ['?x'])], createFact('cd', 'd', ['?x'])),
+				createInference('i4', [createFact('pb', 'b', ['?x'])], createFact('cc', 'c', ['?x'])),
+				createInference('i5', [createFact('pa', 'a', ['?x'])], createFact('cb', 'b', ['?x'])),
 			],
 			{ strategy: 'backward' },
 		)
@@ -605,11 +660,11 @@ describe('reasons — broad-definition breadth stress', () => {
 		})
 
 		// 20 groups, each one static factor value i + 1 → definition sum = 1..20 = 210.
-		const broad = quantitativeDefinition(
+		const broad = createQuantitativeDefinition(
 			'broad',
 			'Broad',
 			sequence(20).map((index) =>
-				factorGroup(`g${index}`, 'sum', [staticFactor(`f${index}`, index + 1)]),
+				createFactorGroup(`g${index}`, 'sum', [createStaticFactor(`f${index}`, index + 1)]),
 			),
 		)
 		const quantitative = expectQuantitative(reason.reason({}, broad))
@@ -618,11 +673,15 @@ describe('reasons — broad-definition breadth stress', () => {
 		expect(quantitative.value).toBe(210)
 
 		// 15 threshold rules, all met at n = 100 → all apply, the last concludes true.
-		const wide = logicalDefinition(
+		const wide = createLogicalDefinition(
 			'wide',
 			'Wide',
 			sequence(15).map((index) =>
-				rule(`r${index}`, [atom('n', 'from', index)], atom(`c${index}`, 'equals', true)),
+				createRule(
+					`r${index}`,
+					[createAtom('n', 'from', index)],
+					createAtom(`c${index}`, 'equals', true),
+				),
 			),
 		)
 		const logical = expectLogical(reason.reason({ n: 100 }, wide))
@@ -649,18 +708,18 @@ describe('reasons — cross-reasoner determinism through the orchestrator', () =
 		const logicalSubject = { age: 20, riskScore: 10 }
 		const symbolicSubject = { riskScore: 20 }
 		const inferentialFacts = [
-			fact('f1', 'hasFeathers', ['tweety'], 1),
-			fact('f2', 'laysEggs', ['tweety'], 0.9),
+			createFact('f1', 'hasFeathers', ['tweety'], 1),
+			createFact('f2', 'laysEggs', ['tweety'], 0.9),
 		]
-		const detInferentialDefinition = inferentialDefinition(
+		const detInferentialDefinition = createInferentialDefinition(
 			'det-birds',
 			'Det Birds',
 			inferentialFacts,
 			[
-				inference(
+				createInference(
 					'bird-rule',
-					[fact('p1', 'hasFeathers', ['?x']), fact('p2', 'laysEggs', ['?x'])],
-					fact('c1', 'isBird', ['?x']),
+					[createFact('p1', 'hasFeathers', ['?x']), createFact('p2', 'laysEggs', ['?x'])],
+					createFact('c1', 'isBird', ['?x']),
 					{ confidence: 0.8 },
 				),
 			],
@@ -705,32 +764,45 @@ describe('reasons — deep-frozen inputs across all four reasoner kinds', () => 
 			state: 'TX',
 		})
 		const frozenQuantitativeDefinition = deepFreeze(
-			quantitativeDefinition('frozen-score', 'Frozen Score', [
-				factorGroup('g', 'sum', [staticFactor('flat', 12)]),
+			createQuantitativeDefinition('frozen-score', 'Frozen Score', [
+				createFactorGroup('g', 'sum', [createStaticFactor('flat', 12)]),
 			]),
 		)
 		const frozenLogicalSubject = deepFreeze({ age: 30 })
 		const frozenLogicalDefinition = deepFreeze(
-			logicalDefinition('frozen-adult', 'Frozen Adult', [
-				rule('adult', [atom('age', 'from', 18)], atom('adult', 'equals', true)),
+			createLogicalDefinition('frozen-adult', 'Frozen Adult', [
+				createRule('adult', [createAtom('age', 'from', 18)], createAtom('adult', 'equals', true)),
 			]),
 		)
 		const frozenSymbolicSubject = deepFreeze({ x: 4 })
 		const frozenSymbolicDefinition = deepFreeze(
-			symbolicDefinition(
+			createSymbolicDefinition(
 				'frozen-double',
 				'Frozen Double',
-				[equation('e', variable('y'), operation('multiply', variable('x'), constant(2)), 'y')],
+				[
+					createEquation(
+						'e',
+						createVariable('y'),
+						createOperation('multiply', createVariable('x'), createConstant(2)),
+						'y',
+					),
+				],
 				{ precision: 2 },
 			),
 		)
 		const frozenInferentialSubject = deepFreeze({})
 		const frozenInferentialDefinition = deepFreeze(
-			inferentialDefinition(
+			createInferentialDefinition(
 				'frozen-derive',
 				'Frozen Derive',
-				[fact('f1', 'hasFeathers', ['tweety'], 1)],
-				[inference('i1', [fact('p1', 'hasFeathers', ['?x'])], fact('c1', 'isBird', ['?x']))],
+				[createFact('f1', 'hasFeathers', ['tweety'], 1)],
+				[
+					createInference(
+						'i1',
+						[createFact('p1', 'hasFeathers', ['?x'])],
+						createFact('c1', 'isBird', ['?x']),
+					),
+				],
 			),
 		)
 
@@ -760,13 +832,21 @@ describe('reasons — deep-frozen inputs across all four reasoner kinds', () => 
 
 describe('reasons — mixed pipeline at scale (5000 subjects, quantitative feeding logical)', () => {
 	it('scores 5000 subjects then decides a threshold rule, pinning exact aggregate counts and spot values', () => {
-		const SCALE_SCORE_DEFINITION = quantitativeDefinition('scale-score', 'Scale Score', [
-			factorGroup('g', 'sum', [fieldFactor('score', 'value')]),
+		const SCALE_SCORE_DEFINITION = createQuantitativeDefinition('scale-score', 'Scale Score', [
+			createFactorGroup('g', 'sum', [createFieldFactor('score', 'value')]),
 		])
 		const THRESHOLD = 2500
-		const SCALE_THRESHOLD_DEFINITION = logicalDefinition('scale-threshold', 'Scale Threshold', [
-			rule('pass', [atom('score', 'above', THRESHOLD)], atom('pass', 'equals', true)),
-		])
+		const SCALE_THRESHOLD_DEFINITION = createLogicalDefinition(
+			'scale-threshold',
+			'Scale Threshold',
+			[
+				createRule(
+					'pass',
+					[createAtom('score', 'above', THRESHOLD)],
+					createAtom('pass', 'equals', true),
+				),
+			],
+		)
 
 		const run = () => {
 			const reason = createReason({

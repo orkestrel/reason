@@ -17,10 +17,10 @@ import { ReasonError } from '../../errors.js'
  * {@link Emitter} over {@link VariableManagerEventMap}. The record has no
  * placement, so only `add` / `remove` exist (no `append` / `prepend`): `add`
  * upserts and emits `add(name)`, `remove` omits the key entirely (never sets
- * `undefined`) and emits `remove(name)`. The write-only `collection` setter is
- * the owning builder's silent bulk re-seat channel (used by `merge`).
- * `destroy()` is idempotent and tears the emitter down LAST; any other call
- * after it throws `ReasonError('DESTROYED', …)`.
+ * `undefined`) and emits `remove(name)`. `seat` is the owning builder's silent
+ * bulk re-seat channel (used by `merge`). `destroy()` is idempotent and tears
+ * the emitter down LAST; any other call after it throws
+ * `ReasonError('DESTROYED', …)`.
  */
 export class VariableManager implements VariableManagerInterface {
 	#variables: Readonly<Record<string, number>>
@@ -34,11 +34,6 @@ export class VariableManager implements VariableManagerInterface {
 
 	get emitter(): EmitterInterface<VariableManagerEventMap> {
 		return this.#emitter
-	}
-
-	set collection(value: Readonly<Record<string, number>>) {
-		this.#ensureAlive()
-		this.#variables = value
 	}
 
 	variable(name: string): number | undefined {
@@ -63,6 +58,13 @@ export class VariableManager implements VariableManagerInterface {
 		const { [name]: _drop, ...rest } = this.#variables
 		this.#variables = rest
 		this.#emitter.emit('remove', name)
+	}
+
+	// The owning builder's bulk re-seat channel — replaces the whole record in
+	// one silent call (no per-entry events); used by `merge`.
+	seat(items: Readonly<Record<string, number>>): void {
+		this.#ensureAlive()
+		this.#variables = items
 	}
 
 	destroy(): void {

@@ -1,17 +1,17 @@
 import type { Equation, ReasonResult, SymbolicExpression, SymbolicResult } from '@src/core'
 import {
-	constant,
+	createConstant,
 	createDefinitionBuilder,
+	createEquation,
+	createOperation,
+	createQuantitativeDefinition,
 	createSubjectBuilder,
+	createSymbolicDefinition,
 	createSymbolicReasoner,
-	equation,
+	createVariable,
 	isReasonError,
-	operation,
-	quantitativeDefinition,
 	roundTo,
 	SymbolicReasoner,
-	symbolicDefinition,
-	variable,
 } from '@src/core'
 import { describe, expect, it } from 'vitest'
 import { captureError, invokeUnchecked } from '@orkestrel/test'
@@ -52,27 +52,29 @@ describe('SymbolicReasoner — identity', () => {
 
 describe('SymbolicReasoner — supports', () => {
 	it('supports symbolic definitions only', () => {
-		expect(reasoner.supports(symbolicDefinition('d', 'd', []))).toBe(true)
-		expect(reasoner.supports(quantitativeDefinition('d', 'd', []))).toBe(false)
+		expect(reasoner.supports(createSymbolicDefinition('d', 'd', []))).toBe(true)
+		expect(reasoner.supports(createQuantitativeDefinition('d', 'd', []))).toBe(false)
 	})
 })
 
 describe('SymbolicReasoner — validate', () => {
 	it('accepts a well-formed definition', () => {
 		const validation = reasoner.validate(
-			symbolicDefinition('d', 'd', [equation('e1', variable('x'), constant(42), 'x')]),
+			createSymbolicDefinition('d', 'd', [
+				createEquation('e1', createVariable('x'), createConstant(42), 'x'),
+			]),
 		)
 		expect(validation.valid).toBe(true)
 		expect(validation.errors).toEqual([])
 	})
 
 	it('rejects the wrong reasoning with the renamed message', () => {
-		const validation = reasoner.validate(quantitativeDefinition('d', 'd', []))
+		const validation = reasoner.validate(createQuantitativeDefinition('d', 'd', []))
 		expect(validation.errors[0]).toBe('Expected reasoning "symbolic", got "quantitative"')
 	})
 
 	it('demands an id, a name, and at least one equation', () => {
-		const validation = reasoner.validate(symbolicDefinition('', '', []))
+		const validation = reasoner.validate(createSymbolicDefinition('', '', []))
 		expect(validation.errors).toContain('Definition must have an id')
 		expect(validation.errors).toContain('Definition must have a name')
 		expect(validation.errors).toContain('Definition must have at least one equation')
@@ -80,7 +82,9 @@ describe('SymbolicReasoner — validate', () => {
 
 	it('demands an equation id and a target variable', () => {
 		const validation = reasoner.validate(
-			symbolicDefinition('d', 'd', [equation('', variable('x'), constant(1), '')]),
+			createSymbolicDefinition('d', 'd', [
+				createEquation('', createVariable('x'), createConstant(1), ''),
+			]),
 		)
 		expect(validation.errors).toContain('Equation must have an id')
 		expect(validation.errors).toContain('Equation "" must have a target variable')
@@ -88,10 +92,10 @@ describe('SymbolicReasoner — validate', () => {
 
 	it('duplicate equation ids are a WARNING, once per duplicated id', () => {
 		const validation = reasoner.validate(
-			symbolicDefinition('d', 'd', [
-				equation('dup', variable('x'), constant(1), 'x'),
-				equation('dup', variable('y'), constant(2), 'y'),
-				equation('dup', variable('z'), constant(3), 'z'),
+			createSymbolicDefinition('d', 'd', [
+				createEquation('dup', createVariable('x'), createConstant(1), 'x'),
+				createEquation('dup', createVariable('y'), createConstant(2), 'y'),
+				createEquation('dup', createVariable('z'), createConstant(3), 'z'),
 			]),
 		)
 		expect(validation.valid).toBe(true)
@@ -103,8 +107,8 @@ describe('SymbolicReasoner — validate', () => {
 
 describe('SymbolicReasoner — reason (evaluation)', () => {
 	it('assigns a constant', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', variable('x'), constant(42), 'x'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation('e1', createVariable('x'), createConstant(42), 'x'),
 		])
 		const result = expectSymbolic(reasoner.reason({}, definition))
 		expect(result.success).toBe(true)
@@ -112,33 +116,37 @@ describe('SymbolicReasoner — reason (evaluation)', () => {
 	})
 
 	it('binds subject fields as variables', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', variable('x'), variable('a'), 'x'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation('e1', createVariable('x'), createVariable('a'), 'x'),
 		])
 		expect(expectSymbolic(reasoner.reason({ a: 10 }, definition)).solutions.x).toBe(10)
 	})
 
 	it('evaluates the four arithmetic operations', () => {
 		const cases: ReadonlyArray<readonly [SymbolicExpression, number]> = [
-			[operation('add', constant(10), constant(5)), 15],
-			[operation('subtract', constant(10), constant(3)), 7],
-			[operation('multiply', constant(6), constant(7)), 42],
-			[operation('divide', constant(20), constant(4)), 5],
+			[createOperation('add', createConstant(10), createConstant(5)), 15],
+			[createOperation('subtract', createConstant(10), createConstant(3)), 7],
+			[createOperation('multiply', createConstant(6), createConstant(7)), 42],
+			[createOperation('divide', createConstant(20), createConstant(4)), 5],
 		]
 		for (const [expression, expected] of cases) {
-			const definition = symbolicDefinition('d', 'd', [
-				equation('e1', variable('x'), expression, 'x'),
+			const definition = createSymbolicDefinition('d', 'd', [
+				createEquation('e1', createVariable('x'), expression, 'x'),
 			])
 			expect(expectSymbolic(reasoner.reason({}, definition)).solutions.x).toBe(expected)
 		}
 	})
 
 	it('evaluates nested expressions', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation(
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation(
 				'e1',
-				variable('x'),
-				operation('add', operation('multiply', constant(2), constant(3)), constant(4)),
+				createVariable('x'),
+				createOperation(
+					'add',
+					createOperation('multiply', createConstant(2), createConstant(3)),
+					createConstant(4),
+				),
 				'x',
 			),
 		])
@@ -146,21 +154,26 @@ describe('SymbolicReasoner — reason (evaluation)', () => {
 	})
 
 	it('evaluates unary operations and treats an absent right operand as 0', () => {
-		const absolute = symbolicDefinition('d', 'd', [
-			equation('e1', variable('y'), operation('abs', variable('x')), 'y'),
+		const absolute = createSymbolicDefinition('d', 'd', [
+			createEquation('e1', createVariable('y'), createOperation('abs', createVariable('x')), 'y'),
 		])
 		expect(expectSymbolic(reasoner.reason({ x: -5 }, absolute)).solutions.y).toBe(5)
 
-		const bare = symbolicDefinition('d', 'd', [
-			equation('e1', variable('y'), operation('add', variable('x')), 'y'),
+		const bare = createSymbolicDefinition('d', 'd', [
+			createEquation('e1', createVariable('y'), createOperation('add', createVariable('x')), 'y'),
 		])
 		expect(expectSymbolic(reasoner.reason({ x: 7 }, bare)).solutions.y).toBe(7)
 	})
 
 	it('chains equations — earlier solutions bind later ones', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', variable('a'), constant(10), 'a'),
-			equation('e2', variable('b'), operation('multiply', variable('a'), constant(2)), 'b'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation('e1', createVariable('a'), createConstant(10), 'a'),
+			createEquation(
+				'e2',
+				createVariable('b'),
+				createOperation('multiply', createVariable('a'), createConstant(2)),
+				'b',
+			),
 		])
 		const result = expectSymbolic(reasoner.reason({}, definition))
 		expect(result.solutions.a).toBe(10)
@@ -168,14 +181,18 @@ describe('SymbolicReasoner — reason (evaluation)', () => {
 	})
 
 	it('uses pre-defined definition variables', () => {
-		const definition = symbolicDefinition(
+		const definition = createSymbolicDefinition(
 			'd',
 			'd',
 			[
-				equation(
+				createEquation(
 					'e1',
-					variable('circumference'),
-					operation('multiply', operation('multiply', constant(2), variable('pi')), variable('r')),
+					createVariable('circumference'),
+					createOperation(
+						'multiply',
+						createOperation('multiply', createConstant(2), createVariable('pi')),
+						createVariable('r'),
+					),
 					'circumference',
 				),
 			],
@@ -188,33 +205,33 @@ describe('SymbolicReasoner — reason (evaluation)', () => {
 	})
 
 	it('chains three equations through subject + definition variables', () => {
-		const definition = symbolicDefinition(
+		const definition = createSymbolicDefinition(
 			'd',
 			'd',
 			[
-				equation(
+				createEquation(
 					'interest',
-					variable('interest'),
-					operation(
+					createVariable('interest'),
+					createOperation(
 						'multiply',
-						operation('multiply', variable('principal'), variable('rate')),
-						variable('years'),
+						createOperation('multiply', createVariable('principal'), createVariable('rate')),
+						createVariable('years'),
 					),
 					'interest',
 				),
-				equation(
+				createEquation(
 					'total',
-					variable('total'),
-					operation('add', variable('principal'), variable('interest')),
+					createVariable('total'),
+					createOperation('add', createVariable('principal'), createVariable('interest')),
 					'total',
 				),
-				equation(
+				createEquation(
 					'monthly',
-					variable('monthly'),
-					operation(
+					createVariable('monthly'),
+					createOperation(
 						'divide',
-						variable('total'),
-						operation('multiply', variable('years'), constant(12)),
+						createVariable('total'),
+						createOperation('multiply', createVariable('years'), createConstant(12)),
 					),
 					'monthly',
 				),
@@ -228,8 +245,13 @@ describe('SymbolicReasoner — reason (evaluation)', () => {
 	})
 
 	it('produces a trace including the subject bindings', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', variable('y'), operation('multiply', variable('x'), constant(2)), 'y'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation(
+				'e1',
+				createVariable('y'),
+				createOperation('multiply', createVariable('x'), createConstant(2)),
+				'y',
+			),
 		])
 		const result = expectSymbolic(reasoner.reason({ x: 21 }, definition))
 		expect(result.solutions.y).toBe(42)
@@ -241,18 +263,30 @@ describe('SymbolicReasoner — reason (evaluation)', () => {
 
 describe('SymbolicReasoner — bindings (parseNumber coercion & precedence)', () => {
 	it('subject fields OVERRIDE definition variables of the same name', () => {
-		const definition = symbolicDefinition(
+		const definition = createSymbolicDefinition(
 			'd',
 			'd',
-			[equation('e1', variable('y'), operation('add', variable('x'), constant(1)), 'y')],
+			[
+				createEquation(
+					'e1',
+					createVariable('y'),
+					createOperation('add', createVariable('x'), createConstant(1)),
+					'y',
+				),
+			],
 			{ variables: { x: 10 } },
 		)
 		expect(expectSymbolic(reasoner.reason({ x: 41 }, definition)).solutions.y).toBe(42)
 	})
 
 	it('numeric-string subject fields parse; non-numeric strings never bind', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', variable('y'), operation('add', variable('x'), constant(2)), 'y'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation(
+				'e1',
+				createVariable('y'),
+				createOperation('add', createVariable('x'), createConstant(2)),
+				'y',
+			),
 		])
 		expect(expectSymbolic(reasoner.reason({ x: '40' }, definition)).solutions.y).toBe(42)
 
@@ -262,8 +296,8 @@ describe('SymbolicReasoner — bindings (parseNumber coercion & precedence)', ()
 	})
 
 	it('a non-finite subject number never binds (parseNumber rejects NaN)', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', variable('y'), variable('x'), 'y'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation('e1', createVariable('y'), createVariable('x'), 'y'),
 		])
 		const result = expectSymbolic(reasoner.reason({ x: Number.NaN }, definition))
 		expect(result.success).toBe(false)
@@ -271,8 +305,8 @@ describe('SymbolicReasoner — bindings (parseNumber coercion & precedence)', ()
 	})
 
 	it('the id subject field is traceability, not data — it never binds', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', variable('y'), variable('id'), 'y'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation('e1', createVariable('y'), createVariable('id'), 'y'),
 		])
 		const result = expectSymbolic(reasoner.reason({ id: 5 }, definition))
 		expect(result.success).toBe(false)
@@ -280,10 +314,10 @@ describe('SymbolicReasoner — bindings (parseNumber coercion & precedence)', ()
 	})
 
 	it('only the SUBJECT id is skipped — definition.variables may carry an id key', () => {
-		const definition = symbolicDefinition(
+		const definition = createSymbolicDefinition(
 			'd',
 			'd',
-			[equation('e1', variable('y'), variable('id'), 'y')],
+			[createEquation('e1', createVariable('y'), createVariable('id'), 'y')],
 			{ variables: { id: 5 } },
 		)
 		const result = expectSymbolic(reasoner.reason({}, definition))
@@ -292,10 +326,10 @@ describe('SymbolicReasoner — bindings (parseNumber coercion & precedence)', ()
 	})
 
 	it('a PRE-BOUND target does not count as present — the right side re-evaluates and REBINDS', () => {
-		const definition = symbolicDefinition(
+		const definition = createSymbolicDefinition(
 			'd',
 			'd',
-			[equation('e1', variable('x'), constant(10), 'x')],
+			[createEquation('e1', createVariable('x'), createConstant(10), 'x')],
 			{ variables: { x: 5 } },
 		)
 		const result = expectSymbolic(reasoner.reason({}, definition))
@@ -305,8 +339,13 @@ describe('SymbolicReasoner — bindings (parseNumber coercion & precedence)', ()
 	})
 
 	it('an UNBOUND target on BOTH equation sides is an Unbound error (x = x + 1)', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', variable('x'), operation('add', variable('x'), constant(1)), 'x'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation(
+				'e1',
+				createVariable('x'),
+				createOperation('add', createVariable('x'), createConstant(1)),
+				'x',
+			),
 		])
 		const result = expectSymbolic(reasoner.reason({}, definition))
 		expect(result.success).toBe(false)
@@ -316,11 +355,15 @@ describe('SymbolicReasoner — bindings (parseNumber coercion & precedence)', ()
 
 describe('SymbolicReasoner — algebraic isolation', () => {
 	it('solves 2x + 3 = 11 (peels add, then multiply)', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation(
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation(
 				'e1',
-				operation('add', operation('multiply', constant(2), variable('x')), constant(3)),
-				constant(11),
+				createOperation(
+					'add',
+					createOperation('multiply', createConstant(2), createVariable('x')),
+					createConstant(3),
+				),
+				createConstant(11),
 				'x',
 			),
 		])
@@ -328,29 +371,49 @@ describe('SymbolicReasoner — algebraic isolation', () => {
 	})
 
 	it('solves x / 5 = 3', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', operation('divide', variable('x'), constant(5)), constant(3), 'x'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation(
+				'e1',
+				createOperation('divide', createVariable('x'), createConstant(5)),
+				createConstant(3),
+				'x',
+			),
 		])
 		expect(expectSymbolic(reasoner.reason({}, definition)).solutions.x).toBe(15)
 	})
 
 	it('solves 10 − x = 3 (target on the right operand)', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', operation('subtract', constant(10), variable('x')), constant(3), 'x'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation(
+				'e1',
+				createOperation('subtract', createConstant(10), createVariable('x')),
+				createConstant(3),
+				'x',
+			),
 		])
 		expect(expectSymbolic(reasoner.reason({}, definition)).solutions.x).toBe(7)
 	})
 
 	it('solves 100 = x × 4 (target on the right side of the equation)', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', constant(100), operation('multiply', variable('x'), constant(4)), 'x'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation(
+				'e1',
+				createConstant(100),
+				createOperation('multiply', createVariable('x'), createConstant(4)),
+				'x',
+			),
 		])
 		expect(expectSymbolic(reasoner.reason({}, definition)).solutions.x).toBe(25)
 	})
 
 	it('a non-invertible operation containing the target fails that equation', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', operation('power', variable('x'), constant(2)), constant(16), 'x'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation(
+				'e1',
+				createOperation('power', createVariable('x'), createConstant(2)),
+				createConstant(16),
+				'x',
+			),
 		])
 		const result = expectSymbolic(reasoner.reason({}, definition))
 		expect(result.success).toBe(false)
@@ -360,8 +423,13 @@ describe('SymbolicReasoner — algebraic isolation', () => {
 	})
 
 	it('a target on BOTH operands of one operation fails that equation', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', operation('add', variable('x'), variable('x')), constant(10), 'x'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation(
+				'e1',
+				createOperation('add', createVariable('x'), createVariable('x')),
+				createConstant(10),
+				'x',
+			),
 		])
 		const result = expectSymbolic(reasoner.reason({}, definition))
 		expect(result.success).toBe(false)
@@ -369,8 +437,13 @@ describe('SymbolicReasoner — algebraic isolation', () => {
 	})
 
 	it('isolating through multiply-by-zero yields the non-finite error (x·0 = 5)', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', operation('multiply', variable('x'), constant(0)), constant(5), 'x'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation(
+				'e1',
+				createOperation('multiply', createVariable('x'), createConstant(0)),
+				createConstant(5),
+				'x',
+			),
 		])
 		const result = expectSymbolic(reasoner.reason({}, definition))
 		expect(result.success).toBe(false)
@@ -378,8 +451,13 @@ describe('SymbolicReasoner — algebraic isolation', () => {
 	})
 
 	it('inverting a divide-by-zero yields the non-finite error, not a bogus x = 0 (x / 0 = 5)', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', operation('divide', variable('x'), constant(0)), constant(5), 'x'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation(
+				'e1',
+				createOperation('divide', createVariable('x'), createConstant(0)),
+				createConstant(5),
+				'x',
+			),
 		])
 		const result = expectSymbolic(reasoner.reason({}, definition))
 		expect(result.success).toBe(false)
@@ -390,8 +468,8 @@ describe('SymbolicReasoner — algebraic isolation', () => {
 
 describe('SymbolicReasoner — error containment & precision', () => {
 	it('an unbound variable is an error result, not a throw', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', variable('y'), variable('x'), 'y'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation('e1', createVariable('y'), createVariable('x'), 'y'),
 		])
 		const result = expectSymbolic(reasoner.reason({}, definition))
 		expect(result.success).toBe(false)
@@ -400,8 +478,13 @@ describe('SymbolicReasoner — error containment & precision', () => {
 	})
 
 	it('division by zero is a non-finite error result, not Infinity', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', variable('x'), operation('divide', constant(10), constant(0)), 'x'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation(
+				'e1',
+				createVariable('x'),
+				createOperation('divide', createConstant(10), createConstant(0)),
+				'x',
+			),
 		])
 		const result = expectSymbolic(reasoner.reason({}, definition))
 		expect(result.success).toBe(false)
@@ -422,12 +505,12 @@ describe('SymbolicReasoner — error containment & precision', () => {
 						{
 							id: 'e1',
 							name: 'e1',
-							left: variable('y'),
+							left: createVariable('y'),
 							right: {
 								form: 'operation',
 								operator: 'modulo',
-								left: constant(10),
-								right: constant(3),
+								left: createConstant(10),
+								right: createConstant(3),
 							},
 							target: 'y',
 						},
@@ -440,9 +523,14 @@ describe('SymbolicReasoner — error containment & precision', () => {
 	})
 
 	it('continues past a failed equation — later solutions are retained', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('bad', variable('bad'), operation('divide', constant(10), constant(0)), 'bad'),
-			equation('good', variable('good'), constant(42), 'good'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation(
+				'bad',
+				createVariable('bad'),
+				createOperation('divide', createConstant(10), createConstant(0)),
+				'bad',
+			),
+			createEquation('good', createVariable('good'), createConstant(42), 'good'),
 		])
 		const result = expectSymbolic(reasoner.reason({}, definition))
 		expect(result.success).toBe(false)
@@ -451,10 +539,10 @@ describe('SymbolicReasoner — error containment & precision', () => {
 	})
 
 	it('a FAILED equation targeting a pre-bound variable still surfaces it in solutions', () => {
-		const definition = symbolicDefinition(
+		const definition = createSymbolicDefinition(
 			'd',
 			'd',
-			[equation('e1', variable('a'), variable('unbound'), 'a')],
+			[createEquation('e1', createVariable('a'), createVariable('unbound'), 'a')],
 			{ variables: { a: 7 } },
 		)
 		const result = expectSymbolic(reasoner.reason({}, definition))
@@ -465,27 +553,37 @@ describe('SymbolicReasoner — error containment & precision', () => {
 	})
 
 	it('precision rounds solutions (and defaults to 4 decimal places)', () => {
-		const rounded = symbolicDefinition(
+		const rounded = createSymbolicDefinition(
 			'd',
 			'd',
-			[equation('e1', variable('x'), constant(3.14159), 'x')],
+			[createEquation('e1', createVariable('x'), createConstant(3.14159), 'x')],
 			{ precision: 2 },
 		)
 		expect(expectSymbolic(reasoner.reason({}, rounded)).solutions.x).toBe(3.14)
 
-		const defaulted = symbolicDefinition('d', 'd', [
-			equation('e1', variable('x'), operation('divide', constant(1), constant(3)), 'x'),
+		const defaulted = createSymbolicDefinition('d', 'd', [
+			createEquation(
+				'e1',
+				createVariable('x'),
+				createOperation('divide', createConstant(1), createConstant(3)),
+				'x',
+			),
 		])
 		expect(expectSymbolic(reasoner.reason({}, defaulted)).solutions.x).toBe(0.3333)
 	})
 
 	it('rounds BEFORE binding — later equations see the rounded value', () => {
-		const definition = symbolicDefinition(
+		const definition = createSymbolicDefinition(
 			'd',
 			'd',
 			[
-				equation('e1', variable('a'), constant(2.6), 'a'),
-				equation('e2', variable('b'), operation('multiply', variable('a'), constant(2)), 'b'),
+				createEquation('e1', createVariable('a'), createConstant(2.6), 'a'),
+				createEquation(
+					'e2',
+					createVariable('b'),
+					createOperation('multiply', createVariable('a'), createConstant(2)),
+					'b',
+				),
 			],
 			{ precision: 0 },
 		)
@@ -495,10 +593,17 @@ describe('SymbolicReasoner — error containment & precision', () => {
 	})
 
 	it('solutions contain ONLY equation targets, never intermediate variables', () => {
-		const definition = symbolicDefinition(
+		const definition = createSymbolicDefinition(
 			'd',
 			'd',
-			[equation('e1', variable('sum'), operation('add', variable('x'), variable('y')), 'sum')],
+			[
+				createEquation(
+					'e1',
+					createVariable('sum'),
+					createOperation('add', createVariable('x'), createVariable('y')),
+					'sum',
+				),
+			],
 			{ variables: { x: 1, y: 2 } },
 		)
 		const result = expectSymbolic(reasoner.reason({}, definition))
@@ -507,7 +612,7 @@ describe('SymbolicReasoner — error containment & precision', () => {
 	})
 
 	it('an empty equation list traces "No equations to solve" and succeeds', () => {
-		const result = expectSymbolic(reasoner.reason({}, symbolicDefinition('d', 'd', [])))
+		const result = expectSymbolic(reasoner.reason({}, createSymbolicDefinition('d', 'd', [])))
 		expect(result.success).toBe(true)
 		expect(result.solutions).toEqual({})
 		expect(result.trace).toContain('No equations to solve')
@@ -517,7 +622,7 @@ describe('SymbolicReasoner — error containment & precision', () => {
 describe('SymbolicReasoner — mismatch vs malformed shape', () => {
 	it('MISMATCH: the wrong reasoning THROWS a coded ReasonError with context', () => {
 		const error = captureError(() =>
-			reasoner.reason({}, quantitativeDefinition('other', 'Other', [])),
+			reasoner.reason({}, createQuantitativeDefinition('other', 'Other', [])),
 		)
 		if (!isReasonError(error)) throw new Error('expected a ReasonError')
 		expect(error.code).toBe('MISMATCH')
@@ -539,10 +644,25 @@ describe('SymbolicReasoner — mismatch vs malformed shape', () => {
 
 describe('SymbolicReasoner — multi-variable systems', () => {
 	it('solves a three-equation system where each solution feeds the next', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('a', variable('a'), operation('add', constant(2), constant(3)), 'a'),
-			equation('b', variable('b'), operation('multiply', variable('a'), constant(4)), 'b'),
-			equation('c', variable('c'), operation('subtract', variable('b'), variable('a')), 'c'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation(
+				'a',
+				createVariable('a'),
+				createOperation('add', createConstant(2), createConstant(3)),
+				'a',
+			),
+			createEquation(
+				'b',
+				createVariable('b'),
+				createOperation('multiply', createVariable('a'), createConstant(4)),
+				'b',
+			),
+			createEquation(
+				'c',
+				createVariable('c'),
+				createOperation('subtract', createVariable('b'), createVariable('a')),
+				'c',
+			),
 		])
 		const result = expectSymbolic(reasoner.reason({}, definition))
 		expect(result.success).toBe(true)
@@ -550,20 +670,20 @@ describe('SymbolicReasoner — multi-variable systems', () => {
 	})
 
 	it('solves a system seeded by subject fields that OVERRIDE definition variables', () => {
-		const definition = symbolicDefinition(
+		const definition = createSymbolicDefinition(
 			'd',
 			'd',
 			[
-				equation(
+				createEquation(
 					'total',
-					variable('total'),
-					operation('multiply', variable('principal'), variable('rate')),
+					createVariable('total'),
+					createOperation('multiply', createVariable('principal'), createVariable('rate')),
 					'total',
 				),
-				equation(
+				createEquation(
 					'net',
-					variable('net'),
-					operation('subtract', variable('total'), variable('fee')),
+					createVariable('net'),
+					createOperation('subtract', createVariable('total'), createVariable('fee')),
 					'net',
 				),
 			],
@@ -578,15 +698,19 @@ describe('SymbolicReasoner — multi-variable systems', () => {
 
 describe('SymbolicReasoner — multi-peel isolation', () => {
 	it('peels three operations to isolate x in ((x + 3) × 2) − 5 = 9', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation(
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation(
 				'e1',
-				operation(
+				createOperation(
 					'subtract',
-					operation('multiply', operation('add', variable('x'), constant(3)), constant(2)),
-					constant(5),
+					createOperation(
+						'multiply',
+						createOperation('add', createVariable('x'), createConstant(3)),
+						createConstant(2),
+					),
+					createConstant(5),
 				),
-				constant(9),
+				createConstant(9),
 				'x',
 			),
 		])
@@ -594,19 +718,23 @@ describe('SymbolicReasoner — multi-peel isolation', () => {
 	})
 
 	it('peels four operations to isolate x in (((x + 1) × 3) − 4) / 2 = 7', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation(
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation(
 				'e1',
-				operation(
+				createOperation(
 					'divide',
-					operation(
+					createOperation(
 						'subtract',
-						operation('multiply', operation('add', variable('x'), constant(1)), constant(3)),
-						constant(4),
+						createOperation(
+							'multiply',
+							createOperation('add', createVariable('x'), createConstant(1)),
+							createConstant(3),
+						),
+						createConstant(4),
 					),
-					constant(2),
+					createConstant(2),
 				),
-				constant(7),
+				createConstant(7),
 				'x',
 			),
 		])
@@ -614,11 +742,15 @@ describe('SymbolicReasoner — multi-peel isolation', () => {
 	})
 
 	it('isolates the target on the RIGHT operand of an outer subtract: 20 − (x × 2) = 6', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation(
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation(
 				'e1',
-				operation('subtract', constant(20), operation('multiply', variable('x'), constant(2))),
-				constant(6),
+				createOperation(
+					'subtract',
+					createConstant(20),
+					createOperation('multiply', createVariable('x'), createConstant(2)),
+				),
+				createConstant(6),
 				'x',
 			),
 		])
@@ -626,8 +758,13 @@ describe('SymbolicReasoner — multi-peel isolation', () => {
 	})
 
 	it('isolates the target as the DIVISOR: 20 / x = 4', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', operation('divide', constant(20), variable('x')), constant(4), 'x'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation(
+				'e1',
+				createOperation('divide', createConstant(20), createVariable('x')),
+				createConstant(4),
+				'x',
+			),
 		])
 		expect(expectSymbolic(reasoner.reason({}, definition)).solutions.x).toBe(5)
 	})
@@ -636,8 +773,8 @@ describe('SymbolicReasoner — multi-peel isolation', () => {
 describe('SymbolicReasoner — full-operator evaluation', () => {
 	// The target appears on neither side, so the right expression is evaluated directly.
 	const evaluate = (expression: SymbolicExpression): number => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', variable('result'), expression, 'result'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation('e1', createVariable('result'), expression, 'result'),
 		])
 		const result = expectSymbolic(reasoner.reason({}, definition)).solutions.result
 		if (result === undefined) throw new Error('expected result solution')
@@ -645,37 +782,44 @@ describe('SymbolicReasoner — full-operator evaluation', () => {
 	}
 
 	it('evaluates power, percentage, minimum, maximum and average', () => {
-		expect(evaluate(operation('power', constant(2), constant(10)))).toBe(1024)
-		expect(evaluate(operation('percentage', constant(200), constant(15)))).toBe(30)
-		expect(evaluate(operation('minimum', constant(3), constant(8)))).toBe(3)
-		expect(evaluate(operation('maximum', constant(3), constant(8)))).toBe(8)
-		expect(evaluate(operation('average', constant(10), constant(20)))).toBe(15)
+		expect(evaluate(createOperation('power', createConstant(2), createConstant(10)))).toBe(1024)
+		expect(evaluate(createOperation('percentage', createConstant(200), createConstant(15)))).toBe(
+			30,
+		)
+		expect(evaluate(createOperation('minimum', createConstant(3), createConstant(8)))).toBe(3)
+		expect(evaluate(createOperation('maximum', createConstant(3), createConstant(8)))).toBe(8)
+		expect(evaluate(createOperation('average', createConstant(10), createConstant(20)))).toBe(15)
 	})
 
 	it('evaluates the unary operations round, ceil, floor and abs', () => {
-		expect(evaluate(operation('round', constant(2.5)))).toBe(3)
-		expect(evaluate(operation('ceil', constant(2.1)))).toBe(3)
-		expect(evaluate(operation('floor', constant(2.9)))).toBe(2)
-		expect(evaluate(operation('abs', constant(-7)))).toBe(7)
+		expect(evaluate(createOperation('round', createConstant(2.5)))).toBe(3)
+		expect(evaluate(createOperation('ceil', createConstant(2.1)))).toBe(3)
+		expect(evaluate(createOperation('floor', createConstant(2.9)))).toBe(2)
+		expect(evaluate(createOperation('abs', createConstant(-7)))).toBe(7)
 	})
 
 	it('a unary operation IGNORES a supplied right operand', () => {
-		expect(evaluate(operation('abs', constant(-7), constant(999)))).toBe(7)
-		expect(evaluate(operation('round', constant(2.5), constant(999)))).toBe(3)
+		expect(evaluate(createOperation('abs', createConstant(-7), createConstant(999)))).toBe(7)
+		expect(evaluate(createOperation('round', createConstant(2.5), createConstant(999)))).toBe(3)
 	})
 
 	it('a binary operation with no right operand treats it as 0', () => {
-		expect(evaluate(operation('power', constant(5)))).toBe(1)
-		expect(evaluate(operation('multiply', constant(5)))).toBe(0)
-		expect(evaluate(operation('minimum', constant(5)))).toBe(0)
-		expect(evaluate(operation('maximum', constant(5)))).toBe(5)
-		expect(evaluate(operation('subtract', constant(5)))).toBe(5)
-		expect(evaluate(operation('percentage', constant(5)))).toBe(0)
+		expect(evaluate(createOperation('power', createConstant(5)))).toBe(1)
+		expect(evaluate(createOperation('multiply', createConstant(5)))).toBe(0)
+		expect(evaluate(createOperation('minimum', createConstant(5)))).toBe(0)
+		expect(evaluate(createOperation('maximum', createConstant(5)))).toBe(5)
+		expect(evaluate(createOperation('subtract', createConstant(5)))).toBe(5)
+		expect(evaluate(createOperation('percentage', createConstant(5)))).toBe(0)
 	})
 
 	it('a binary DIVIDE with no right operand is a divide-by-zero non-finite error', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', variable('result'), operation('divide', constant(5)), 'result'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation(
+				'e1',
+				createVariable('result'),
+				createOperation('divide', createConstant(5)),
+				'result',
+			),
 		])
 		const result = expectSymbolic(reasoner.reason({}, definition))
 		expect(result.success).toBe(false)
@@ -686,8 +830,8 @@ describe('SymbolicReasoner — full-operator evaluation', () => {
 describe('SymbolicReasoner — numeric extremes', () => {
 	it('round-trips every finite-after-round EXTREME_NUMBER', () => {
 		// corrected: finite check now runs post-round; the solution is the input rounded BEFORE binding
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', variable('y'), variable('x'), 'y'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation('e1', createVariable('y'), createVariable('x'), 'y'),
 		])
 		const finiteAfterRound = EXTREME_NUMBERS.filter((value) => Number.isFinite(roundTo(value, 4)))
 		for (const value of finiteAfterRound) {
@@ -701,8 +845,8 @@ describe('SymbolicReasoner — numeric extremes', () => {
 		// corrected: MAX_VALUE / ±1e308 are finite INPUTS, but roundTo(·, 4) overflows the 1e4
 		// scale factor to ±Infinity — the post-round gate fails the equation instead of binding
 		// a non-finite solution with success:true.
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', variable('y'), variable('x'), 'y'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation('e1', createVariable('y'), createVariable('x'), 'y'),
 		])
 		const overflowAfterRound = EXTREME_NUMBERS.filter(
 			(value) => !Number.isFinite(roundTo(value, 4)),
@@ -716,10 +860,10 @@ describe('SymbolicReasoner — numeric extremes', () => {
 	})
 
 	it('MAX_SAFE_INTEGER passes through exactly at precision 0', () => {
-		const definition = symbolicDefinition(
+		const definition = createSymbolicDefinition(
 			'd',
 			'd',
-			[equation('e1', variable('x'), constant(Number.MAX_SAFE_INTEGER), 'x')],
+			[createEquation('e1', createVariable('x'), createConstant(Number.MAX_SAFE_INTEGER), 'x')],
 			{ precision: 0 },
 		)
 		expect(expectSymbolic(reasoner.reason({}, definition)).solutions.x).toBe(
@@ -728,8 +872,8 @@ describe('SymbolicReasoner — numeric extremes', () => {
 	})
 
 	it('default-precision rounding DRIFTS MAX_SAFE_INTEGER past the safe-integer range', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', variable('x'), constant(Number.MAX_SAFE_INTEGER), 'x'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation('e1', createVariable('x'), createConstant(Number.MAX_SAFE_INTEGER), 'x'),
 		])
 		// roundTo scales by 10^4 before Math.round, pushing the value past 2^53 and losing
 		// the low digits — a REAL roundTo artifact at extreme magnitude, not a solve bug.
@@ -737,8 +881,13 @@ describe('SymbolicReasoner — numeric extremes', () => {
 	})
 
 	it('an evaluation that overflows to Infinity is a non-finite error (1e308 × 10)', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', variable('x'), operation('multiply', constant(1e308), constant(10)), 'x'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation(
+				'e1',
+				createVariable('x'),
+				createOperation('multiply', createConstant(1e308), createConstant(10)),
+				'x',
+			),
 		])
 		const result = expectSymbolic(reasoner.reason({}, definition))
 		expect(result.success).toBe(false)
@@ -748,8 +897,13 @@ describe('SymbolicReasoner — numeric extremes', () => {
 	})
 
 	it('power producing Infinity is a non-finite error (10 ^ 400, evaluated not isolated)', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', variable('x'), operation('power', constant(10), constant(400)), 'x'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation(
+				'e1',
+				createVariable('x'),
+				createOperation('power', createConstant(10), createConstant(400)),
+				'x',
+			),
 		])
 		const result = expectSymbolic(reasoner.reason({}, definition))
 		expect(result.success).toBe(false)
@@ -758,8 +912,8 @@ describe('SymbolicReasoner — numeric extremes', () => {
 
 	it('rounding overflow is a post-round non-finite error, not a bound Infinity (constant 1e308)', () => {
 		// corrected: finite check now runs post-round
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', variable('x'), constant(1e308), 'x'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation('e1', createVariable('x'), createConstant(1e308), 'x'),
 		])
 		const result = expectSymbolic(reasoner.reason({}, definition))
 		// 1e308 is finite, but roundTo(1e308, 4) overflows to Infinity; the finite gate
@@ -771,10 +925,17 @@ describe('SymbolicReasoner — numeric extremes', () => {
 	})
 
 	it('division underflow to a subnormal survives at overflow-passthrough precision (400)', () => {
-		const definition = symbolicDefinition(
+		const definition = createSymbolicDefinition(
 			'd',
 			'd',
-			[equation('e1', variable('x'), operation('divide', constant(1e-323), constant(2)), 'x')],
+			[
+				createEquation(
+					'e1',
+					createVariable('x'),
+					createOperation('divide', createConstant(1e-323), createConstant(2)),
+					'x',
+				),
+			],
 			{ precision: 400 },
 		)
 		const result = expectSymbolic(reasoner.reason({}, definition))
@@ -783,8 +944,13 @@ describe('SymbolicReasoner — numeric extremes', () => {
 	})
 
 	it('division underflow rounds a subnormal to 0 at default precision', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', variable('x'), operation('divide', constant(1e-323), constant(2)), 'x'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation(
+				'e1',
+				createVariable('x'),
+				createOperation('divide', createConstant(1e-323), createConstant(2)),
+				'x',
+			),
 		])
 		const result = expectSymbolic(reasoner.reason({}, definition))
 		expect(result.success).toBe(true)
@@ -794,8 +960,13 @@ describe('SymbolicReasoner — numeric extremes', () => {
 
 describe('SymbolicReasoner — signed-zero solutions', () => {
 	it('preserves NEGATIVE zero through multiply and rounding (-0 × 5)', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', variable('x'), operation('multiply', constant(-0), constant(5)), 'x'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation(
+				'e1',
+				createVariable('x'),
+				createOperation('multiply', createConstant(-0), createConstant(5)),
+				'x',
+			),
 		])
 		const result = expectSymbolic(reasoner.reason({}, definition))
 		expect(result.success).toBe(true)
@@ -803,8 +974,13 @@ describe('SymbolicReasoner — signed-zero solutions', () => {
 	})
 
 	it('keeps POSITIVE zero positive (0 × 5) — distinct from -0', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', variable('x'), operation('multiply', constant(0), constant(5)), 'x'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation(
+				'e1',
+				createVariable('x'),
+				createOperation('multiply', createConstant(0), createConstant(5)),
+				'x',
+			),
 		])
 		const result = expectSymbolic(reasoner.reason({}, definition))
 		expect(Object.is(result.solutions.x, 0)).toBe(true)
@@ -814,42 +990,52 @@ describe('SymbolicReasoner — signed-zero solutions', () => {
 
 describe('SymbolicReasoner — precision extremes', () => {
 	it('precision 0 rounds to whole numbers', () => {
-		const definition = symbolicDefinition(
+		const definition = createSymbolicDefinition(
 			'd',
 			'd',
-			[equation('e1', variable('x'), constant(2.6), 'x')],
+			[createEquation('e1', createVariable('x'), createConstant(2.6), 'x')],
 			{ precision: 0 },
 		)
 		expect(expectSymbolic(reasoner.reason({}, definition)).solutions.x).toBe(3)
 	})
 
 	it('NEGATIVE precision rounds at whole-number scales (hundreds at -2)', () => {
-		const definition = symbolicDefinition(
+		const definition = createSymbolicDefinition(
 			'd',
 			'd',
-			[equation('e1', variable('x'), constant(1250), 'x')],
+			[createEquation('e1', createVariable('x'), createConstant(1250), 'x')],
 			{ precision: -2 },
 		)
 		expect(expectSymbolic(reasoner.reason({}, definition)).solutions.x).toBe(1300)
 	})
 
 	it('EXTREME precision (400) overflows the scale factor and passes the value through', () => {
-		const definition = symbolicDefinition(
+		const definition = createSymbolicDefinition(
 			'd',
 			'd',
-			[equation('e1', variable('x'), constant(3.14159), 'x')],
+			[createEquation('e1', createVariable('x'), createConstant(3.14159), 'x')],
 			{ precision: 400 },
 		)
 		expect(expectSymbolic(reasoner.reason({}, definition)).solutions.x).toBe(3.14159)
 	})
 
 	it('rounds BEFORE binding at precision 1 — the next equation sees 0.3, not 1/3', () => {
-		const definition = symbolicDefinition(
+		const definition = createSymbolicDefinition(
 			'd',
 			'd',
 			[
-				equation('e1', variable('a'), operation('divide', constant(1), constant(3)), 'a'),
-				equation('e2', variable('b'), operation('multiply', variable('a'), constant(3)), 'b'),
+				createEquation(
+					'e1',
+					createVariable('a'),
+					createOperation('divide', createConstant(1), createConstant(3)),
+					'a',
+				),
+				createEquation(
+					'e2',
+					createVariable('b'),
+					createOperation('multiply', createVariable('a'), createConstant(3)),
+					'b',
+				),
 			],
 			{ precision: 1 },
 		)
@@ -864,25 +1050,37 @@ describe('SymbolicReasoner — unicode & adversarial variable names', () => {
 	const emoji = '\u{1F600}'
 
 	it('solves with an emoji-named variable bound through definition variables', () => {
-		const definition = symbolicDefinition(
+		const definition = createSymbolicDefinition(
 			'd',
 			'd',
-			[equation('e1', variable('y'), operation('add', variable(emoji), constant(1)), 'y')],
+			[
+				createEquation(
+					'e1',
+					createVariable('y'),
+					createOperation('add', createVariable(emoji), createConstant(1)),
+					'y',
+				),
+			],
 			{ variables: { [emoji]: 41 } },
 		)
 		expect(expectSymbolic(reasoner.reason({}, definition)).solutions.y).toBe(42)
 	})
 
 	it('solves with an emoji-named variable bound through a subject field', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', variable('y'), operation('add', variable(emoji), constant(1)), 'y'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation(
+				'e1',
+				createVariable('y'),
+				createOperation('add', createVariable(emoji), createConstant(1)),
+				'y',
+			),
 		])
 		expect(expectSymbolic(reasoner.reason({ [emoji]: 41 }, definition)).solutions.y).toBe(42)
 	})
 
 	it('solves FOR an emoji-named target', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', variable(emoji), constant(99), emoji),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation('e1', createVariable(emoji), createConstant(99), emoji),
 		])
 		expect(expectSymbolic(reasoner.reason({}, definition)).solutions[emoji]).toBe(99)
 	})
@@ -890,10 +1088,17 @@ describe('SymbolicReasoner — unicode & adversarial variable names', () => {
 	it('every non-__proto__ TRICKY_KEY works as a definition-bound variable name', () => {
 		for (const key of TRICKY_KEYS) {
 			if (key === '__proto__') continue
-			const definition = symbolicDefinition(
+			const definition = createSymbolicDefinition(
 				'd',
 				'd',
-				[equation('e1', variable('y'), operation('add', variable(key), constant(1)), 'y')],
+				[
+					createEquation(
+						'e1',
+						createVariable('y'),
+						createOperation('add', createVariable(key), createConstant(1)),
+						'y',
+					),
+				],
 				{ variables: { [key]: 41 } },
 			)
 			expect(expectSymbolic(reasoner.reason({}, definition)).solutions.y).toBe(42)
@@ -901,8 +1106,8 @@ describe('SymbolicReasoner — unicode & adversarial variable names', () => {
 	})
 
 	it('a "__proto__" SUBJECT field cannot bind — the setter drops the number', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', variable('y'), variable('__proto__'), 'y'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation('e1', createVariable('y'), createVariable('__proto__'), 'y'),
 		])
 		const result = expectSymbolic(reasoner.reason({ ['__proto__']: 5 }, definition))
 		// `bindings['__proto__'] = 5` hits the prototype setter, which ignores a non-object, so
@@ -915,12 +1120,12 @@ describe('SymbolicReasoner — unicode & adversarial variable names', () => {
 
 describe('SymbolicReasoner — deep expression tree', () => {
 	it('evaluates a 300-deep left-nested addition without stack overflow', () => {
-		let expression: SymbolicExpression = constant(0)
+		let expression: SymbolicExpression = createConstant(0)
 		for (let index = 0; index < 300; index += 1) {
-			expression = operation('add', expression, constant(1))
+			expression = createOperation('add', expression, createConstant(1))
 		}
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', variable('result'), expression, 'result'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation('e1', createVariable('result'), expression, 'result'),
 		])
 		// Depth 300 sits comfortably within V8's default stack; #evaluate and
 		// #containsVariable each descend the left spine once. 0 + 300 × 1 = 300.
@@ -932,15 +1137,17 @@ describe('SymbolicReasoner — large equation list', () => {
 	it('solves 150 chained equations in declaration order', () => {
 		const equations = sequence(150).map((index) =>
 			index === 0
-				? equation('v0', variable('v0'), constant(0), 'v0')
-				: equation(
+				? createEquation('v0', createVariable('v0'), createConstant(0), 'v0')
+				: createEquation(
 						`v${index}`,
-						variable(`v${index}`),
-						operation('add', variable(`v${index - 1}`), constant(1)),
+						createVariable(`v${index}`),
+						createOperation('add', createVariable(`v${index - 1}`), createConstant(1)),
 						`v${index}`,
 					),
 		)
-		const result = expectSymbolic(reasoner.reason({}, symbolicDefinition('d', 'd', equations)))
+		const result = expectSymbolic(
+			reasoner.reason({}, createSymbolicDefinition('d', 'd', equations)),
+		)
 		expect(result.success).toBe(true)
 		const keys = Object.keys(result.solutions)
 		expect(keys).toHaveLength(150)
@@ -954,10 +1161,12 @@ describe('SymbolicReasoner — large equation list', () => {
 describe('SymbolicReasoner — sparse equations array', () => {
 	it('a sparse equations array solves only the present equations', () => {
 		const equations = sparse<Equation>(3, [
-			[0, equation('e1', variable('x'), constant(5), 'x')],
-			[2, equation('e2', variable('y'), constant(7), 'y')],
+			[0, createEquation('e1', createVariable('x'), createConstant(5), 'x')],
+			[2, createEquation('e2', createVariable('y'), createConstant(7), 'y')],
 		])
-		const result = expectSymbolic(reasoner.reason({}, symbolicDefinition('d', 'd', equations)))
+		const result = expectSymbolic(
+			reasoner.reason({}, createSymbolicDefinition('d', 'd', equations)),
+		)
 		expect(result.success).toBe(true)
 		expect(result.errors).toEqual([])
 		expect(result.solutions).toEqual({ x: 5, y: 7 })
@@ -966,8 +1175,13 @@ describe('SymbolicReasoner — sparse equations array', () => {
 
 describe('SymbolicReasoner — divide-by-zero inversion (zero guards)', () => {
 	it('inverting multiply on the RIGHT operand by zero yields NaN (0 × x = 5)', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', operation('multiply', constant(0), variable('x')), constant(5), 'x'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation(
+				'e1',
+				createOperation('multiply', createConstant(0), createVariable('x')),
+				createConstant(5),
+				'x',
+			),
 		])
 		const result = expectSymbolic(reasoner.reason({}, definition))
 		expect(result.success).toBe(false)
@@ -977,8 +1191,13 @@ describe('SymbolicReasoner — divide-by-zero inversion (zero guards)', () => {
 	})
 
 	it('inverting divide where the DIVIDEND target must equal a zero result yields NaN (20 / x = 0)', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', operation('divide', constant(20), variable('x')), constant(0), 'x'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation(
+				'e1',
+				createOperation('divide', createConstant(20), createVariable('x')),
+				createConstant(0),
+				'x',
+			),
 		])
 		const result = expectSymbolic(reasoner.reason({}, definition))
 		expect(result.success).toBe(false)
@@ -989,15 +1208,15 @@ describe('SymbolicReasoner — divide-by-zero inversion (zero guards)', () => {
 
 describe('SymbolicReasoner — parseNumber binding-site boundary pins', () => {
 	const bindsAs = (value: unknown): SymbolicResult => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', variable('y'), variable('x'), 'y'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation('e1', createVariable('y'), createVariable('x'), 'y'),
 		])
 		return expectSymbolic(reasoner.reason({ x: value }, definition))
 	}
 
 	const neverBinds = (value: unknown): SymbolicResult => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', variable('y'), variable('x'), 'y'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation('e1', createVariable('y'), createVariable('x'), 'y'),
 		])
 		return expectSymbolic(reasoner.reason({ x: value }, definition))
 	}
@@ -1053,11 +1272,11 @@ describe('SymbolicReasoner — parseNumber binding-site boundary pins', () => {
 
 describe('SymbolicReasoner — isolation edge pins', () => {
 	it('an unbound target on both sides of DIFFERENT operations fails with the exact Unbound message', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation(
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation(
 				'e1',
-				operation('multiply', variable('x'), constant(2)),
-				operation('add', variable('x'), constant(3)),
+				createOperation('multiply', createVariable('x'), createConstant(2)),
+				createOperation('add', createVariable('x'), createConstant(3)),
 				'x',
 			),
 		])
@@ -1067,8 +1286,13 @@ describe('SymbolicReasoner — isolation edge pins', () => {
 	})
 
 	it('a target on both operands of a single "multiply" fails with the exact appears-on-both-sides text', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', operation('multiply', variable('x'), variable('x')), constant(9), 'x'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation(
+				'e1',
+				createOperation('multiply', createVariable('x'), createVariable('x')),
+				createConstant(9),
+				'x',
+			),
 		])
 		const result = expectSymbolic(reasoner.reason({}, definition))
 		expect(result.success).toBe(false)
@@ -1078,8 +1302,8 @@ describe('SymbolicReasoner — isolation edge pins', () => {
 	})
 
 	it('a non-invertible "abs" in the isolation path fails with the exact non-invertible message', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', operation('abs', variable('x')), constant(5), 'x'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation('e1', createOperation('abs', createVariable('x')), createConstant(5), 'x'),
 		])
 		const result = expectSymbolic(reasoner.reason({}, definition))
 		expect(result.success).toBe(false)
@@ -1090,11 +1314,15 @@ describe('SymbolicReasoner — isolation edge pins', () => {
 
 	it('a division-inverse hitting zero deep in the isolation chain yields NaN, then the non-finite rejection', () => {
 		// (x / 0) + 3 = 10 — peels "add" first (x/0 = 7), then invertLeft("divide", 7, 0) = NaN.
-		const definition = symbolicDefinition('d', 'd', [
-			equation(
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation(
 				'e1',
-				operation('add', operation('divide', variable('x'), constant(0)), constant(3)),
-				constant(10),
+				createOperation(
+					'add',
+					createOperation('divide', createVariable('x'), createConstant(0)),
+					createConstant(3),
+				),
+				createConstant(10),
 				'x',
 			),
 		])
@@ -1107,8 +1335,13 @@ describe('SymbolicReasoner — isolation edge pins', () => {
 
 describe('SymbolicReasoner — pre-bound target rebinding', () => {
 	it('a SUBJECT-bound target with no unbound occurrence is clobbered by the re-evaluated right side', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', variable('x'), operation('add', constant(3), constant(4)), 'x'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation(
+				'e1',
+				createVariable('x'),
+				createOperation('add', createConstant(3), createConstant(4)),
+				'x',
+			),
 		])
 		const result = expectSymbolic(reasoner.reason({ x: 5 }, definition))
 		expect(result.success).toBe(true)
@@ -1120,8 +1353,13 @@ describe('SymbolicReasoner — pre-bound target rebinding', () => {
 
 describe('SymbolicReasoner — deep invertible isolation (750-peel)', () => {
 	it('isolates x through 750 nested "add 1" layers: x + 750×1 = 1000 → x = 250', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', deepAddition(750, variable('x'), constant(1)), constant(1000), 'x'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation(
+				'e1',
+				deepAddition(750, createVariable('x'), createConstant(1)),
+				createConstant(1000),
+				'x',
+			),
 		])
 		const run = (): number => {
 			const result = expectSymbolic(reasoner.reason({}, definition)).solutions.x
@@ -1137,8 +1375,8 @@ describe('SymbolicReasoner — deep invertible isolation (750-peel)', () => {
 
 describe('SymbolicReasoner — binding enumeration order (INTEGER_KEY_SUBJECT)', () => {
 	it('binds integer-like keys ascending (1, 2, 10) before insertion-ordered string keys', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', variable('y'), constant(0), 'y'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation('e1', createVariable('y'), createConstant(0), 'y'),
 		])
 		const run = (): readonly string[] => {
 			const result = expectSymbolic(reasoner.reason(INTEGER_KEY_SUBJECT, definition))
@@ -1161,8 +1399,13 @@ describe('SymbolicReasoner — binding enumeration order (INTEGER_KEY_SUBJECT)',
 
 describe('SymbolicReasoner — precision drift over a long additive chain', () => {
 	it('isolates x through 100 nested "add 0.1" layers and rounds the drifted result to 4 places', () => {
-		const definition = symbolicDefinition('d', 'd', [
-			equation('e1', deepAddition(100, variable('x'), constant(0.1)), constant(1000), 'x'),
+		const definition = createSymbolicDefinition('d', 'd', [
+			createEquation(
+				'e1',
+				deepAddition(100, createVariable('x'), createConstant(0.1)),
+				createConstant(1000),
+				'x',
+			),
 		])
 		const run = (): number => {
 			const result = expectSymbolic(reasoner.reason({}, definition)).solutions.x
@@ -1179,8 +1422,8 @@ describe('SymbolicReasoner — precision drift over a long additive chain', () =
 })
 
 describe('SymbolicReasoner — builder build() output passed to supports/validate/reason (§15)', () => {
-	const definition = symbolicDefinition('d', 'd', [
-		equation('e1', variable('x'), constant(42), 'x'),
+	const definition = createSymbolicDefinition('d', 'd', [
+		createEquation('e1', createVariable('x'), createConstant(42), 'x'),
 	])
 
 	it('a built definition + built subject behave identically to the same data written inline (run twice)', () => {

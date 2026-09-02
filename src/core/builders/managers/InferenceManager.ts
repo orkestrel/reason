@@ -17,10 +17,9 @@ import { Collection } from './Collection.js'
  * shared by composition with the other list managers — plus its own
  * {@link Emitter} over {@link InferenceManagerEventMap}. Inference order is
  * LOAD-BEARING — backward proving iterates in declaration order and returns on
- * first success. The write-only `collection` setter is the owning builder's
- * silent bulk re-seat channel (used by `merge`). `destroy()` is idempotent and
- * tears the emitter down LAST; any other call after it throws
- * `ReasonError('DESTROYED', …)`.
+ * first success. `seat` is the owning builder's silent bulk re-seat channel
+ * (used by `merge`). `destroy()` is idempotent and tears the emitter down LAST;
+ * any other call after it throws `ReasonError('DESTROYED', …)`.
  */
 export class InferenceManager implements InferenceManagerInterface {
 	readonly #inferences: Collection<Inference>
@@ -33,10 +32,6 @@ export class InferenceManager implements InferenceManagerInterface {
 
 	get emitter(): EmitterInterface<InferenceManagerEventMap> {
 		return this.#emitter
-	}
-
-	set collection(value: readonly Inference[]) {
-		this.#inferences.seat(value)
 	}
 
 	inference(id: string): Inference | undefined {
@@ -65,6 +60,12 @@ export class InferenceManager implements InferenceManagerInterface {
 	remove(id: string): void {
 		this.#inferences.remove(id)
 		this.#emitter.emit('remove', id)
+	}
+
+	// The owning builder's bulk re-seat channel — replaces the whole collection
+	// in one silent call (no per-element events); used by `merge`.
+	seat(items: readonly Inference[]): void {
+		this.#inferences.seat(items)
 	}
 
 	destroy(): void {

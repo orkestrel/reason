@@ -1,23 +1,23 @@
 import type { QuantitativeResult, ReasonerInterface, ReasonEventMap, Reasoning } from '@src/core'
 import {
-	atom,
+	createAtom,
+	createDefinitionBuilder,
+	createFactorGroup,
+	createFieldFactor,
+	createInferentialDefinition,
 	createInferentialReasoner,
+	createLogicalDefinition,
 	createLogicalReasoner,
+	createQuantitativeDefinition,
 	createQuantitativeReasoner,
 	createReason,
-	createDefinitionBuilder,
+	createRule,
 	createSubjectBuilder,
+	createSymbolicDefinition,
 	createSymbolicReasoner,
-	factorGroup,
-	fieldFactor,
-	inferentialDefinition,
 	isReasonError,
-	logicalDefinition,
-	quantitativeDefinition,
 	Reason,
 	ReasonError,
-	rule,
-	symbolicDefinition,
 } from '@src/core'
 import { describe, expect, it } from 'vitest'
 import { captureError, createRecorder, createRecorders, roundTripJSON } from '@orkestrel/test'
@@ -43,16 +43,20 @@ import {
 // mocks (AGENTS §16).
 
 // A quantitative definition reading the subject's age on top of base 100.
-const AGE_DEFINITION = quantitativeDefinition(
+const AGE_DEFINITION = createQuantitativeDefinition(
 	'age-score',
 	'Age Score',
-	[factorGroup('g1', 'sum', [fieldFactor('age', 'age')])],
+	[createFactorGroup('g1', 'sum', [createFieldFactor('age', 'age')])],
 	{ base: 100 },
 )
 
 // A one-rule forward chain: active === true concludes result === true.
-const LOGICAL_DEFINITION = logicalDefinition('activation', 'Activation', [
-	rule('activate', [atom('active', 'equals', true)], atom('result', 'equals', true)),
+const LOGICAL_DEFINITION = createLogicalDefinition('activation', 'Activation', [
+	createRule(
+		'activate',
+		[createAtom('active', 'equals', true)],
+		createAtom('result', 'equals', true),
+	),
 ])
 
 // The ReasonEventMap names recorded across the emitter tests. `createRecorders` takes
@@ -165,7 +169,7 @@ describe('Reason — reason (dispatch)', () => {
 
 describe('Reason — options (validate / bail)', () => {
 	// A shape-valid definition the quantitative reasoner's validate() rejects.
-	const invalid = quantitativeDefinition('invalid', 'Invalid', [])
+	const invalid = createQuantitativeDefinition('invalid', 'Invalid', [])
 
 	it('INVALID: validate true + an invalid definition throws pre-run with context', () => {
 		const reason = createReason({ reasoners: [createQuantitativeReasoner()], validate: true })
@@ -209,7 +213,7 @@ describe('Reason — options (validate / bail)', () => {
 			reasoners: [createThrowingReasoner('boom', 'logical')],
 			bail: false,
 		})
-		expect(logical.reason({}, logicalDefinition('d', 'd', []))).toEqual({
+		expect(logical.reason({}, createLogicalDefinition('d', 'd', []))).toEqual({
 			reasoning: 'logical',
 			conclusion: false,
 			rules: [],
@@ -223,7 +227,7 @@ describe('Reason — options (validate / bail)', () => {
 			reasoners: [createThrowingReasoner('boom', 'symbolic')],
 			bail: false,
 		})
-		expect(symbolic.reason({}, symbolicDefinition('d', 'd', []))).toEqual({
+		expect(symbolic.reason({}, createSymbolicDefinition('d', 'd', []))).toEqual({
 			reasoning: 'symbolic',
 			solutions: {},
 			success: false,
@@ -235,7 +239,7 @@ describe('Reason — options (validate / bail)', () => {
 			reasoners: [createThrowingReasoner('boom', 'inferential')],
 			bail: false,
 		})
-		const result = inferential.reason({}, inferentialDefinition('d', 'd', [], []))
+		const result = inferential.reason({}, createInferentialDefinition('d', 'd', [], []))
 		expect(result).toEqual({
 			reasoning: 'inferential',
 			derived: [],
@@ -423,7 +427,7 @@ describe('Reason — emitter (push observation surface)', () => {
 			REASON_EVENTS,
 		)
 		expect(
-			captureError(() => invalid.reason({}, quantitativeDefinition('bad', 'Bad', []))),
+			captureError(() => invalid.reason({}, createQuantitativeDefinition('bad', 'Bad', []))),
 		).toBeInstanceOf(Error)
 		expect(invalidEvents.error.count).toBe(0)
 		expect(invalidEvents.reason.count).toBe(0)
@@ -634,7 +638,7 @@ describe('Reason — error taxonomy exactness', () => {
 	})
 
 	it('INVALID: validate on + a malformed definition — context carries definition and reasoning, bypasses bail, emits nothing', () => {
-		const malformed = quantitativeDefinition('malformed-invalid', 'Malformed', [])
+		const malformed = createQuantitativeDefinition('malformed-invalid', 'Malformed', [])
 		const reason = createReason({
 			reasoners: [createQuantitativeReasoner()],
 			validate: true,
@@ -672,7 +676,7 @@ describe('Reason — error taxonomy exactness', () => {
 		}
 		const reason = createReason({ reasoners: [mismatched], bail: false })
 		const events = createRecorders<ReasonEventMap, ReasonEvent>(reason.emitter, REASON_EVENTS)
-		const result = reason.reason({}, logicalDefinition('mismatch-def', 'Mismatch', []))
+		const result = reason.reason({}, createLogicalDefinition('mismatch-def', 'Mismatch', []))
 		expect(result.success).toBe(false)
 		expect(events.error.count).toBe(1)
 		const error = events.error.calls[0]?.[0]

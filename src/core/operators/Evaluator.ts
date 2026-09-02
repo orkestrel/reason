@@ -1,6 +1,6 @@
 import type { Check, CheckResult, EvaluatorInterface, EvaluatorOptions, Subject } from '../types.js'
 import { isArray, isNumber, resolveField } from '@orkestrel/contract'
-import { isWithinBounds } from '../helpers.js'
+import { matchesBounds } from '../helpers.js'
 import { EVALUATOR_ID } from '../constants.js'
 
 /**
@@ -64,9 +64,9 @@ export class Evaluator implements EvaluatorInterface {
 			case 'none':
 				return isArray(expected) && !expected.includes(actual)
 			case 'between':
-				return isWithinBounds(actual, expected)
+				return matchesBounds(actual, expected)
 			case 'outside':
-				return !isWithinBounds(actual, expected)
+				return !matchesBounds(actual, expected)
 			default:
 				throw new Error(`Unknown comparison operator: ${operator}`)
 		}

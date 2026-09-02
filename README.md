@@ -29,20 +29,20 @@ npm install @orkestrel/reason
 
 ```ts
 import {
+	createFactorGroup,
+	createFieldFactor,
+	createQuantitativeDefinition,
 	createQuantitativeReasoner,
 	createReason,
-	factorGroup,
-	fieldFactor,
-	quantitativeDefinition,
-	staticFactor,
+	createStaticFactor,
 } from '@orkestrel/reason'
 
 const reason = createReason({ reasoners: [createQuantitativeReasoner()] })
 
-const definition = quantitativeDefinition('risk', 'Risk score', [
-	factorGroup('drivers', 'sum', [
-		fieldFactor('age', 'age'), // reads subject.age, parseNumber-coerced
-		staticFactor('floor', 10), // a fixed contribution
+const definition = createQuantitativeDefinition('risk', 'Risk score', [
+	createFactorGroup('drivers', 'sum', [
+		createFieldFactor('age', 'age'), // reads subject.age, parseNumber-coerced
+		createStaticFactor('floor', 10), // a fixed contribution
 	]),
 ])
 

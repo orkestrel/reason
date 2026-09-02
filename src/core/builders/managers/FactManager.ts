@@ -17,10 +17,9 @@ import { Collection } from './Collection.js'
  * by composition with the other list managers — plus its own {@link Emitter}
  * over {@link FactManagerEventMap}. `Fact.id` is an AUTHORING label — the
  * runtime content-dedups facts by predicate+arity+terms, independently of this
- * manager's id-keyed dedup. The write-only `collection` setter is the owning
- * builder's silent bulk re-seat channel (used by `merge`). `destroy()` is
- * idempotent and tears the emitter down LAST; any other call after it throws
- * `ReasonError('DESTROYED', …)`.
+ * manager's id-keyed dedup. `seat` is the owning builder's silent bulk re-seat
+ * channel (used by `merge`). `destroy()` is idempotent and tears the emitter
+ * down LAST; any other call after it throws `ReasonError('DESTROYED', …)`.
  */
 export class FactManager implements FactManagerInterface {
 	readonly #facts: Collection<Fact>
@@ -33,10 +32,6 @@ export class FactManager implements FactManagerInterface {
 
 	get emitter(): EmitterInterface<FactManagerEventMap> {
 		return this.#emitter
-	}
-
-	set collection(value: readonly Fact[]) {
-		this.#facts.seat(value)
 	}
 
 	fact(id: string): Fact | undefined {
@@ -65,6 +60,12 @@ export class FactManager implements FactManagerInterface {
 	remove(id: string): void {
 		this.#facts.remove(id)
 		this.#emitter.emit('remove', id)
+	}
+
+	// The owning builder's bulk re-seat channel — replaces the whole collection
+	// in one silent call (no per-element events); used by `merge`.
+	seat(items: readonly Fact[]): void {
+		this.#facts.seat(items)
 	}
 
 	destroy(): void {

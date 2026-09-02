@@ -2,8 +2,6 @@ import type {
 	Aggregation,
 	Atom,
 	Bounds,
-	Check,
-	Comparison,
 	Definition,
 	DefinitionEnvelope,
 	Equation,
@@ -11,13 +9,11 @@ import type {
 	Fact,
 	Factor,
 	FactorGroup,
-	FactorRange,
 	Inference,
 	InferentialClearKey,
 	InferentialDefinition,
 	LogicalClearKey,
 	LogicalDefinition,
-	LogicalOperator,
 	MathOperation,
 	QuantitativeClearKey,
 	QuantitativeDefinition,
@@ -28,19 +24,19 @@ import type {
 	SymbolicClearKey,
 	SymbolicDefinition,
 	SymbolicExpression,
-	Transform,
 } from './types.js'
 import type { FieldPath } from '@orkestrel/contract'
 import { isArray, isNumber, isString, parseNumberField, resolveField } from '@orkestrel/contract'
 import { DEFAULT_CONFIDENCE, DEFAULT_PRIORITY } from './constants.js'
 import { ReasonError } from './errors.js'
 
-// Pure builders for the declarative definition vocabulary, plus the module's
-// numeric helpers. Every builder returns a fresh, JSON-serializable value and
-// OMITS absent optional keys entirely (never sets them to `undefined`), so the
-// output round-trips through the exact-record validators. Builders with an
-// `overrides` bag spread it LAST — an override always wins over a default (a
-// `name` defaults to the `id` wherever a display name is required).
+// The module's pure leaves: field display, the numeric helpers, equality and
+// ordering, the inferential fact machinery, the symbolic algebra machinery, the
+// id-keyed collection primitives, and the copy-on-write change / extend / merge
+// / clear family over definitions and subjects. Every function here is
+// referentially transparent — it returns a fresh, JSON-serializable value and
+// never touches its input. The value constructors that assemble that vocabulary
+// live in `factories.ts` under the `create*` form.
 
 // === Field display
 
@@ -63,650 +59,6 @@ import { ReasonError } from './errors.js'
  */
 export function formatField(field: FieldPath): string {
 	return isString(field) ? field : field.join('.')
-}
-
-// === Checks & expressions
-
-/**
- * Build a {@link Check} — one field predicate.
- *
- * @param field - The subject field to resolve (a string is ONE key; an array descends)
- * @param operator - The comparison to apply
- * @param value - The expected value (any type — the operator decides what is meaningful)
- * @returns A fresh check
- *
- * @example
- * ```ts
- * import { check } from '@src/core'
- *
- * check('age', 'from', 18) // { field: 'age', operator: 'from', value: 18 }
- * ```
- */
-export function check(field: FieldPath, operator: Comparison, value: unknown): Check {
-	return { field, operator, value }
-}
-
-/**
- * Build an atom {@link Expression} — a leaf wrapping one {@link Check}.
- *
- * @param field - The subject field to resolve
- * @param operator - The comparison to apply
- * @param value - The expected value
- * @returns A fresh atom expression
- *
- * @example
- * ```ts
- * import { atom } from '@src/core'
- *
- * atom('age', 'from', 18) // { form: 'atom', check: { field: 'age', operator: 'from', value: 18 } }
- * ```
- */
-export function atom(field: FieldPath, operator: Comparison, value: unknown): Expression {
-	return { form: 'atom', check: check(field, operator, value) }
-}
-
-/**
- * Build a compound {@link Expression} — a logical connective over nested
- * operands.
- *
- * @param operator - The logical connective
- * @param operands - The nested expressions it combines
- * @returns A fresh compound expression
- *
- * @example
- * ```ts
- * import { atom, compound } from '@src/core'
- *
- * compound('and', [atom('age', 'from', 18), atom('state', 'equals', 'CA')])
- * ```
- */
-export function compound(operator: LogicalOperator, operands: readonly Expression[]): Expression {
-	return { form: 'compound', operator, operands }
-}
-
-/**
- * Build a {@link Rule} — premises and a conclusion.
- *
- * @remarks
- * `name` defaults to the `id`; set `name`, `description`, `priority`, or
- * `enabled` through `overrides`.
- *
- * @param id - The rule id
- * @param premises - The expressions that must ALL hold
- * @param conclusion - The expression whose atoms are asserted when they do
- * @param overrides - Optional {@link Rule} fields merged over the defaults
- * @returns A fresh rule
- *
- * @example
- * ```ts
- * import { atom, rule } from '@src/core'
- *
- * rule('adult', [atom('age', 'from', 18)], atom('adult', 'equals', true), { priority: 1 })
- * ```
- */
-export function rule(
-	id: string,
-	premises: readonly Expression[],
-	conclusion: Expression,
-	overrides?: Partial<Omit<Rule, 'id' | 'premises' | 'conclusion'>>,
-): Rule {
-	return { id, name: id, premises, conclusion, ...overrides }
-}
-
-// === Transforms & bounds
-
-/**
- * Build a {@link Transform} — one math step.
- *
- * @remarks
- * The `operand` key is OMITTED when absent (never set to `undefined`), so the
- * transform stays exact-record valid; the transformer then applies its
- * per-operation default (`1` for `multiply` / `divide` / `power`, `0` otherwise).
- *
- * @param operator - The math operation to apply
- * @param operand - The operand (ignored by the unary operations)
- * @returns A fresh transform
- *
- * @example
- * ```ts
- * import { transform } from '@src/core'
- *
- * transform('multiply', 2) // { operation: 'multiply', operand: 2 }
- * transform('round')       // { operation: 'round' }
- * ```
- */
-export function transform(operator: MathOperation, operand?: number): Transform {
-	return operand === undefined ? { operation: operator } : { operation: operator, operand }
-}
-
-/**
- * Build a {@link Bounds} — an inclusive numeric clamp.
- *
- * @remarks
- * Absent sides are OMITTED (never set to `undefined`) — an absent bound is
- * unbounded on that side.
- *
- * @param minimum - The inclusive lower bound
- * @param maximum - The inclusive upper bound
- * @returns A fresh bounds record
- *
- * @example
- * ```ts
- * import { bounds } from '@src/core'
- *
- * bounds(0, 100)          // { minimum: 0, maximum: 100 }
- * bounds(undefined, 100)  // { maximum: 100 }
- * ```
- */
-export function bounds(minimum?: number, maximum?: number): Bounds {
-	return {
-		...(minimum === undefined ? {} : { minimum }),
-		...(maximum === undefined ? {} : { maximum }),
-	}
-}
-
-// === Symbolic expressions
-
-/**
- * Build a variable {@link SymbolicExpression} leaf.
- *
- * @param name - The variable name
- * @returns A fresh variable node
- *
- * @example
- * ```ts
- * import { variable } from '@src/core'
- *
- * variable('x') // { form: 'variable', name: 'x' }
- * ```
- */
-export function variable(name: string): SymbolicExpression {
-	return { form: 'variable', name }
-}
-
-/**
- * Build a constant {@link SymbolicExpression} leaf.
- *
- * @param value - The fixed number
- * @returns A fresh constant node
- *
- * @example
- * ```ts
- * import { constant } from '@src/core'
- *
- * constant(42) // { form: 'constant', value: 42 }
- * ```
- */
-export function constant(value: number): SymbolicExpression {
-	return { form: 'constant', value }
-}
-
-/**
- * Build an operation {@link SymbolicExpression} node.
- *
- * @remarks
- * The `right` key is OMITTED when absent — correct for the unary operations
- * (`round` / `ceil` / `floor` / `abs`); a binary operation with no `right`
- * treats it as the constant `0`.
- *
- * @param operator - The math operation
- * @param left - The left operand
- * @param right - The right operand (omit for unary operations)
- * @returns A fresh operation node
- *
- * @example
- * ```ts
- * import { constant, operation, variable } from '@src/core'
- *
- * operation('add', variable('x'), constant(1))
- * operation('abs', variable('x')) // unary — no right operand
- * ```
- */
-export function operation(
-	operator: MathOperation,
-	left: SymbolicExpression,
-	right?: SymbolicExpression,
-): SymbolicExpression {
-	return right === undefined
-		? { form: 'operation', operator, left }
-		: { form: 'operation', operator, left, right }
-}
-
-/**
- * Build an {@link Equation} — `left = right`, solved for `target`.
- *
- * @remarks
- * `name` defaults to the `id`; set `name` or `description` through `overrides`.
- *
- * @param id - The equation id
- * @param left - The left side
- * @param right - The right side
- * @param target - The variable name to solve for
- * @param overrides - Optional {@link Equation} fields merged over the defaults
- * @returns A fresh equation
- *
- * @example
- * ```ts
- * import { constant, equation, operation, variable } from '@src/core'
- *
- * // 2x + 3 = 11 — solved for x
- * equation('e1', operation('add', operation('multiply', constant(2), variable('x')), constant(3)), constant(11), 'x')
- * ```
- */
-export function equation(
-	id: string,
-	left: SymbolicExpression,
-	right: SymbolicExpression,
-	target: string,
-	overrides?: Partial<Omit<Equation, 'id' | 'left' | 'right' | 'target'>>,
-): Equation {
-	return { id, name: id, left, right, target, ...overrides }
-}
-
-// === Facts & inferences
-
-/**
- * Build a {@link Fact} — a predicate over positional terms.
- *
- * @remarks
- * `confidence` defaults to `1` (the key is always set). A string term starting
- * with `?` is a unification variable.
- *
- * @param id - The fact id
- * @param predicate - The predicate name
- * @param terms - The positional terms
- * @param confidence - The fact's confidence (`0–1`, defaults to `1`)
- * @returns A fresh fact
- *
- * @example
- * ```ts
- * import { fact } from '@src/core'
- *
- * fact('f1', 'human', ['socrates'])        // confidence 1
- * fact('f2', 'laysEggs', ['tweety'], 0.9)  // explicit confidence
- * ```
- */
-export function fact(
-	id: string,
-	predicate: string,
-	terms: readonly unknown[],
-	confidence?: number,
-): Fact {
-	return { id, predicate, terms, confidence: confidence ?? DEFAULT_CONFIDENCE }
-}
-
-/**
- * Build an {@link Inference} — premise patterns and a conclusion pattern.
- *
- * @remarks
- * `name` defaults to the `id`; set `name`, `description`, `confidence`, or
- * `enabled` through `overrides`.
- *
- * @param id - The inference id
- * @param premises - The fact patterns that must ALL unify
- * @param conclusion - The fact pattern derived when they do
- * @param overrides - Optional {@link Inference} fields merged over the defaults
- * @returns A fresh inference
- *
- * @example
- * ```ts
- * import { fact, inference } from '@src/core'
- *
- * inference('mortal', [fact('p1', 'human', ['?x'])], fact('c1', 'mortal', ['?x']), { confidence: 0.8 })
- * ```
- */
-export function inference(
-	id: string,
-	premises: readonly Fact[],
-	conclusion: Fact,
-	overrides?: Partial<Omit<Inference, 'id' | 'premises' | 'conclusion'>>,
-): Inference {
-	return { id, name: id, premises, conclusion, ...overrides }
-}
-
-// === Sources
-
-/**
- * Build a static {@link Source} — a fixed number.
- *
- * @param value - The fixed value
- * @returns A fresh static source
- *
- * @example
- * ```ts
- * import { staticSource } from '@src/core'
- *
- * staticSource(42) // { origin: 'static', value: 42 }
- * ```
- */
-export function staticSource(value: number): Source {
-	return { origin: 'static', value }
-}
-
-/**
- * Build a field {@link Source} — a subject field read as a number.
- *
- * @param field - The subject field to resolve
- * @returns A fresh field source
- *
- * @example
- * ```ts
- * import { fieldSource } from '@src/core'
- *
- * fieldSource(['profile', 'score']) // descends into nested objects
- * ```
- */
-export function fieldSource(field: FieldPath): Source {
-	return { origin: 'field', field }
-}
-
-/**
- * Build a lookup {@link Source} — a subject field mapped through a table.
- *
- * @param field - The subject field to resolve (stringified into a table key)
- * @param table - The lookup table
- * @returns A fresh lookup source
- *
- * @example
- * ```ts
- * import { lookupSource } from '@src/core'
- *
- * lookupSource('state', { CA: 5, NY: 8, TX: 2 })
- * ```
- */
-export function lookupSource(field: FieldPath, table: Readonly<Record<string, number>>): Source {
-	return { origin: 'lookup', field, table }
-}
-
-/**
- * Build a range {@link Source} — a numeric subject field banded through ordered
- * ranges (first match wins).
- *
- * @param field - The subject field to resolve as a number
- * @param ranges - The bands, scanned in order
- * @returns A fresh range source
- *
- * @example
- * ```ts
- * import { bounds, rangeSource } from '@src/core'
- *
- * rangeSource('age', [
- * 	{ bounds: bounds(undefined, 24), value: 30 },
- * 	{ bounds: bounds(25, 64), value: 15 },
- * 	{ bounds: bounds(65), value: 10 },
- * ])
- * ```
- */
-export function rangeSource(field: FieldPath, ranges: readonly FactorRange[]): Source {
-	return { origin: 'range', field, ranges }
-}
-
-// === Factors, groups & definitions
-
-/**
- * Build a {@link Factor} over a static {@link Source}.
- *
- * @remarks
- * `name` defaults to the `id`; every other {@link Factor} field (checks,
- * transforms, bounds, weight, priority, enabled, required, fallback) comes
- * through `overrides`.
- *
- * @param id - The factor id
- * @param value - The fixed source value
- * @param overrides - Optional {@link Factor} fields merged over the defaults
- * @returns A fresh factor
- *
- * @example
- * ```ts
- * import { staticFactor } from '@src/core'
- *
- * staticFactor('base-rate', 10, { weight: 2 })
- * ```
- */
-export function staticFactor(
-	id: string,
-	value: number,
-	overrides?: Partial<Omit<Factor, 'id' | 'source'>>,
-): Factor {
-	return { id, name: id, source: staticSource(value), ...overrides }
-}
-
-/**
- * Build a {@link Factor} over a field {@link Source}.
- *
- * @param id - The factor id
- * @param field - The subject field to resolve as a number
- * @param overrides - Optional {@link Factor} fields merged over the defaults
- * @returns A fresh factor
- *
- * @example
- * ```ts
- * import { fieldFactor, transform } from '@src/core'
- *
- * fieldFactor('income-score', 'income', { transforms: [transform('divide', 1000)], fallback: 0 })
- * ```
- */
-export function fieldFactor(
-	id: string,
-	field: FieldPath,
-	overrides?: Partial<Omit<Factor, 'id' | 'source'>>,
-): Factor {
-	return { id, name: id, source: fieldSource(field), ...overrides }
-}
-
-/**
- * Build a {@link Factor} over a lookup {@link Source}.
- *
- * @param id - The factor id
- * @param field - The subject field to resolve (stringified into a table key)
- * @param table - The lookup table
- * @param overrides - Optional {@link Factor} fields merged over the defaults
- * @returns A fresh factor
- *
- * @example
- * ```ts
- * import { lookupFactor } from '@src/core'
- *
- * lookupFactor('state-score', 'state', { CA: 5, NY: 8 }, { fallback: 1 })
- * ```
- */
-export function lookupFactor(
-	id: string,
-	field: FieldPath,
-	table: Readonly<Record<string, number>>,
-	overrides?: Partial<Omit<Factor, 'id' | 'source'>>,
-): Factor {
-	return { id, name: id, source: lookupSource(field, table), ...overrides }
-}
-
-/**
- * Build a {@link Factor} over a range {@link Source}.
- *
- * @param id - The factor id
- * @param field - The subject field to resolve as a number
- * @param ranges - The bands, scanned in order (first match wins)
- * @param overrides - Optional {@link Factor} fields merged over the defaults
- * @returns A fresh factor
- *
- * @example
- * ```ts
- * import { bounds, rangeFactor } from '@src/core'
- *
- * rangeFactor('age-band', 'age', [{ bounds: bounds(undefined, 24), value: 30 }])
- * ```
- */
-export function rangeFactor(
-	id: string,
-	field: FieldPath,
-	ranges: readonly FactorRange[],
-	overrides?: Partial<Omit<Factor, 'id' | 'source'>>,
-): Factor {
-	return { id, name: id, source: rangeSource(field, ranges), ...overrides }
-}
-
-/**
- * Build a {@link FactorGroup}.
- *
- * @remarks
- * `name` defaults to the `id`; set `name`, `description`, `base`, `bounds`,
- * `enabled`, or `strict` through `overrides`.
- *
- * @param id - The group id
- * @param aggregation - How the applied factors' values reduce to one
- * @param factors - The group's factors
- * @param overrides - Optional {@link FactorGroup} fields merged over the defaults
- * @returns A fresh factor group
- *
- * @example
- * ```ts
- * import { factorGroup, staticFactor } from '@src/core'
- *
- * factorGroup('g1', 'sum', [staticFactor('f1', 10)], { base: 100 })
- * ```
- */
-export function factorGroup(
-	id: string,
-	aggregation: Aggregation,
-	factors: readonly Factor[],
-	overrides?: Partial<Omit<FactorGroup, 'id' | 'aggregation' | 'factors'>>,
-): FactorGroup {
-	return { id, name: id, aggregation, factors, ...overrides }
-}
-
-/**
- * Build a {@link QuantitativeDefinition}.
- *
- * @remarks
- * `aggregation` defaults to `'sum'`; set `aggregation`, `description`, `base`,
- * `bounds`, or `precision` through `overrides`.
- *
- * @param id - The definition id
- * @param name - The display name
- * @param groups - The factor groups
- * @param overrides - Optional {@link QuantitativeDefinition} fields merged over the defaults
- * @returns A fresh quantitative definition
- *
- * @example
- * ```ts
- * import { factorGroup, fieldFactor, quantitativeDefinition } from '@src/core'
- *
- * quantitativeDefinition('risk', 'Risk Score', [factorGroup('g1', 'sum', [fieldFactor('age', 'age')])], {
- * 	base: 100,
- * })
- * ```
- */
-export function quantitativeDefinition(
-	id: string,
-	name: string,
-	groups: readonly FactorGroup[],
-	overrides?: Partial<Omit<QuantitativeDefinition, 'reasoning' | 'id' | 'name' | 'groups'>>,
-): QuantitativeDefinition {
-	return { reasoning: 'quantitative', id, name, groups, aggregation: 'sum', ...overrides }
-}
-
-/**
- * Build a {@link LogicalDefinition}.
- *
- * @remarks
- * `strategy` defaults to `'forward'`; set `strategy`, `description`, or `depth`
- * through `overrides`.
- *
- * @param id - The definition id
- * @param name - The display name
- * @param rules - The deduction rules
- * @param overrides - Optional {@link LogicalDefinition} fields merged over the defaults
- * @returns A fresh logical definition
- *
- * @example
- * ```ts
- * import { atom, logicalDefinition, rule } from '@src/core'
- *
- * logicalDefinition('eligibility', 'Eligibility', [
- * 	rule('adult', [atom('age', 'from', 18)], atom('adult', 'equals', true)),
- * ])
- * ```
- */
-export function logicalDefinition(
-	id: string,
-	name: string,
-	rules: readonly Rule[],
-	overrides?: Partial<Omit<LogicalDefinition, 'reasoning' | 'id' | 'name' | 'rules'>>,
-): LogicalDefinition {
-	return { reasoning: 'logical', id, name, rules, strategy: 'forward', ...overrides }
-}
-
-/**
- * Build a {@link SymbolicDefinition}.
- *
- * @remarks
- * `variables` defaults to `{}`; set `variables`, `description`, or `precision`
- * through `overrides`.
- *
- * @param id - The definition id
- * @param name - The display name
- * @param equations - The equations, solved in order
- * @param overrides - Optional {@link SymbolicDefinition} fields merged over the defaults
- * @returns A fresh symbolic definition
- *
- * @example
- * ```ts
- * import { constant, equation, symbolicDefinition, variable } from '@src/core'
- *
- * symbolicDefinition('rate', 'Rate', [equation('e1', variable('x'), constant(42), 'x')], {
- * 	precision: 2,
- * })
- * ```
- */
-export function symbolicDefinition(
-	id: string,
-	name: string,
-	equations: readonly Equation[],
-	overrides?: Partial<Omit<SymbolicDefinition, 'reasoning' | 'id' | 'name' | 'equations'>>,
-): SymbolicDefinition {
-	return { reasoning: 'symbolic', id, name, equations, variables: {}, ...overrides }
-}
-
-/**
- * Build an {@link InferentialDefinition}.
- *
- * @remarks
- * `strategy` defaults to `'forward'`; set `strategy`, `description`, or `depth`
- * through `overrides`.
- *
- * @param id - The definition id
- * @param name - The display name
- * @param facts - The base knowledge
- * @param inferences - The inference rules
- * @param overrides - Optional {@link InferentialDefinition} fields merged over the defaults
- * @returns A fresh inferential definition
- *
- * @example
- * ```ts
- * import { fact, inference, inferentialDefinition } from '@src/core'
- *
- * inferentialDefinition('mortality', 'Mortality', [fact('f1', 'human', ['socrates'])], [
- * 	inference('mortal', [fact('p1', 'human', ['?x'])], fact('c1', 'mortal', ['?x'])),
- * ])
- * ```
- */
-export function inferentialDefinition(
-	id: string,
-	name: string,
-	facts: readonly Fact[],
-	inferences: readonly Inference[],
-	overrides?: Partial<
-		Omit<InferentialDefinition, 'reasoning' | 'id' | 'name' | 'facts' | 'inferences'>
-	>,
-): InferentialDefinition {
-	return {
-		reasoning: 'inferential',
-		id,
-		name,
-		facts,
-		inferences,
-		strategy: 'forward',
-		...overrides,
-	}
 }
 
 // === Numeric helpers
@@ -742,7 +94,7 @@ export function clamp(value: number, limit?: Bounds): number {
  * Checks whether a value falls inside an inclusive range expressed as an array.
  *
  * @remarks
- * The range test behind the `between` and `outside` {@link Comparison}s: only
+ * The range test behind the `between` and `outside` `Comparison` operators: only
  * the FIRST TWO elements of `range` are read, both ends are inclusive, and a
  * non-numeric `value`, a non-array `range`, a `range` shorter than two
  * elements, or a non-numeric bound all report `false`. `outside` is the pure
@@ -754,13 +106,13 @@ export function clamp(value: number, limit?: Bounds): number {
  *
  * @example
  * ```ts
- * import { isWithinBounds } from '@src/core'
+ * import { matchesBounds } from '@src/core'
  *
- * isWithinBounds(5, [1, 10])   // true — inclusive on both ends
- * isWithinBounds(5, [1])       // false — a malformed range is never within
+ * matchesBounds(5, [1, 10]) // true — inclusive on both ends
+ * matchesBounds(5, [1])     // false — a malformed range is never within
  * ```
  */
-export function isWithinBounds(value: unknown, range: unknown): boolean {
+export function matchesBounds(value: unknown, range: unknown): boolean {
 	if (!isNumber(value)) return false
 	if (!isArray(range) || range.length < 2) return false
 	const minimum = range[0]
@@ -826,10 +178,10 @@ export function emptyAggregate(aggregation: Aggregation): number {
  *
  * @example
  * ```ts
- * import { fieldSource, lookupSource, resolveSource } from '@src/core'
+ * import { createFieldSource, createLookupSource, resolveSource } from '@src/core'
  *
- * resolveSource(fieldSource('age'), { age: 30 })                        // 30
- * resolveSource(lookupSource('state', { CA: 5 }), { state: 'NY' }, 1)  // 1 — fallback
+ * resolveSource(createFieldSource('age'), { age: 30 })                      // 30
+ * resolveSource(createLookupSource('state', { CA: 5 }), { state: 'NY' }, 1) // 1 — fallback
  * ```
  */
 export function resolveSource(
@@ -1017,10 +369,10 @@ export function findDuplicates(items: ReadonlyArray<{ readonly id: string }>): r
  *
  * @example
  * ```ts
- * import { fact, factToArityKey } from '@src/core'
+ * import { createFact, factToArityKey } from '@src/core'
  *
- * factToArityKey(fact('a', 'human', ['x']))          // arity 1
- * factToArityKey(fact('b', 'human', ['x', 'y'])) // arity 2 — distinct key
+ * factToArityKey(createFact('a', 'human', ['x']))      // arity 1
+ * factToArityKey(createFact('b', 'human', ['x', 'y'])) // arity 2 — distinct key
  * ```
  */
 export function factToArityKey(source: Fact): string {
@@ -1045,10 +397,10 @@ export function factToArityKey(source: Fact): string {
  *
  * @example
  * ```ts
- * import { fact, indexByArity } from '@src/core'
+ * import { createFact, indexByArity } from '@src/core'
  *
- * const index = indexByArity([fact('a', 'human', ['x']), fact('b', 'human', ['y'])])
- * index.get(factToArityKey(fact('c', 'human', ['z'])))?.length // 2
+ * const index = indexByArity([createFact('a', 'human', ['x']), createFact('b', 'human', ['y'])])
+ * index.get(factToArityKey(createFact('c', 'human', ['z'])))?.length // 2
  * ```
  */
 export function indexByArity(facts: readonly Fact[]): Map<string, Fact[]> {
@@ -1119,11 +471,11 @@ export function termToKey(term: unknown, identities: Map<object, number>): strin
  *
  * @example
  * ```ts
- * import { fact, factToKey } from '@src/core'
+ * import { createFact, factToKey } from '@src/core'
  *
  * const identities = new Map<object, number>()
  * // Same predicate + terms → same key regardless of confidence:
- * factToKey(fact('a', 'p', ['x'], 1), identities) === factToKey(fact('b', 'p', ['x'], 0.5), identities)
+ * factToKey(createFact('a', 'p', ['x'], 1), identities) === factToKey(createFact('b', 'p', ['x'], 0.5), identities)
  * ```
  */
 export function factToKey(source: Fact, identities: Map<object, number>): string {
@@ -1156,10 +508,10 @@ export function factToKey(source: Fact, identities: Map<object, number>): string
  *
  * @example
  * ```ts
- * import { fact, matchFacts } from '@src/core'
+ * import { createFact, matchFacts } from '@src/core'
  *
- * matchFacts(fact('p', 'parent', ['?x', 'bob']), fact('f', 'parent', ['alice', 'bob'])) // { '?x': 'alice' }
- * matchFacts(fact('p', 'parent', ['?x']), fact('f', 'human', ['x']))                     // undefined — predicate
+ * matchFacts(createFact('p', 'parent', ['?x', 'bob']), createFact('f', 'parent', ['alice', 'bob'])) // { '?x': 'alice' }
+ * matchFacts(createFact('p', 'parent', ['?x']), createFact('f', 'human', ['x']))                    // undefined — predicate
  * ```
  */
 export function matchFacts(pattern: Fact, candidate: Fact): Record<string, unknown> | undefined {
@@ -1209,9 +561,9 @@ export function matchFacts(pattern: Fact, candidate: Fact): Record<string, unkno
  *
  * @example
  * ```ts
- * import { fact, instantiateFact } from '@src/core'
+ * import { createFact, instantiateFact } from '@src/core'
  *
- * instantiateFact(fact('c', 'mortal', ['?x']), { '?x': 'socrates' }).terms // ['socrates']
+ * instantiateFact(createFact('c', 'mortal', ['?x']), { '?x': 'socrates' }).terms // ['socrates']
  * ```
  */
 export function instantiateFact(source: Fact, bindings: Record<string, unknown>): Fact {
@@ -1245,10 +597,10 @@ export function instantiateFact(source: Fact, bindings: Record<string, unknown>)
  *
  * @example
  * ```ts
- * import { computePremiseConfidence, fact, indexByArity } from '@src/core'
+ * import { computePremiseConfidence, createFact, indexByArity } from '@src/core'
  *
- * const index = indexByArity([fact('f1', 'human', ['socrates'], 0.5)])
- * computePremiseConfidence([fact('p1', 'human', ['?x'])], index, {}) // 0.5
+ * const index = indexByArity([createFact('f1', 'human', ['socrates'], 0.5)])
+ * computePremiseConfidence([createFact('p1', 'human', ['?x'])], index, {}) // 0.5
  * ```
  */
 export function computePremiseConfidence(
@@ -1335,10 +687,10 @@ export function subjectToFacts(subject: Subject, trace: string[]): Fact[] {
  *
  * @example
  * ```ts
- * import { fact, findUnboundVariables, inference } from '@src/core'
+ * import { createFact, createInference, findUnboundVariables } from '@src/core'
  *
  * findUnboundVariables(
- * 	inference('i', 'I', [fact('p', 'human', ['?x'])], fact('c', 'mortal', ['?x', '?y'])),
+ * 	createInference('i', 'I', [createFact('p', 'human', ['?x'])], createFact('c', 'mortal', ['?x', '?y'])),
  * ) // ['?y'] — '?x' is bound by the premise, '?y' is not
  * ```
  */
@@ -1384,10 +736,10 @@ export function findUnboundVariables(source: Inference): readonly string[] {
  *
  * @example
  * ```ts
- * import { containsVariable, operation, variable, constant } from '@src/core'
+ * import { containsVariable, createConstant, createOperation, createVariable } from '@src/core'
  *
- * containsVariable(operation('add', variable('x'), constant(1)), 'x', {})        // true
- * containsVariable(operation('add', variable('x'), constant(1)), 'x', { x: 5 })  // false — pre-bound
+ * containsVariable(createOperation('add', createVariable('x'), createConstant(1)), 'x', {})       // true
+ * containsVariable(createOperation('add', createVariable('x'), createConstant(1)), 'x', { x: 5 }) // false — pre-bound
  * ```
  */
 export function containsVariable(
@@ -1522,8 +874,8 @@ export function invertRight(operator: MathOperation, value: number, leftValue: n
  * ```ts
  * import { applyOperation } from '@src/core'
  *
- * applyOperation('add', 2, 3)     // 5
- * applyOperation('divide', 1, 0)  // NaN
+ * applyOperation('add', 2, 3)    // 5
+ * applyOperation('divide', 1, 0) // NaN
  * ```
  */
 export function applyOperation(operator: string, left: number, right: number): number {
@@ -1577,10 +929,10 @@ export function applyOperation(operator: string, left: number, right: number): n
  *
  * @example
  * ```ts
- * import { atom, compound, extractAtoms } from '@src/core'
+ * import { createAtom, createCompound, extractAtoms } from '@src/core'
  *
- * extractAtoms(atom('a', 'equals', 1)).length                                   // 1
- * extractAtoms(compound('and', [atom('a', 'equals', 1), atom('b', 'equals', 2)])).length // 2
+ * extractAtoms(createAtom('a', 'equals', 1)).length                                                        // 1
+ * extractAtoms(createCompound('and', [createAtom('a', 'equals', 1), createAtom('b', 'equals', 2)])).length // 2
  * ```
  */
 export function extractAtoms(expression: Expression): readonly Atom[] {
@@ -1622,10 +974,10 @@ export function extractAtoms(expression: Expression): readonly Atom[] {
  *
  * @example
  * ```ts
- * import { atom, compound, extractConclusions } from '@src/core'
+ * import { createAtom, createCompound, extractConclusions } from '@src/core'
  *
- * extractConclusions(atom('adult', 'equals', true))                              // { adult: true }
- * extractConclusions(compound('and', [atom('a', 'equals', 1), atom('b', 'equals', 2)])) // { a: 1, b: 2 }
+ * extractConclusions(createAtom('adult', 'equals', true))                                                 // { adult: true }
+ * extractConclusions(createCompound('and', [createAtom('a', 'equals', 1), createAtom('b', 'equals', 2)])) // { a: 1, b: 2 }
  * ```
  */
 export function extractConclusions(expression: Expression): Record<string, unknown> {
@@ -1661,11 +1013,11 @@ export function extractConclusions(expression: Expression): Record<string, unkno
  *
  * @example
  * ```ts
- * import { atom, findOverlayMismatches, rule } from '@src/core'
+ * import { createAtom, createRule, findOverlayMismatches } from '@src/core'
  *
  * findOverlayMismatches([
- * 	rule('a', [], atom(['address', 'city'], 'equals', 'NYC')),
- * 	rule('b', [atom(['address', 'city'], 'equals', 'NYC')], atom('eligible', 'equals', true)),
+ * 	createRule('a', [], createAtom(['address', 'city'], 'equals', 'NYC')),
+ * 	createRule('b', [createAtom(['address', 'city'], 'equals', 'NYC')], createAtom('eligible', 'equals', true)),
  * ]) // ['address.city']
  * ```
  */
@@ -1713,9 +1065,9 @@ export function findOverlayMismatches(rules: readonly Rule[]): readonly string[]
  *
  * @example
  * ```ts
- * import { buildErrorResult, logicalDefinition } from '@src/core'
+ * import { buildErrorResult, createLogicalDefinition } from '@src/core'
  *
- * const result = buildErrorResult(logicalDefinition('e', 'E', []), 'boom')
+ * const result = buildErrorResult(createLogicalDefinition('e', 'E', []), 'boom')
  * // { reasoning: 'logical', conclusion: false, rules: [], count: 0, success: false, trace: [], errors: ['boom'] }
  * ```
  */
@@ -1778,9 +1130,9 @@ export function buildErrorResult(definition: Definition, message: string): Reaso
  *
  * @example
  * ```ts
- * import { definitionToEnvelope, logicalDefinition } from '@src/core'
+ * import { createLogicalDefinition, definitionToEnvelope } from '@src/core'
  *
- * 'rules' in definitionToEnvelope(logicalDefinition('e', 'E', [])) // false
+ * 'rules' in definitionToEnvelope(createLogicalDefinition('e', 'E', [])) // false
  * ```
  */
 export function definitionToEnvelope(definition: Definition): DefinitionEnvelope {
@@ -1838,8 +1190,8 @@ export function definitionToEnvelope(definition: Definition): DefinitionEnvelope
  * ```ts
  * import { appendById } from '@src/core'
  *
- * appendById([{ id: 'a' }, { id: 'b' }], { id: 'c' })         // [a, b, c]
- * appendById([{ id: 'a' }, { id: 'b' }], { id: 'c' }, 'a')    // [a, c, b]
+ * appendById([{ id: 'a' }, { id: 'b' }], { id: 'c' })      // [a, b, c]
+ * appendById([{ id: 'a' }, { id: 'b' }], { id: 'c' }, 'a') // [a, c, b]
  * ```
  */
 export function appendById<T extends { readonly id: string }>(
@@ -2027,9 +1379,9 @@ export function mergeById<T extends { readonly id: string }>(
  *
  * @example
  * ```ts
- * import { appendGroup, factorGroup, quantitativeDefinition } from '@src/core'
+ * import { appendGroup, createFactorGroup, createQuantitativeDefinition } from '@src/core'
  *
- * appendGroup(quantitativeDefinition('risk', 'Risk', []), factorGroup('g1', 'sum', []))
+ * appendGroup(createQuantitativeDefinition('risk', 'Risk', []), createFactorGroup('g1', 'sum', []))
  * ```
  */
 export function appendGroup(
@@ -2052,9 +1404,9 @@ export function appendGroup(
  *
  * @example
  * ```ts
- * import { factorGroup, prependGroup, quantitativeDefinition } from '@src/core'
+ * import { createFactorGroup, createQuantitativeDefinition, prependGroup } from '@src/core'
  *
- * prependGroup(quantitativeDefinition('risk', 'Risk', []), factorGroup('g1', 'sum', []))
+ * prependGroup(createQuantitativeDefinition('risk', 'Risk', []), createFactorGroup('g1', 'sum', []))
  * ```
  */
 export function prependGroup(
@@ -2075,10 +1427,10 @@ export function prependGroup(
  *
  * @example
  * ```ts
- * import { factorGroup, quantitativeDefinition, replaceGroup } from '@src/core'
+ * import { createFactorGroup, createQuantitativeDefinition, replaceGroup } from '@src/core'
  *
- * const definition = quantitativeDefinition('risk', 'Risk', [factorGroup('g1', 'sum', [])])
- * replaceGroup(definition, factorGroup('g1', 'product', []))
+ * const definition = createQuantitativeDefinition('risk', 'Risk', [createFactorGroup('g1', 'sum', [])])
+ * replaceGroup(definition, createFactorGroup('g1', 'product', []))
  * ```
  */
 export function replaceGroup(
@@ -2098,9 +1450,9 @@ export function replaceGroup(
  *
  * @example
  * ```ts
- * import { factorGroup, quantitativeDefinition, removeGroup } from '@src/core'
+ * import { createFactorGroup, createQuantitativeDefinition, removeGroup } from '@src/core'
  *
- * const definition = quantitativeDefinition('risk', 'Risk', [factorGroup('g1', 'sum', [])])
+ * const definition = createQuantitativeDefinition('risk', 'Risk', [createFactorGroup('g1', 'sum', [])])
  * removeGroup(definition, 'g1').groups // []
  * ```
  */
@@ -2129,9 +1481,9 @@ export function removeGroup(
  *
  * @example
  * ```ts
- * import { appendFactor, factorGroup, staticFactor } from '@src/core'
+ * import { appendFactor, createFactorGroup, createStaticFactor } from '@src/core'
  *
- * appendFactor(factorGroup('g1', 'sum', []), staticFactor('f1', 10))
+ * appendFactor(createFactorGroup('g1', 'sum', []), createStaticFactor('f1', 10))
  * ```
  */
 export function appendFactor(group: FactorGroup, factor: Factor, target?: string): FactorGroup {
@@ -2150,9 +1502,9 @@ export function appendFactor(group: FactorGroup, factor: Factor, target?: string
  *
  * @example
  * ```ts
- * import { factorGroup, prependFactor, staticFactor } from '@src/core'
+ * import { createFactorGroup, createStaticFactor, prependFactor } from '@src/core'
  *
- * prependFactor(factorGroup('g1', 'sum', []), staticFactor('f1', 10))
+ * prependFactor(createFactorGroup('g1', 'sum', []), createStaticFactor('f1', 10))
  * ```
  */
 export function prependFactor(group: FactorGroup, factor: Factor, target?: string): FactorGroup {
@@ -2169,10 +1521,10 @@ export function prependFactor(group: FactorGroup, factor: Factor, target?: strin
  *
  * @example
  * ```ts
- * import { factorGroup, replaceFactor, staticFactor } from '@src/core'
+ * import { createFactorGroup, createStaticFactor, replaceFactor } from '@src/core'
  *
- * const group = factorGroup('g1', 'sum', [staticFactor('f1', 10)])
- * replaceFactor(group, staticFactor('f1', 20))
+ * const group = createFactorGroup('g1', 'sum', [createStaticFactor('f1', 10)])
+ * replaceFactor(group, createStaticFactor('f1', 20))
  * ```
  */
 export function replaceFactor(group: FactorGroup, factor: Factor): FactorGroup {
@@ -2189,9 +1541,9 @@ export function replaceFactor(group: FactorGroup, factor: Factor): FactorGroup {
  *
  * @example
  * ```ts
- * import { factorGroup, removeFactor, staticFactor } from '@src/core'
+ * import { createFactorGroup, createStaticFactor, removeFactor } from '@src/core'
  *
- * removeFactor(factorGroup('g1', 'sum', [staticFactor('f1', 10)]), 'f1').factors // []
+ * removeFactor(createFactorGroup('g1', 'sum', [createStaticFactor('f1', 10)]), 'f1').factors // []
  * ```
  */
 export function removeFactor(group: FactorGroup, id: string): FactorGroup {
@@ -2210,24 +1562,24 @@ export function removeFactor(group: FactorGroup, id: string): FactorGroup {
  * conclusion.
  *
  * @param definition - The definition to insert into
- * @param source - The rule to insert
+ * @param rule - The rule to insert
  * @param target - Optional rule id to insert immediately after
  * @returns A fresh definition with the rule inserted
  * @throws {@link ReasonError} `'TARGET'` when `target` names no existing rule
  *
  * @example
  * ```ts
- * import { appendRule, atom, logicalDefinition, rule } from '@src/core'
+ * import { appendRule, createAtom, createLogicalDefinition, createRule } from '@src/core'
  *
- * appendRule(logicalDefinition('e', 'E', []), rule('r1', [], atom('a', 'equals', true)))
+ * appendRule(createLogicalDefinition('e', 'E', []), createRule('r1', [], createAtom('a', 'equals', true)))
  * ```
  */
 export function appendRule(
 	definition: LogicalDefinition,
-	source: Rule,
+	rule: Rule,
 	target?: string,
 ): LogicalDefinition {
-	return { ...definition, rules: appendById(definition.rules, source, target) }
+	return { ...definition, rules: appendById(definition.rules, rule, target) }
 }
 
 /**
@@ -2235,44 +1587,44 @@ export function appendRule(
  * at the start, or immediately before `target`.
  *
  * @param definition - The definition to insert into
- * @param source - The rule to insert
+ * @param rule - The rule to insert
  * @param target - Optional rule id to insert immediately before
  * @returns A fresh definition with the rule inserted
  * @throws {@link ReasonError} `'TARGET'` when `target` names no existing rule
  *
  * @example
  * ```ts
- * import { atom, logicalDefinition, prependRule, rule } from '@src/core'
+ * import { createAtom, createLogicalDefinition, createRule, prependRule } from '@src/core'
  *
- * prependRule(logicalDefinition('e', 'E', []), rule('r1', [], atom('a', 'equals', true)))
+ * prependRule(createLogicalDefinition('e', 'E', []), createRule('r1', [], createAtom('a', 'equals', true)))
  * ```
  */
 export function prependRule(
 	definition: LogicalDefinition,
-	source: Rule,
+	rule: Rule,
 	target?: string,
 ): LogicalDefinition {
-	return { ...definition, rules: prependById(definition.rules, source, target) }
+	return { ...definition, rules: prependById(definition.rules, rule, target) }
 }
 
 /**
- * Swaps the rule sharing `source.id` in a {@link LogicalDefinition} IN PLACE,
+ * Swaps the rule sharing `rule.id` in a {@link LogicalDefinition} IN PLACE,
  * preserving its position (appends when absent).
  *
  * @param definition - The definition to update
- * @param source - The replacement rule
+ * @param rule - The replacement rule
  * @returns A fresh definition with the rule replaced
  *
  * @example
  * ```ts
- * import { atom, logicalDefinition, replaceRule, rule } from '@src/core'
+ * import { createAtom, createLogicalDefinition, createRule, replaceRule } from '@src/core'
  *
- * const definition = logicalDefinition('e', 'E', [rule('r1', [], atom('a', 'equals', true))])
- * replaceRule(definition, rule('r1', [], atom('a', 'equals', false)))
+ * const definition = createLogicalDefinition('e', 'E', [createRule('r1', [], createAtom('a', 'equals', true))])
+ * replaceRule(definition, createRule('r1', [], createAtom('a', 'equals', false)))
  * ```
  */
-export function replaceRule(definition: LogicalDefinition, source: Rule): LogicalDefinition {
-	return { ...definition, rules: replaceById(definition.rules, source) }
+export function replaceRule(definition: LogicalDefinition, rule: Rule): LogicalDefinition {
+	return { ...definition, rules: replaceById(definition.rules, rule) }
 }
 
 /**
@@ -2285,9 +1637,9 @@ export function replaceRule(definition: LogicalDefinition, source: Rule): Logica
  *
  * @example
  * ```ts
- * import { atom, logicalDefinition, removeRule, rule } from '@src/core'
+ * import { createAtom, createLogicalDefinition, createRule, removeRule } from '@src/core'
  *
- * const definition = logicalDefinition('e', 'E', [rule('r1', [], atom('a', 'equals', true))])
+ * const definition = createLogicalDefinition('e', 'E', [createRule('r1', [], createAtom('a', 'equals', true))])
  * removeRule(definition, 'r1').rules // []
  * ```
  */
@@ -2306,24 +1658,24 @@ export function removeRule(definition: LogicalDefinition, id: string): LogicalDe
  * rounded solution feeds forward.
  *
  * @param definition - The definition to insert into
- * @param source - The equation to insert
+ * @param equation - The equation to insert
  * @param target - Optional equation id to insert immediately after
  * @returns A fresh definition with the equation inserted
  * @throws {@link ReasonError} `'TARGET'` when `target` names no existing equation
  *
  * @example
  * ```ts
- * import { appendEquation, constant, equation, symbolicDefinition, variable } from '@src/core'
+ * import { appendEquation, createConstant, createEquation, createSymbolicDefinition, createVariable } from '@src/core'
  *
- * appendEquation(symbolicDefinition('e', 'E', []), equation('e1', variable('x'), constant(1), 'x'))
+ * appendEquation(createSymbolicDefinition('e', 'E', []), createEquation('e1', createVariable('x'), createConstant(1), 'x'))
  * ```
  */
 export function appendEquation(
 	definition: SymbolicDefinition,
-	source: Equation,
+	equation: Equation,
 	target?: string,
 ): SymbolicDefinition {
-	return { ...definition, equations: appendById(definition.equations, source, target) }
+	return { ...definition, equations: appendById(definition.equations, equation, target) }
 }
 
 /**
@@ -2331,47 +1683,47 @@ export function appendEquation(
  * then-insert at the start, or immediately before `target`.
  *
  * @param definition - The definition to insert into
- * @param source - The equation to insert
+ * @param equation - The equation to insert
  * @param target - Optional equation id to insert immediately before
  * @returns A fresh definition with the equation inserted
  * @throws {@link ReasonError} `'TARGET'` when `target` names no existing equation
  *
  * @example
  * ```ts
- * import { constant, equation, prependEquation, symbolicDefinition, variable } from '@src/core'
+ * import { createConstant, createEquation, createSymbolicDefinition, createVariable, prependEquation } from '@src/core'
  *
- * prependEquation(symbolicDefinition('e', 'E', []), equation('e1', variable('x'), constant(1), 'x'))
+ * prependEquation(createSymbolicDefinition('e', 'E', []), createEquation('e1', createVariable('x'), createConstant(1), 'x'))
  * ```
  */
 export function prependEquation(
 	definition: SymbolicDefinition,
-	source: Equation,
+	equation: Equation,
 	target?: string,
 ): SymbolicDefinition {
-	return { ...definition, equations: prependById(definition.equations, source, target) }
+	return { ...definition, equations: prependById(definition.equations, equation, target) }
 }
 
 /**
- * Swaps the equation sharing `source.id` in a {@link SymbolicDefinition} IN
+ * Swaps the equation sharing `equation.id` in a {@link SymbolicDefinition} IN
  * PLACE, preserving its position (appends when absent).
  *
  * @param definition - The definition to update
- * @param source - The replacement equation
+ * @param equation - The replacement equation
  * @returns A fresh definition with the equation replaced
  *
  * @example
  * ```ts
- * import { constant, equation, replaceEquation, symbolicDefinition, variable } from '@src/core'
+ * import { createConstant, createEquation, createSymbolicDefinition, createVariable, replaceEquation } from '@src/core'
  *
- * const definition = symbolicDefinition('e', 'E', [equation('e1', variable('x'), constant(1), 'x')])
- * replaceEquation(definition, equation('e1', variable('x'), constant(2), 'x'))
+ * const definition = createSymbolicDefinition('e', 'E', [createEquation('e1', createVariable('x'), createConstant(1), 'x')])
+ * replaceEquation(definition, createEquation('e1', createVariable('x'), createConstant(2), 'x'))
  * ```
  */
 export function replaceEquation(
 	definition: SymbolicDefinition,
-	source: Equation,
+	equation: Equation,
 ): SymbolicDefinition {
-	return { ...definition, equations: replaceById(definition.equations, source) }
+	return { ...definition, equations: replaceById(definition.equations, equation) }
 }
 
 /**
@@ -2384,9 +1736,9 @@ export function replaceEquation(
  *
  * @example
  * ```ts
- * import { constant, equation, removeEquation, symbolicDefinition, variable } from '@src/core'
+ * import { createConstant, createEquation, createSymbolicDefinition, createVariable, removeEquation } from '@src/core'
  *
- * const definition = symbolicDefinition('e', 'E', [equation('e1', variable('x'), constant(1), 'x')])
+ * const definition = createSymbolicDefinition('e', 'E', [createEquation('e1', createVariable('x'), createConstant(1), 'x')])
  * removeEquation(definition, 'e1').equations // []
  * ```
  */
@@ -2408,9 +1760,9 @@ export function removeEquation(definition: SymbolicDefinition, id: string): Symb
  *
  * @example
  * ```ts
- * import { addVariable, symbolicDefinition } from '@src/core'
+ * import { addVariable, createSymbolicDefinition } from '@src/core'
  *
- * addVariable(symbolicDefinition('e', 'E', []), 'x', 5).variables // { x: 5 }
+ * addVariable(createSymbolicDefinition('e', 'E', []), 'x', 5).variables // { x: 5 }
  * ```
  */
 export function addVariable(
@@ -2435,9 +1787,9 @@ export function addVariable(
  *
  * @example
  * ```ts
- * import { removeVariable, symbolicDefinition } from '@src/core'
+ * import { createSymbolicDefinition, removeVariable } from '@src/core'
  *
- * removeVariable(symbolicDefinition('e', 'E', [], { variables: { x: 5 } }), 'x').variables // {}
+ * removeVariable(createSymbolicDefinition('e', 'E', [], { variables: { x: 5 } }), 'x').variables // {}
  * ```
  */
 export function removeVariable(definition: SymbolicDefinition, name: string): SymbolicDefinition {
@@ -2457,24 +1809,24 @@ export function removeVariable(definition: SymbolicDefinition, name: string): Sy
  * id-keyed dedup.
  *
  * @param definition - The definition to insert into
- * @param source - The fact to insert
+ * @param fact - The fact to insert
  * @param target - Optional fact id to insert immediately after
  * @returns A fresh definition with the fact inserted
  * @throws {@link ReasonError} `'TARGET'` when `target` names no existing fact
  *
  * @example
  * ```ts
- * import { appendFact, fact, inferentialDefinition } from '@src/core'
+ * import { appendFact, createFact, createInferentialDefinition } from '@src/core'
  *
- * appendFact(inferentialDefinition('m', 'M', [], []), fact('f1', 'human', ['socrates']))
+ * appendFact(createInferentialDefinition('m', 'M', [], []), createFact('f1', 'human', ['socrates']))
  * ```
  */
 export function appendFact(
 	definition: InferentialDefinition,
-	source: Fact,
+	fact: Fact,
 	target?: string,
 ): InferentialDefinition {
-	return { ...definition, facts: appendById(definition.facts, source, target) }
+	return { ...definition, facts: appendById(definition.facts, fact, target) }
 }
 
 /**
@@ -2482,47 +1834,44 @@ export function appendFact(
  * insert at the start, or immediately before `target`.
  *
  * @param definition - The definition to insert into
- * @param source - The fact to insert
+ * @param fact - The fact to insert
  * @param target - Optional fact id to insert immediately before
  * @returns A fresh definition with the fact inserted
  * @throws {@link ReasonError} `'TARGET'` when `target` names no existing fact
  *
  * @example
  * ```ts
- * import { fact, inferentialDefinition, prependFact } from '@src/core'
+ * import { createFact, createInferentialDefinition, prependFact } from '@src/core'
  *
- * prependFact(inferentialDefinition('m', 'M', [], []), fact('f1', 'human', ['socrates']))
+ * prependFact(createInferentialDefinition('m', 'M', [], []), createFact('f1', 'human', ['socrates']))
  * ```
  */
 export function prependFact(
 	definition: InferentialDefinition,
-	source: Fact,
+	fact: Fact,
 	target?: string,
 ): InferentialDefinition {
-	return { ...definition, facts: prependById(definition.facts, source, target) }
+	return { ...definition, facts: prependById(definition.facts, fact, target) }
 }
 
 /**
- * Swaps the fact sharing `source.id` in an {@link InferentialDefinition} IN
+ * Swaps the fact sharing `fact.id` in an {@link InferentialDefinition} IN
  * PLACE, preserving its position (appends when absent).
  *
  * @param definition - The definition to update
- * @param source - The replacement fact
+ * @param fact - The replacement fact
  * @returns A fresh definition with the fact replaced
  *
  * @example
  * ```ts
- * import { fact, inferentialDefinition, replaceFact } from '@src/core'
+ * import { createFact, createInferentialDefinition, replaceFact } from '@src/core'
  *
- * const definition = inferentialDefinition('m', 'M', [fact('f1', 'human', ['socrates'])], [])
- * replaceFact(definition, fact('f1', 'human', ['plato']))
+ * const definition = createInferentialDefinition('m', 'M', [createFact('f1', 'human', ['socrates'])], [])
+ * replaceFact(definition, createFact('f1', 'human', ['plato']))
  * ```
  */
-export function replaceFact(
-	definition: InferentialDefinition,
-	source: Fact,
-): InferentialDefinition {
-	return { ...definition, facts: replaceById(definition.facts, source) }
+export function replaceFact(definition: InferentialDefinition, fact: Fact): InferentialDefinition {
+	return { ...definition, facts: replaceById(definition.facts, fact) }
 }
 
 /**
@@ -2535,9 +1884,9 @@ export function replaceFact(
  *
  * @example
  * ```ts
- * import { fact, inferentialDefinition, removeFact } from '@src/core'
+ * import { createFact, createInferentialDefinition, removeFact } from '@src/core'
  *
- * const definition = inferentialDefinition('m', 'M', [fact('f1', 'human', ['socrates'])], [])
+ * const definition = createInferentialDefinition('m', 'M', [createFact('f1', 'human', ['socrates'])], [])
  * removeFact(definition, 'f1').facts // []
  * ```
  */
@@ -2554,27 +1903,27 @@ export function removeFact(definition: InferentialDefinition, id: string): Infer
  * returns on first success.
  *
  * @param definition - The definition to insert into
- * @param source - The inference to insert
+ * @param inference - The inference to insert
  * @param target - Optional inference id to insert immediately after
  * @returns A fresh definition with the inference inserted
  * @throws {@link ReasonError} `'TARGET'` when `target` names no existing inference
  *
  * @example
  * ```ts
- * import { appendInference, fact, inference, inferentialDefinition } from '@src/core'
+ * import { appendInference, createFact, createInference, createInferentialDefinition } from '@src/core'
  *
  * appendInference(
- * 	inferentialDefinition('m', 'M', [], []),
- * 	inference('i1', [fact('p', 'human', ['?x'])], fact('c', 'mortal', ['?x'])),
+ * 	createInferentialDefinition('m', 'M', [], []),
+ * 	createInference('i1', [createFact('p', 'human', ['?x'])], createFact('c', 'mortal', ['?x'])),
  * )
  * ```
  */
 export function appendInference(
 	definition: InferentialDefinition,
-	source: Inference,
+	inference: Inference,
 	target?: string,
 ): InferentialDefinition {
-	return { ...definition, inferences: appendById(definition.inferences, source, target) }
+	return { ...definition, inferences: appendById(definition.inferences, inference, target) }
 }
 
 /**
@@ -2582,51 +1931,51 @@ export function appendInference(
  * dedup-then-insert at the start, or immediately before `target`.
  *
  * @param definition - The definition to insert into
- * @param source - The inference to insert
+ * @param inference - The inference to insert
  * @param target - Optional inference id to insert immediately before
  * @returns A fresh definition with the inference inserted
  * @throws {@link ReasonError} `'TARGET'` when `target` names no existing inference
  *
  * @example
  * ```ts
- * import { fact, inference, inferentialDefinition, prependInference } from '@src/core'
+ * import { createFact, createInference, createInferentialDefinition, prependInference } from '@src/core'
  *
  * prependInference(
- * 	inferentialDefinition('m', 'M', [], []),
- * 	inference('i1', [fact('p', 'human', ['?x'])], fact('c', 'mortal', ['?x'])),
+ * 	createInferentialDefinition('m', 'M', [], []),
+ * 	createInference('i1', [createFact('p', 'human', ['?x'])], createFact('c', 'mortal', ['?x'])),
  * )
  * ```
  */
 export function prependInference(
 	definition: InferentialDefinition,
-	source: Inference,
+	inference: Inference,
 	target?: string,
 ): InferentialDefinition {
-	return { ...definition, inferences: prependById(definition.inferences, source, target) }
+	return { ...definition, inferences: prependById(definition.inferences, inference, target) }
 }
 
 /**
- * Swaps the inference sharing `source.id` in an {@link InferentialDefinition}
+ * Swaps the inference sharing `inference.id` in an {@link InferentialDefinition}
  * IN PLACE, preserving its position (appends when absent).
  *
  * @param definition - The definition to update
- * @param source - The replacement inference
+ * @param inference - The replacement inference
  * @returns A fresh definition with the inference replaced
  *
  * @example
  * ```ts
- * import { fact, inference, inferentialDefinition, replaceInference } from '@src/core'
+ * import { createFact, createInference, createInferentialDefinition, replaceInference } from '@src/core'
  *
- * const original = inference('i1', [fact('p', 'human', ['?x'])], fact('c', 'mortal', ['?x']))
- * const definition = inferentialDefinition('m', 'M', [], [original])
- * replaceInference(definition, inference('i1', [], fact('c', 'mortal', ['?x'])))
+ * const original = createInference('i1', [createFact('p', 'human', ['?x'])], createFact('c', 'mortal', ['?x']))
+ * const definition = createInferentialDefinition('m', 'M', [], [original])
+ * replaceInference(definition, createInference('i1', [], createFact('c', 'mortal', ['?x'])))
  * ```
  */
 export function replaceInference(
 	definition: InferentialDefinition,
-	source: Inference,
+	inference: Inference,
 ): InferentialDefinition {
-	return { ...definition, inferences: replaceById(definition.inferences, source) }
+	return { ...definition, inferences: replaceById(definition.inferences, inference) }
 }
 
 /**
@@ -2639,10 +1988,10 @@ export function replaceInference(
  *
  * @example
  * ```ts
- * import { fact, inference, inferentialDefinition, removeInference } from '@src/core'
+ * import { createFact, createInference, createInferentialDefinition, removeInference } from '@src/core'
  *
- * const original = inference('i1', [fact('p', 'human', ['?x'])], fact('c', 'mortal', ['?x']))
- * removeInference(inferentialDefinition('m', 'M', [], [original]), 'i1').inferences // []
+ * const original = createInference('i1', [createFact('p', 'human', ['?x'])], createFact('c', 'mortal', ['?x']))
+ * removeInference(createInferentialDefinition('m', 'M', [], [original]), 'i1').inferences // []
  * ```
  */
 export function removeInference(
@@ -2677,10 +2026,10 @@ export function removeInference(
  *
  * @example
  * ```ts
- * import { factorGroup, mergeQuantitativeDefinition, quantitativeDefinition } from '@src/core'
+ * import { createFactorGroup, createQuantitativeDefinition, mergeQuantitativeDefinition } from '@src/core'
  *
- * const base = quantitativeDefinition('risk', 'Risk', [factorGroup('g1', 'sum', [])])
- * const incoming = quantitativeDefinition('risk', 'Risk v2', [factorGroup('g2', 'sum', [])])
+ * const base = createQuantitativeDefinition('risk', 'Risk', [createFactorGroup('g1', 'sum', [])])
+ * const incoming = createQuantitativeDefinition('risk', 'Risk v2', [createFactorGroup('g2', 'sum', [])])
  * mergeQuantitativeDefinition(base, incoming).groups.map((g) => g.id) // ['g2', 'g1']
  * ```
  */
@@ -2720,10 +2069,10 @@ export function mergeQuantitativeDefinition(
  *
  * @example
  * ```ts
- * import { atom, logicalDefinition, mergeLogicalDefinition, rule } from '@src/core'
+ * import { createAtom, createLogicalDefinition, createRule, mergeLogicalDefinition } from '@src/core'
  *
- * const base = logicalDefinition('e', 'E', [rule('r1', [], atom('a', 'equals', true))])
- * const incoming = logicalDefinition('e', 'E2', [rule('r2', [], atom('b', 'equals', true))])
+ * const base = createLogicalDefinition('e', 'E', [createRule('r1', [], createAtom('a', 'equals', true))])
+ * const incoming = createLogicalDefinition('e', 'E2', [createRule('r2', [], createAtom('b', 'equals', true))])
  * mergeLogicalDefinition(base, incoming).rules.map((r) => r.id) // ['r2', 'r1']
  * ```
  */
@@ -2759,10 +2108,10 @@ export function mergeLogicalDefinition(
  *
  * @example
  * ```ts
- * import { constant, equation, mergeSymbolicDefinition, symbolicDefinition, variable } from '@src/core'
+ * import { createConstant, createEquation, createSymbolicDefinition, createVariable, mergeSymbolicDefinition } from '@src/core'
  *
- * const base = symbolicDefinition('e', 'E', [], { variables: { x: 1 } })
- * const incoming = symbolicDefinition('e', 'E2', [equation('e1', variable('x'), constant(2), 'x')], {
+ * const base = createSymbolicDefinition('e', 'E', [], { variables: { x: 1 } })
+ * const incoming = createSymbolicDefinition('e', 'E2', [createEquation('e1', createVariable('x'), createConstant(2), 'x')], {
  * 	variables: { y: 2 },
  * })
  * mergeSymbolicDefinition(base, incoming).variables // { x: 1, y: 2 }
@@ -2799,10 +2148,10 @@ export function mergeSymbolicDefinition(
  *
  * @example
  * ```ts
- * import { fact, inferentialDefinition, mergeInferentialDefinition } from '@src/core'
+ * import { createFact, createInferentialDefinition, mergeInferentialDefinition } from '@src/core'
  *
- * const base = inferentialDefinition('m', 'M', [fact('f1', 'human', ['a'])], [])
- * const incoming = inferentialDefinition('m', 'M2', [fact('f2', 'human', ['b'])], [])
+ * const base = createInferentialDefinition('m', 'M', [createFact('f1', 'human', ['a'])], [])
+ * const incoming = createInferentialDefinition('m', 'M2', [createFact('f2', 'human', ['b'])], [])
  * mergeInferentialDefinition(base, incoming).facts.map((f) => f.id) // ['f2', 'f1']
  * ```
  */
@@ -2837,9 +2186,9 @@ export function mergeInferentialDefinition(
  *
  * @example
  * ```ts
- * import { clearQuantitativeDefinition, quantitativeDefinition } from '@src/core'
+ * import { clearQuantitativeDefinition, createQuantitativeDefinition } from '@src/core'
  *
- * const definition = quantitativeDefinition('risk', 'Risk', [], { precision: 2 })
+ * const definition = createQuantitativeDefinition('risk', 'Risk', [], { precision: 2 })
  * 'precision' in clearQuantitativeDefinition(definition, 'precision') // false
  * ```
  */
@@ -2860,9 +2209,9 @@ export function clearQuantitativeDefinition(
  *
  * @example
  * ```ts
- * import { clearLogicalDefinition, logicalDefinition } from '@src/core'
+ * import { clearLogicalDefinition, createLogicalDefinition } from '@src/core'
  *
- * const definition = logicalDefinition('e', 'E', [], { depth: 5 })
+ * const definition = createLogicalDefinition('e', 'E', [], { depth: 5 })
  * 'depth' in clearLogicalDefinition(definition, 'depth') // false
  * ```
  */
@@ -2883,9 +2232,9 @@ export function clearLogicalDefinition(
  *
  * @example
  * ```ts
- * import { clearSymbolicDefinition, symbolicDefinition } from '@src/core'
+ * import { clearSymbolicDefinition, createSymbolicDefinition } from '@src/core'
  *
- * const definition = symbolicDefinition('e', 'E', [], { precision: 2 })
+ * const definition = createSymbolicDefinition('e', 'E', [], { precision: 2 })
  * 'precision' in clearSymbolicDefinition(definition, 'precision') // false
  * ```
  */
@@ -2906,9 +2255,9 @@ export function clearSymbolicDefinition(
  *
  * @example
  * ```ts
- * import { clearInferentialDefinition, inferentialDefinition } from '@src/core'
+ * import { clearInferentialDefinition, createInferentialDefinition } from '@src/core'
  *
- * const definition = inferentialDefinition('m', 'M', [], [], { depth: 5 })
+ * const definition = createInferentialDefinition('m', 'M', [], [], { depth: 5 })
  * 'depth' in clearInferentialDefinition(definition, 'depth') // false
  * ```
  */

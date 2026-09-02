@@ -17,10 +17,10 @@ import { Collection } from './Collection.js'
  * by composition with the other list managers — plus its own {@link Emitter}
  * over {@link RuleManagerEventMap}. Rule order is LOAD-BEARING — the forward
  * conclusion is the LAST declared non-disabled rule, so `append` without a
- * `target` makes the new rule the conclusion. The write-only `collection`
- * setter is the owning builder's silent bulk re-seat channel (used by `merge`).
- * `destroy()` is idempotent and tears the emitter down LAST; any other call
- * after it throws `ReasonError('DESTROYED', …)`.
+ * `target` makes the new rule the conclusion. `seat` is the owning builder's
+ * silent bulk re-seat channel (used by `merge`). `destroy()` is idempotent and
+ * tears the emitter down LAST; any other call after it throws
+ * `ReasonError('DESTROYED', …)`.
  */
 export class RuleManager implements RuleManagerInterface {
 	readonly #rules: Collection<Rule>
@@ -33,10 +33,6 @@ export class RuleManager implements RuleManagerInterface {
 
 	get emitter(): EmitterInterface<RuleManagerEventMap> {
 		return this.#emitter
-	}
-
-	set collection(value: readonly Rule[]) {
-		this.#rules.seat(value)
 	}
 
 	rule(id: string): Rule | undefined {
@@ -65,6 +61,12 @@ export class RuleManager implements RuleManagerInterface {
 	remove(id: string): void {
 		this.#rules.remove(id)
 		this.#emitter.emit('remove', id)
+	}
+
+	// The owning builder's bulk re-seat channel — replaces the whole collection
+	// in one silent call (no per-element events); used by `merge`.
+	seat(items: readonly Rule[]): void {
+		this.#rules.seat(items)
 	}
 
 	destroy(): void {
