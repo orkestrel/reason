@@ -17,7 +17,7 @@ import { DEFAULT_REASON_BAIL, DEFAULT_VALIDATE } from './constants.js'
 import { ReasonError } from './errors.js'
 
 /**
- * The reasoning orchestrator — a thin router over registered
+ * Implements the reasoning orchestrator — a thin router over registered
  * {@link ReasonerInterface}s.
  *
  * @remarks

@@ -9,7 +9,7 @@ import { Emitter } from '@orkestrel/emitter'
 import { Collection } from './Collection.js'
 
 /**
- * The {@link FactManagerInterface} implementation — a self-owning, kind-free
+ * Implements the {@link FactManagerInterface} — a self-owning, kind-free
  * manager over an inferential definition's `facts`.
  *
  * @remarks

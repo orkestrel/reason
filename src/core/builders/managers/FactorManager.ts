@@ -12,7 +12,7 @@ import { appendFactor, prependFactor, removeFactor, replaceFactor } from '../../
 import { ReasonError } from '../../errors.js'
 
 /**
- * The {@link FactorManagerInterface} implementation — the sole DIVERGENT
+ * Implements the {@link FactorManagerInterface} — the sole DIVERGENT
  * manager: factors nest inside groups, so it holds NO collection state of its
  * own and threads a required `groupId` locator.
  *

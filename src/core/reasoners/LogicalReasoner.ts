@@ -26,8 +26,7 @@ import { ReasonError } from '../errors.js'
 import { Evaluator } from '../operators/Evaluator.js'
 
 /**
- * The logical reasoner — rule-based boolean deduction with forward or backward
- * chaining.
+ * Deduces booleans from rules with forward or backward chaining.
  *
  * @remarks
  * Forward chaining is a naive fixpoint capped at `depth` iterations: rules run

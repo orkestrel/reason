@@ -9,7 +9,7 @@ import { Emitter } from '@orkestrel/emitter'
 import { Collection } from './Collection.js'
 
 /**
- * The {@link EquationManagerInterface} implementation — a self-owning,
+ * Implements the {@link EquationManagerInterface} — a self-owning,
  * kind-free manager over a symbolic definition's `equations`.
  *
  * @remarks

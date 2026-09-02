@@ -4,7 +4,7 @@ import type { ReasonErrorCode } from './types.js'
 // machine-readable `code`, so a `catch` branches on `error.code`.
 
 /**
- * An error thrown by the reasons layer.
+ * Represents an error thrown by the reasons layer.
  *
  * @remarks
  * Thrown for: dispatching a definition no registered reasoner handles
@@ -34,10 +34,10 @@ export class ReasonError extends Error {
 }
 
 /**
- * Narrow an unknown caught value to a {@link ReasonError}.
+ * Narrows an unknown caught value to a {@link ReasonError}.
  *
  * @param value - The value to test (typically a `catch` binding)
- * @returns `true` when `value` is a {@link ReasonError}
+ * @returns True if `value` is a {@link ReasonError}; false otherwise
  *
  * @example
  * ```ts

@@ -22,7 +22,7 @@ import { Transformer } from '../operators/Transformer.js'
 import { Aggregator } from '../operators/Aggregator.js'
 
 /**
- * The quantitative reasoner — factor-based numeric scoring.
+ * Performs factor-based numeric scoring.
  *
  * @remarks
  * Each factor runs a fixed pipeline: checks gate (ALL met) → source resolve

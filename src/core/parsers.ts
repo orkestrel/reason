@@ -6,7 +6,7 @@ import { isDefinition } from './validators.js'
 // surface. Every parser here returns `T | undefined` and never throws.
 
 /**
- * Parse a JSON string into a {@link Definition}, failing safe to `undefined`.
+ * Parses a JSON string into a {@link Definition}, failing safe to `undefined`.
  *
  * @remarks
  * The safe inverse of the builders: `parseJSONAs` composed with the data guard

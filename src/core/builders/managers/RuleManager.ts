@@ -9,7 +9,7 @@ import { Emitter } from '@orkestrel/emitter'
 import { Collection } from './Collection.js'
 
 /**
- * The {@link RuleManagerInterface} implementation — a self-owning, kind-free
+ * Implements the {@link RuleManagerInterface} — a self-owning, kind-free
  * manager over a logical definition's `rules`.
  *
  * @remarks

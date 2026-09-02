@@ -2,7 +2,7 @@ import { appendById, prependById, removeById, replaceById } from '../../helpers.
 import { ReasonError } from '../../errors.js'
 
 /**
- * The id-keyed collection state five of the `DefinitionBuilder`'s managers
+ * Holds the id-keyed collection state five of the `DefinitionBuilder`'s managers
  * share — the array, the four placement verbs, the silent re-seat, and the
  * destroyed flag.
  *

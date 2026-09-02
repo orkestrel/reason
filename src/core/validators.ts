@@ -86,10 +86,10 @@ import { DEFINITION_BUILDER_BRAND, SUBJECT_BUILDER_BRAND } from './constants.js'
 // call so no non-exported member lingers.
 
 /**
- * Determine whether a value is a {@link Reasoning} literal.
+ * Determines whether a value is a {@link Reasoning} literal.
  *
  * @param value - The value to test
- * @returns `true` when `value` is one of the four reasoning strategies
+ * @returns True if `value` is one of the four reasoning strategies; false otherwise
  *
  * @example
  * ```ts
@@ -107,10 +107,10 @@ export const isReasoning: Guard<Reasoning> = literalOf(
 )
 
 /**
- * Determine whether a value is a {@link ChainingStrategy} literal.
+ * Determines whether a value is a {@link ChainingStrategy} literal.
  *
  * @param value - The value to test
- * @returns `true` when `value` is `'forward'` or `'backward'`
+ * @returns True if `value` is `'forward'` or `'backward'`; false otherwise
  *
  * @example
  * ```ts
@@ -123,10 +123,10 @@ export const isReasoning: Guard<Reasoning> = literalOf(
 export const isChainingStrategy: Guard<ChainingStrategy> = literalOf('forward', 'backward')
 
 /**
- * Determine whether a value is a {@link MathOperation} literal.
+ * Determines whether a value is a {@link MathOperation} literal.
  *
  * @param value - The value to test
- * @returns `true` when `value` is one of the thirteen math operations
+ * @returns True if `value` is one of the thirteen math operations; false otherwise
  *
  * @example
  * ```ts
@@ -153,10 +153,10 @@ export const isMathOperation: Guard<MathOperation> = literalOf(
 )
 
 /**
- * Determine whether a value is an {@link Aggregation} literal.
+ * Determines whether a value is an {@link Aggregation} literal.
  *
  * @param value - The value to test
- * @returns `true` when `value` is one of the five aggregations
+ * @returns True if `value` is one of the five aggregations; false otherwise
  *
  * @example
  * ```ts
@@ -175,10 +175,10 @@ export const isAggregation: Guard<Aggregation> = literalOf(
 )
 
 /**
- * Determine whether a value is a {@link Comparison} literal.
+ * Determines whether a value is a {@link Comparison} literal.
  *
  * @param value - The value to test
- * @returns `true` when `value` is one of the ten comparison operators
+ * @returns True if `value` is one of the ten comparison operators; false otherwise
  *
  * @example
  * ```ts
@@ -202,10 +202,10 @@ export const isComparison: Guard<Comparison> = literalOf(
 )
 
 /**
- * Determine whether a value is a {@link LogicalOperator} literal.
+ * Determines whether a value is a {@link LogicalOperator} literal.
  *
  * @param value - The value to test
- * @returns `true` when `value` is one of the five logical connectives
+ * @returns True if `value` is one of the five logical connectives; false otherwise
  *
  * @example
  * ```ts
@@ -224,11 +224,11 @@ export const isLogicalOperator: Guard<LogicalOperator> = literalOf(
 )
 
 /**
- * Determine whether a value is a {@link FieldPath} — a single string key or an
+ * Determines whether a value is a {@link FieldPath} — a single string key or an
  * array of keys descending into nested objects.
  *
  * @param value - The value to test
- * @returns `true` when `value` is a string or an array of strings
+ * @returns True if `value` is a string or an array of strings; false otherwise
  *
  * @example
  * ```ts
@@ -242,11 +242,11 @@ export const isLogicalOperator: Guard<LogicalOperator> = literalOf(
 export const isFieldPath: Guard<FieldPath> = orOf(isString, arrayOf(isString))
 
 /**
- * Determine whether a value is a record whose every value is a finite number —
+ * Determines whether a value is a record whose every value is a finite number —
  * the shape of a `LookupSource.table` and a `SymbolicDefinition.variables`.
  *
  * @param value - The value to test
- * @returns `true` when `value` is a plain record of finite numbers
+ * @returns True if `value` is a plain record of finite numbers; false otherwise
  *
  * @example
  * ```ts
@@ -262,7 +262,7 @@ export const isNumberRecord: Guard<Readonly<Record<string, number>>> = whereOf(
 )
 
 /**
- * Determine whether a value is a {@link Check} — a field / operator / value
+ * Determines whether a value is a {@link Check} — a field / operator / value
  * predicate.
  *
  * @remarks
@@ -270,7 +270,7 @@ export const isNumberRecord: Guard<Readonly<Record<string, number>>> = whereOf(
  * PRESENT — exact-record semantics reject a check that lost its `value` key.
  *
  * @param value - The value to test
- * @returns `true` when `value` is a well-formed check
+ * @returns True if `value` is a well-formed check; false otherwise
  *
  * @example
  * ```ts
@@ -289,10 +289,10 @@ export function isCheck(value: unknown): value is Check {
 }
 
 /**
- * Determine whether a value is a {@link Transform} — one math step.
+ * Determines whether a value is a {@link Transform} — one math step.
  *
  * @param value - The value to test
- * @returns `true` when `value` is a well-formed transform
+ * @returns True if `value` is a well-formed transform; false otherwise
  *
  * @example
  * ```ts
@@ -308,10 +308,10 @@ export function isTransform(value: unknown): value is Transform {
 }
 
 /**
- * Determine whether a value is a {@link Bounds} — an inclusive numeric clamp.
+ * Determines whether a value is a {@link Bounds} — an inclusive numeric clamp.
  *
  * @param value - The value to test
- * @returns `true` when `value` is a well-formed bounds record (both sides optional)
+ * @returns True if `value` is a well-formed bounds record (both sides optional); false otherwise
  *
  * @example
  * ```ts
@@ -327,11 +327,11 @@ export function isBounds(value: unknown): value is Bounds {
 }
 
 /**
- * Determine whether a value is a {@link FactorRange} — one band of a range
+ * Determines whether a value is a {@link FactorRange} — one band of a range
  * source.
  *
  * @param value - The value to test
- * @returns `true` when `value` is a well-formed factor range
+ * @returns True if `value` is a well-formed factor range; false otherwise
  *
  * @example
  * ```ts
@@ -346,11 +346,11 @@ export function isFactorRange(value: unknown): value is FactorRange {
 }
 
 /**
- * Determine whether a value is a {@link Source} — any of the four factor
+ * Determines whether a value is a {@link Source} — any of the four factor
  * sources, discriminated by `origin`.
  *
  * @param value - The value to test
- * @returns `true` when `value` is a well-formed static / field / lookup / range source
+ * @returns True if `value` is a well-formed static / field / lookup / range source; false otherwise
  *
  * @example
  * ```ts
@@ -371,11 +371,11 @@ export function isSource(value: unknown): value is Source {
 }
 
 /**
- * Determine whether a value is a {@link Factor} — one scored input of a
+ * Determines whether a value is a {@link Factor} — one scored input of a
  * quantitative group.
  *
  * @param value - The value to test
- * @returns `true` when `value` is a well-formed factor
+ * @returns True if `value` is a well-formed factor; false otherwise
  *
  * @example
  * ```ts
@@ -416,11 +416,11 @@ export function isFactor(value: unknown): value is Factor {
 }
 
 /**
- * Determine whether a value is a {@link FactorGroup} — a group of factors
+ * Determines whether a value is a {@link FactorGroup} — a group of factors
  * aggregated into one value.
  *
  * @param value - The value to test
- * @returns `true` when `value` is a well-formed factor group
+ * @returns True if `value` is a well-formed factor group; false otherwise
  *
  * @example
  * ```ts
@@ -448,7 +448,7 @@ export function isFactorGroup(value: unknown): value is FactorGroup {
 }
 
 /**
- * Determine whether a value is an {@link Expression} — a boolean expression
+ * Determines whether a value is an {@link Expression} — a boolean expression
  * tree of atoms and compounds, discriminated by `form`.
  *
  * @remarks
@@ -458,7 +458,7 @@ export function isFactorGroup(value: unknown): value is FactorGroup {
  * bound is rejected, not validated.
  *
  * @param value - The value to test
- * @returns `true` when `value` is a well-formed expression tree
+ * @returns True if `value` is a well-formed expression tree; false otherwise
  *
  * @example
  * ```ts
@@ -481,10 +481,10 @@ export function isExpression(value: unknown): value is Expression {
 }
 
 /**
- * Determine whether a value is a {@link Rule} — premises and a conclusion.
+ * Determines whether a value is a {@link Rule} — premises and a conclusion.
  *
  * @param value - The value to test
- * @returns `true` when `value` is a well-formed rule
+ * @returns True if `value` is a well-formed rule; false otherwise
  *
  * @example
  * ```ts
@@ -510,7 +510,7 @@ export function isRule(value: unknown): value is Rule {
 }
 
 /**
- * Determine whether a value is a {@link SymbolicExpression} — an algebraic
+ * Determines whether a value is a {@link SymbolicExpression} — an algebraic
  * expression tree of variables, constants, and operations, discriminated by
  * `form`.
  *
@@ -521,7 +521,7 @@ export function isRule(value: unknown): value is Rule {
  * bound is rejected, not validated.
  *
  * @param value - The value to test
- * @returns `true` when `value` is a well-formed symbolic expression tree
+ * @returns True if `value` is a well-formed symbolic expression tree; false otherwise
  *
  * @example
  * ```ts
@@ -548,11 +548,11 @@ export function isSymbolicExpression(value: unknown): value is SymbolicExpressio
 }
 
 /**
- * Determine whether a value is an {@link Equation} — `left = right`, solved for
+ * Determines whether a value is an {@link Equation} — `left = right`, solved for
  * `target`.
  *
  * @param value - The value to test
- * @returns `true` when `value` is a well-formed equation
+ * @returns True if `value` is a well-formed equation; false otherwise
  *
  * @example
  * ```ts
@@ -577,7 +577,7 @@ export function isEquation(value: unknown): value is Equation {
 }
 
 /**
- * Determine whether a value is a {@link Fact} — a predicate over positional
+ * Determines whether a value is a {@link Fact} — a predicate over positional
  * terms.
  *
  * @remarks
@@ -585,7 +585,7 @@ export function isEquation(value: unknown): value is Equation {
  * is a unification variable, anything else a constant.
  *
  * @param value - The value to test
- * @returns `true` when `value` is a well-formed fact
+ * @returns True if `value` is a well-formed fact; false otherwise
  *
  * @example
  * ```ts
@@ -603,11 +603,11 @@ export function isFact(value: unknown): value is Fact {
 }
 
 /**
- * Determine whether a value is an {@link Inference} — premise patterns and a
+ * Determines whether a value is an {@link Inference} — premise patterns and a
  * conclusion pattern.
  *
  * @param value - The value to test
- * @returns `true` when `value` is a well-formed inference
+ * @returns True if `value` is a well-formed inference; false otherwise
  *
  * @example
  * ```ts
@@ -633,10 +633,10 @@ export function isInference(value: unknown): value is Inference {
 }
 
 /**
- * Determine whether a value is a {@link QuantitativeDefinition}.
+ * Determines whether a value is a {@link QuantitativeDefinition}.
  *
  * @param value - The value to test
- * @returns `true` when `value` is a well-formed quantitative definition
+ * @returns True if `value` is a well-formed quantitative definition; false otherwise
  *
  * @example
  * ```ts
@@ -664,10 +664,10 @@ export function isQuantitativeDefinition(value: unknown): value is QuantitativeD
 }
 
 /**
- * Determine whether a value is a {@link LogicalDefinition}.
+ * Determines whether a value is a {@link LogicalDefinition}.
  *
  * @param value - The value to test
- * @returns `true` when `value` is a well-formed logical definition
+ * @returns True if `value` is a well-formed logical definition; false otherwise
  *
  * @example
  * ```ts
@@ -693,10 +693,10 @@ export function isLogicalDefinition(value: unknown): value is LogicalDefinition 
 }
 
 /**
- * Determine whether a value is a {@link SymbolicDefinition}.
+ * Determines whether a value is a {@link SymbolicDefinition}.
  *
  * @param value - The value to test
- * @returns `true` when `value` is a well-formed symbolic definition
+ * @returns True if `value` is a well-formed symbolic definition; false otherwise
  *
  * @example
  * ```ts
@@ -722,10 +722,10 @@ export function isSymbolicDefinition(value: unknown): value is SymbolicDefinitio
 }
 
 /**
- * Determine whether a value is an {@link InferentialDefinition}.
+ * Determines whether a value is an {@link InferentialDefinition}.
  *
  * @param value - The value to test
- * @returns `true` when `value` is a well-formed inferential definition
+ * @returns True if `value` is a well-formed inferential definition; false otherwise
  *
  * @example
  * ```ts
@@ -752,11 +752,11 @@ export function isInferentialDefinition(value: unknown): value is InferentialDef
 }
 
 /**
- * Determine whether a value is a {@link Definition} — any of the four
+ * Determines whether a value is a {@link Definition} — any of the four
  * definition shapes, discriminated by `reasoning`.
  *
  * @param value - The value to test
- * @returns `true` when `value` is a well-formed definition of any reasoning
+ * @returns True if `value` is a well-formed definition of any reasoning; false otherwise
  *
  * @example
  * ```ts
@@ -776,11 +776,11 @@ export function isDefinition(value: unknown): value is Definition {
 }
 
 /**
- * Determine whether a value is a {@link QuantitativeClearKey} — an optional
+ * Determines whether a value is a {@link QuantitativeClearKey} — an optional
  * field `clearQuantitativeDefinition` can delete.
  *
  * @param value - The value to test
- * @returns `true` when `value` names a clearable quantitative field
+ * @returns True if `value` names a clearable quantitative field; false otherwise
  *
  * @example
  * ```ts
@@ -798,11 +798,11 @@ export const isQuantitativeClearKey: Guard<QuantitativeClearKey> = literalOf(
 )
 
 /**
- * Determine whether a value is a {@link LogicalClearKey} — an optional field
+ * Determines whether a value is a {@link LogicalClearKey} — an optional field
  * `clearLogicalDefinition` can delete.
  *
  * @param value - The value to test
- * @returns `true` when `value` names a clearable logical field
+ * @returns True if `value` names a clearable logical field; false otherwise
  *
  * @example
  * ```ts
@@ -815,11 +815,11 @@ export const isQuantitativeClearKey: Guard<QuantitativeClearKey> = literalOf(
 export const isLogicalClearKey: Guard<LogicalClearKey> = literalOf('description', 'depth')
 
 /**
- * Determine whether a value is a {@link SymbolicClearKey} — an optional field
+ * Determines whether a value is a {@link SymbolicClearKey} — an optional field
  * `clearSymbolicDefinition` can delete.
  *
  * @param value - The value to test
- * @returns `true` when `value` names a clearable symbolic field
+ * @returns True if `value` names a clearable symbolic field; false otherwise
  *
  * @example
  * ```ts
@@ -832,11 +832,11 @@ export const isLogicalClearKey: Guard<LogicalClearKey> = literalOf('description'
 export const isSymbolicClearKey: Guard<SymbolicClearKey> = literalOf('description', 'precision')
 
 /**
- * Determine whether a value is an {@link InferentialClearKey} — an optional
+ * Determines whether a value is an {@link InferentialClearKey} — an optional
  * field `clearInferentialDefinition` can delete.
  *
  * @param value - The value to test
- * @returns `true` when `value` names a clearable inferential field
+ * @returns True if `value` names a clearable inferential field; false otherwise
  *
  * @example
  * ```ts
@@ -849,14 +849,14 @@ export const isSymbolicClearKey: Guard<SymbolicClearKey> = literalOf('descriptio
 export const isInferentialClearKey: Guard<InferentialClearKey> = literalOf('description', 'depth')
 
 /**
- * Determine whether a value is a result-side {@link Fact}.
+ * Determines whether a value is a result-side {@link Fact}.
  *
  * @remarks
  * Unlike the exact input guard {@link isFact}, this guard accepts unknown
  * members, class instances, and every JavaScript `number` confidence.
  *
  * @param value - The value to test
- * @returns `true` when every published fact member is valid for a result
+ * @returns True if every published fact member is valid for a result; false otherwise
  *
  * @example
  * ```ts
@@ -880,10 +880,10 @@ export function isResultFact(value: unknown): value is Fact {
 }
 
 /**
- * Determine whether a value is a {@link CheckResult}.
+ * Determines whether a value is a {@link CheckResult}.
  *
  * @param value - The value to test
- * @returns `true` when every published check-result member is valid
+ * @returns True if every published check-result member is valid; false otherwise
  *
  * @example
  * ```ts
@@ -907,10 +907,10 @@ export function isCheckResult(value: unknown): value is CheckResult {
 }
 
 /**
- * Determine whether a value is a {@link FactorResult}.
+ * Determines whether a value is a {@link FactorResult}.
  *
  * @param value - The value to test
- * @returns `true` when every published factor-result member is valid
+ * @returns True if every published factor-result member is valid; false otherwise
  *
  * @example
  * ```ts
@@ -936,10 +936,10 @@ export function isFactorResult(value: unknown): value is FactorResult {
 }
 
 /**
- * Determine whether a value is a {@link GroupResult}.
+ * Determines whether a value is a {@link GroupResult}.
  *
  * @param value - The value to test
- * @returns `true` when every published group-result member is valid
+ * @returns True if every published group-result member is valid; false otherwise
  *
  * @example
  * ```ts
@@ -962,10 +962,10 @@ export function isGroupResult(value: unknown): value is GroupResult {
 }
 
 /**
- * Determine whether a value is a {@link RuleResult}.
+ * Determines whether a value is a {@link RuleResult}.
  *
  * @param value - The value to test
- * @returns `true` when every published rule-result member is valid
+ * @returns True if every published rule-result member is valid; false otherwise
  *
  * @example
  * ```ts
@@ -988,7 +988,7 @@ export function isRuleResult(value: unknown): value is RuleResult {
 }
 
 /**
- * Determine whether a value is a depth-bounded, acyclic {@link ProofNode} tree.
+ * Determines whether a value is a depth-bounded, acyclic {@link ProofNode} tree.
  *
  * @remarks
  * Traversal is iterative and reuses `GUARD_DEPTH_LIMIT`. Active ancestors refuse cycles, and a
@@ -999,7 +999,7 @@ export function isRuleResult(value: unknown): value is RuleResult {
  * and sibling order do not affect the verdict.
  *
  * @param value - The value to test
- * @returns `true` when every proof node is valid within the runtime guard bound
+ * @returns True if every proof node is valid within the runtime guard bound; false otherwise
  *
  * @example
  * ```ts
@@ -1055,10 +1055,10 @@ export function isProofNode(value: unknown): value is ProofNode {
 }
 
 /**
- * Determine whether a value is a {@link QuantitativeResult}.
+ * Determines whether a value is a {@link QuantitativeResult}.
  *
  * @param value - The value to test
- * @returns `true` when every published quantitative-result member is valid
+ * @returns True if every published quantitative-result member is valid; false otherwise
  *
  * @example
  * ```ts
@@ -1084,10 +1084,10 @@ export function isQuantitativeResult(value: unknown): value is QuantitativeResul
 }
 
 /**
- * Determine whether a value is a {@link LogicalResult}.
+ * Determines whether a value is a {@link LogicalResult}.
  *
  * @param value - The value to test
- * @returns `true` when every published logical-result member is valid
+ * @returns True if every published logical-result member is valid; false otherwise
  *
  * @example
  * ```ts
@@ -1113,7 +1113,7 @@ export function isLogicalResult(value: unknown): value is LogicalResult {
 }
 
 /**
- * Determine whether a value is a {@link SymbolicResult}.
+ * Determines whether a value is a {@link SymbolicResult}.
  *
  * @remarks
  * `solutions` is checked across its OWN string-named members, enumerable or
@@ -1121,7 +1121,7 @@ export function isLogicalResult(value: unknown): value is LogicalResult {
  * accepted-prototype property, not to the record this guard certifies.
  *
  * @param value - The value to test
- * @returns `true` when every published symbolic-result member is valid
+ * @returns True if every published symbolic-result member is valid; false otherwise
  *
  * @example
  * ```ts
@@ -1152,10 +1152,10 @@ export function isSymbolicResult(value: unknown): value is SymbolicResult {
 }
 
 /**
- * Determine whether a value is an {@link InferentialResult}.
+ * Determines whether a value is an {@link InferentialResult}.
  *
  * @param value - The value to test
- * @returns `true` when every published inferential-result member is valid
+ * @returns True if every published inferential-result member is valid; false otherwise
  *
  * @example
  * ```ts
@@ -1181,10 +1181,10 @@ export function isInferentialResult(value: unknown): value is InferentialResult 
 }
 
 /**
- * Determine whether a value is any {@link ReasonResult} arm.
+ * Determines whether a value is any {@link ReasonResult} arm.
  *
  * @param value - The value to test
- * @returns `true` when one complete reasoning-result guard accepts the value
+ * @returns True if one complete reasoning-result guard accepts the value; false otherwise
  *
  * @example
  * ```ts
@@ -1204,10 +1204,10 @@ export function isReasonResult(value: unknown): value is ReasonResult {
 }
 
 /**
- * Determine whether a value is a {@link ReasonValidationResult}.
+ * Determines whether a value is a {@link ReasonValidationResult}.
  *
  * @param value - The value to test
- * @returns `true` when every published validation-result member is valid
+ * @returns True if every published validation-result member is valid; false otherwise
  *
  * @example
  * ```ts
@@ -1229,7 +1229,7 @@ export function isReasonValidationResult(value: unknown): value is ReasonValidat
 }
 
 /**
- * Determine whether a value is a `DefinitionBuilder` ENTITY — the brand-guarded
+ * Determines whether a value is a `DefinitionBuilder` ENTITY — the brand-guarded
  * stateful workspace, not the plain {@link Definition} data union.
  *
  * @remarks
@@ -1243,7 +1243,7 @@ export function isReasonValidationResult(value: unknown): value is ReasonValidat
  * never throw.
  *
  * @param value - The value to test
- * @returns `true` when `value` carries the `DefinitionBuilder` entity brand
+ * @returns True if `value` carries the `DefinitionBuilder` entity brand; false otherwise
  *
  * @example
  * ```ts
@@ -1260,7 +1260,7 @@ export function isDefinitionBuilder(value: unknown): value is DefinitionBuilderI
 }
 
 /**
- * Determine whether a value is a `SubjectBuilder` ENTITY — the brand-guarded
+ * Determines whether a value is a `SubjectBuilder` ENTITY — the brand-guarded
  * stateful workspace, not the plain {@link Subject} data record.
  *
  * @remarks
@@ -1270,7 +1270,7 @@ export function isDefinitionBuilder(value: unknown): value is DefinitionBuilderI
  * return `false`, never throw.
  *
  * @param value - The value to test
- * @returns `true` when `value` carries the `SubjectBuilder` entity brand
+ * @returns True if `value` carries the `SubjectBuilder` entity brand; false otherwise
  *
  * @example
  * ```ts

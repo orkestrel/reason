@@ -22,7 +22,7 @@ import { DEFAULT_PRECISION, INVERTIBLE_OPERATIONS, SYMBOLIC_ID } from '../consta
 import { ReasonError } from '../errors.js'
 
 /**
- * The symbolic reasoner — algebraic equation solving by variable isolation.
+ * Solves algebraic equations by variable isolation.
  *
  * @remarks
  * Bindings seed from `definition.variables`, then numeric subject fields (a

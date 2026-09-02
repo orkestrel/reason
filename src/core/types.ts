@@ -16,7 +16,7 @@ import type { DEFINITION_BUILDER_BRAND, SUBJECT_BUILDER_BRAND } from './constant
 // === Vocabulary
 
 /**
- * The four reasoning strategies — the axis a {@link Definition} /
+ * Names the four reasoning strategies — the axis a {@link Definition} /
  * {@link ReasonResult} discriminates on.
  *
  * @remarks
@@ -28,13 +28,13 @@ import type { DEFINITION_BUILDER_BRAND, SUBJECT_BUILDER_BRAND } from './constant
 export type Reasoning = 'quantitative' | 'logical' | 'symbolic' | 'inferential'
 
 /**
- * How a chaining reasoner walks its rules: `forward` (data-driven fixpoint) or
+ * Names how a chaining reasoner walks its rules: `forward` (data-driven fixpoint) or
  * `backward` (goal-driven proving).
  */
 export type ChainingStrategy = 'forward' | 'backward'
 
 /**
- * A math operation applied by the {@link TransformerInterface} and inside
+ * Names a math operation applied by the {@link TransformerInterface} and inside
  * {@link SymbolicExpression} trees.
  *
  * @remarks
@@ -57,7 +57,7 @@ export type MathOperation =
 	| 'abs'
 
 /**
- * How the {@link AggregatorInterface} reduces a list of numbers to one.
+ * Names how the {@link AggregatorInterface} reduces a list of numbers to one.
  *
  * @remarks
  * When weights apply: `sum` multiplies each value by its weight, `product`
@@ -67,7 +67,7 @@ export type MathOperation =
 export type Aggregation = 'sum' | 'product' | 'average' | 'minimum' | 'maximum'
 
 /**
- * The comparison a {@link Check} applies between a resolved subject field and
+ * Names the comparison a {@link Check} applies between a resolved subject field and
  * its expected value.
  *
  * @remarks
@@ -92,7 +92,7 @@ export type Comparison =
 	| 'outside'
 
 /**
- * A logical connective inside a compound {@link Expression}.
+ * Names a logical connective inside a compound {@link Expression}.
  *
  * @remarks
  * `not` reads only its first operand (empty operands are vacuously true);
@@ -102,7 +102,7 @@ export type Comparison =
 export type LogicalOperator = 'and' | 'or' | 'not' | 'implies' | 'xor'
 
 /**
- * The data record being reasoned about — a plain readonly bag of fields, read
+ * Represents the data record being reasoned about — a plain readonly bag of fields, read
  * by {@link FieldPath}.
  */
 export type Subject = Readonly<Record<string, unknown>>
@@ -110,8 +110,8 @@ export type Subject = Readonly<Record<string, unknown>>
 // === Checks, transforms & bounds
 
 /**
- * A single field predicate: resolve `field` from the subject and compare it to
- * `value` with `operator`.
+ * Represents a single field predicate: resolves `field` from the subject and compares it
+ * to `value` with `operator`.
  *
  * @remarks
  * `field` follows the {@link FieldPath} idiom — a string is ONE key (never
@@ -125,7 +125,7 @@ export interface Check {
 }
 
 /**
- * The outcome of one {@link Check} evaluation.
+ * Represents the outcome of one {@link Check} evaluation.
  *
  * @remarks
  * `actual` is the resolved subject value (possibly `undefined`); `error` is set
@@ -140,7 +140,7 @@ export interface CheckResult {
 }
 
 /**
- * One math step applied to a number by the {@link TransformerInterface}.
+ * Represents one math step applied to a number by the {@link TransformerInterface}.
  *
  * @remarks
  * The absent-`operand` default is operation-specific: `1` for `multiply` /
@@ -153,7 +153,7 @@ export interface Transform {
 }
 
 /**
- * An inclusive numeric clamp — either side may be absent (unbounded).
+ * Represents an inclusive numeric clamp — either side may be absent (unbounded).
  */
 export interface Bounds {
 	readonly minimum?: number
@@ -162,14 +162,14 @@ export interface Bounds {
 
 // === Quantitative definitions
 
-/** A factor source yielding a fixed number. */
+/** Represents a factor source yielding a fixed number. */
 export interface StaticSource {
 	readonly origin: 'static'
 	readonly value: number
 }
 
 /**
- * A factor source reading a subject field as a number.
+ * Represents a factor source reading a subject field as a number.
  *
  * @remarks
  * The field is coerced with the contracts `parseNumber` — a finite number
@@ -183,7 +183,7 @@ export interface FieldSource {
 }
 
 /**
- * A factor source mapping a subject field through a lookup table.
+ * Represents a factor source mapping a subject field through a lookup table.
  *
  * @remarks
  * A missing or `null` field takes the factor's `fallback` directly (never the
@@ -198,7 +198,7 @@ export interface LookupSource {
 }
 
 /**
- * A factor source banding a numeric subject field through ordered ranges.
+ * Represents a factor source banding a numeric subject field through ordered ranges.
  *
  * @remarks
  * Ranges are scanned in order and the FIRST match wins. A range without
@@ -211,17 +211,17 @@ export interface RangeSource {
 	readonly ranges: readonly FactorRange[]
 }
 
-/** The four factor sources, discriminated by `origin`. */
+/** Represents the four factor sources, discriminated by `origin`. */
 export type Source = StaticSource | FieldSource | LookupSource | RangeSource
 
-/** One band of a {@link RangeSource} — an optional inclusive bounds test and the value it yields. */
+/** Represents one band of a {@link RangeSource} — an optional inclusive bounds test and the value it yields. */
 export interface FactorRange {
 	readonly bounds?: Bounds
 	readonly value: number
 }
 
 /**
- * One scored input of a quantitative group.
+ * Represents one scored input of a quantitative group.
  *
  * @remarks
  * Evaluated as a pipeline: `checks` gate (ALL must be met) → `source` resolve
@@ -248,7 +248,7 @@ export interface Factor {
 }
 
 /**
- * A group of factors aggregated into one value.
+ * Represents a group of factors aggregated into one value.
  *
  * @remarks
  * The group value is `base` (default `0`) plus the aggregation of its APPLIED
@@ -271,7 +271,7 @@ export interface FactorGroup {
 }
 
 /**
- * A quantitative (factor-based numeric scoring) definition.
+ * Defines factor-based numeric scoring.
  *
  * @remarks
  * The final value is `base` (default `0`) plus the aggregation of the applied
@@ -292,24 +292,24 @@ export interface QuantitativeDefinition {
 
 // === Logical definitions
 
-/** A leaf boolean expression — one {@link Check} against the subject. */
+/** Represents a leaf boolean expression — one {@link Check} against the subject. */
 export interface Atom {
 	readonly form: 'atom'
 	readonly check: Check
 }
 
-/** A compound boolean expression — a {@link LogicalOperator} over nested operands. */
+/** Represents a compound boolean expression — a {@link LogicalOperator} over nested operands. */
 export interface Compound {
 	readonly form: 'compound'
 	readonly operator: LogicalOperator
 	readonly operands: readonly Expression[]
 }
 
-/** A boolean expression tree, discriminated by `form`. */
+/** Represents a boolean expression tree, discriminated by `form`. */
 export type Expression = Atom | Compound
 
 /**
- * One deduction rule: when ALL `premises` hold, the `conclusion`'s atoms are
+ * Represents one deduction rule: when ALL `premises` hold, the `conclusion`'s atoms are
  * asserted as derived facts.
  *
  * @remarks
@@ -329,7 +329,7 @@ export interface Rule {
 }
 
 /**
- * A logical (rule-based deduction) definition.
+ * Defines rule-based deduction.
  *
  * @remarks
  * `strategy` picks forward fixpoint chaining or backward goal-driven proving;
@@ -347,20 +347,20 @@ export interface LogicalDefinition {
 
 // === Symbolic definitions
 
-/** A symbolic expression leaf naming a variable. */
+/** Represents a symbolic expression leaf naming a variable. */
 export interface Variable {
 	readonly form: 'variable'
 	readonly name: string
 }
 
-/** A symbolic expression leaf holding a fixed number. */
+/** Represents a symbolic expression leaf holding a fixed number. */
 export interface Constant {
 	readonly form: 'constant'
 	readonly value: number
 }
 
 /**
- * A symbolic operation node.
+ * Represents a symbolic operation node.
  *
  * @remarks
  * `right` is absent for unary operators (`round` / `ceil` / `floor` / `abs`)
@@ -373,11 +373,11 @@ export interface Operation {
 	readonly right?: SymbolicExpression
 }
 
-/** An algebraic expression tree, discriminated by `form`. */
+/** Represents an algebraic expression tree, discriminated by `form`. */
 export type SymbolicExpression = Variable | Constant | Operation
 
 /**
- * One equation `left = right`, solved for the `target` variable.
+ * Represents one equation `left = right`, solved for the `target` variable.
  *
  * @remarks
  * When `target` is unbound and appears on exactly one side, it is isolated
@@ -394,7 +394,7 @@ export interface Equation {
 }
 
 /**
- * A symbolic (equation-solving) definition.
+ * Defines equation-solving.
  *
  * @remarks
  * `variables` seeds the bindings; numeric subject fields OVERRIDE same-named
@@ -415,7 +415,7 @@ export interface SymbolicDefinition {
 // === Inferential definitions
 
 /**
- * One fact: a `predicate` over positional `terms`.
+ * Represents one fact: a `predicate` over positional `terms`.
  *
  * @remarks
  * A string term starting with `?` is a unification variable (the prefix is
@@ -430,7 +430,7 @@ export interface Fact {
 }
 
 /**
- * One inference rule: when every premise pattern unifies against known facts
+ * Represents one inference rule: when every premise pattern unifies against known facts
  * (with consistent variable bindings), the instantiated `conclusion` is
  * derived.
  *
@@ -450,7 +450,7 @@ export interface Inference {
 }
 
 /**
- * An inferential (fact-derivation) definition.
+ * Defines fact-derivation.
  *
  * @remarks
  * `facts` is the base knowledge; scalar subject fields are additionally
@@ -469,7 +469,7 @@ export interface InferentialDefinition {
 	readonly depth?: number
 }
 
-/** Any reasoning definition, discriminated by `reasoning`. */
+/** Represents any reasoning definition, discriminated by `reasoning`. */
 export type Definition =
 	| QuantitativeDefinition
 	| LogicalDefinition
@@ -479,7 +479,7 @@ export type Definition =
 // === Results
 
 /**
- * One factor's evaluation outcome.
+ * Represents one factor's evaluation outcome.
  *
  * @remarks
  * `raw` is the resolved source value before transforms / clamping (absent when
@@ -496,7 +496,7 @@ export interface FactorResult {
 }
 
 /**
- * One group's evaluation outcome — its clamped value and the per-factor
+ * Represents one group's evaluation outcome — its clamped value and the per-factor
  * results (disabled factors omitted entirely).
  *
  * @remarks
@@ -513,7 +513,7 @@ export interface GroupResult {
 }
 
 /**
- * The outcome of quantitative reasoning.
+ * Represents the outcome of quantitative reasoning.
  *
  * @remarks
  * `count` tallies the applied groups. `success` is `false` whenever any error
@@ -531,7 +531,7 @@ export interface QuantitativeResult {
 }
 
 /**
- * One rule's evaluation outcome.
+ * Represents one rule's evaluation outcome.
  *
  * @remarks
  * `applied` and `conclusion` are always equal — both mean "all premises held".
@@ -545,7 +545,7 @@ export interface RuleResult {
 }
 
 /**
- * The outcome of logical reasoning.
+ * Represents the outcome of logical reasoning.
  *
  * @remarks
  * `conclusion` is the LAST evaluated rule's conclusion (`false` when no rule
@@ -563,7 +563,7 @@ export interface LogicalResult {
 }
 
 /**
- * The outcome of symbolic reasoning — final bindings keyed by each equation's
+ * Represents the outcome of symbolic reasoning — final bindings keyed by each equation's
  * `target` (a failed equation's target still appears when bound elsewhere).
  */
 export interface SymbolicResult {
@@ -575,7 +575,7 @@ export interface SymbolicResult {
 }
 
 /**
- * One node of a backward-chaining proof tree.
+ * Represents one node of a backward-chaining proof tree.
  *
  * @remarks
  * `fact` is the proved fact's / goal's id; `inference` is set when the node was
@@ -591,7 +591,7 @@ export interface ProofNode {
 }
 
 /**
- * The outcome of inferential reasoning.
+ * Represents the outcome of inferential reasoning.
  *
  * @remarks
  * `derived` lists the newly derived facts (deriving nothing is still success);
@@ -607,11 +607,11 @@ export interface InferentialResult {
 	readonly errors: readonly string[]
 }
 
-/** Any reasoning result, discriminated by `reasoning`. */
+/** Represents any reasoning result, discriminated by `reasoning`. */
 export type ReasonResult = QuantitativeResult | LogicalResult | SymbolicResult | InferentialResult
 
 /**
- * The outcome of validating a definition — hard `errors` (definition unusable)
+ * Represents the outcome of validating a definition — hard `errors` (definition unusable)
  * and soft `warnings` (suspicious but runnable). `valid` is `true` exactly when
  * `errors` is empty.
  *
@@ -632,7 +632,7 @@ export interface ReasonValidationResult {
 // === Operator options
 
 /**
- * Options for `createEvaluator` / the `Evaluator` constructor.
+ * Configures `createEvaluator` / the `Evaluator` constructor.
  *
  * @remarks
  * `id` — the evaluator's identity string (defaults to `EVALUATOR_ID`).
@@ -642,7 +642,7 @@ export interface EvaluatorOptions {
 }
 
 /**
- * Options for `createTransformer` / the `Transformer` constructor.
+ * Configures `createTransformer` / the `Transformer` constructor.
  *
  * @remarks
  * `id` — the transformer's identity string (defaults to `TRANSFORMER_ID`).
@@ -652,7 +652,7 @@ export interface TransformerOptions {
 }
 
 /**
- * Options for `createAggregator` / the `Aggregator` constructor.
+ * Configures `createAggregator` / the `Aggregator` constructor.
  *
  * @remarks
  * `id` — the aggregator's identity string (defaults to `AGGREGATOR_ID`).
@@ -664,7 +664,7 @@ export interface AggregatorOptions {
 // === Reasoner options
 
 /**
- * Options for `createQuantitativeReasoner` / the `QuantitativeReasoner`
+ * Configures `createQuantitativeReasoner` / the `QuantitativeReasoner`
  * constructor.
  *
  * @remarks
@@ -680,7 +680,7 @@ export interface QuantitativeReasonerOptions {
 }
 
 /**
- * Options for `createLogicalReasoner` / the `LogicalReasoner` constructor.
+ * Configures `createLogicalReasoner` / the `LogicalReasoner` constructor.
  *
  * @remarks
  * `id` — the reasoner's identity string (defaults to `LOGICAL_ID`).
@@ -693,7 +693,7 @@ export interface LogicalReasonerOptions {
 }
 
 /**
- * Options for `createSymbolicReasoner` / the `SymbolicReasoner` constructor.
+ * Configures `createSymbolicReasoner` / the `SymbolicReasoner` constructor.
  *
  * @remarks
  * `id` — the reasoner's identity string (defaults to `SYMBOLIC_ID`).
@@ -703,7 +703,7 @@ export interface SymbolicReasonerOptions {
 }
 
 /**
- * Options for `createInferentialReasoner` / the `InferentialReasoner`
+ * Configures `createInferentialReasoner` / the `InferentialReasoner`
  * constructor.
  *
  * @remarks
@@ -761,7 +761,7 @@ export interface AggregatorInterface {
 }
 
 /**
- * A reasoning strategy adapter — one per {@link Reasoning}.
+ * Declares a reasoning strategy adapter — one per {@link Reasoning}.
  *
  * @remarks
  * `reason` throws a `ReasonError` (`MISMATCH`) when handed a definition of a
@@ -780,7 +780,7 @@ export interface ReasonerInterface {
 }
 
 /**
- * A machine-readable `ReasonError` code.
+ * Names a machine-readable `ReasonError` code.
  *
  * @remarks
  * `MISSING` — no reasoner registered for the definition's reasoning.
@@ -806,7 +806,7 @@ export type ReasonErrorCode =
 	| 'OPERATOR'
 
 /**
- * The push observation surface of a {@link ReasonInterface}.
+ * Represents the push observation surface of a {@link ReasonInterface}.
  *
  * @remarks
  * `register` fires when a reasoner is registered (carrying its reasoning);
@@ -817,18 +817,18 @@ export type ReasonErrorCode =
  * listener routes to the `error` OPTION handler, never onto this map.
  */
 export type ReasonEventMap = {
-	/** A reasoner was registered — carries its reasoning. */
+	/** Fires when a reasoner is registered — carries its reasoning. */
 	readonly register: readonly [reasoning: Reasoning]
-	/** A reasoning run succeeded — carries the produced result. */
+	/** Fires when a reasoning run succeeds — carries the produced result. */
 	readonly reason: readonly [result: ReasonResult]
-	/** A reasoner threw — carries the raw thrown value. */
+	/** Fires when a reasoner throws — carries the raw thrown value. */
 	readonly error: readonly [error: unknown]
-	/** The orchestrator was destroyed. */
+	/** Fires when the orchestrator is destroyed. */
 	readonly destroy: readonly []
 }
 
 /**
- * Options for `createReason` / the `Reason` constructor.
+ * Configures `createReason` / the `Reason` constructor.
  *
  * @remarks
  * `reasoners` — the initial registry (a later entry of the same reasoning
@@ -847,7 +847,7 @@ export interface ReasonOptions {
 }
 
 /**
- * The reasoning orchestrator — a thin router over registered
+ * Declares the reasoning orchestrator — a thin router over registered
  * {@link ReasonerInterface}s.
  *
  * @remarks
@@ -892,7 +892,7 @@ export interface ReasonInterface {
 // call (no per-element events).
 
 /**
- * The {@link DefinitionBuilderInterface} manager over a quantitative
+ * Declares the {@link DefinitionBuilderInterface} manager over a quantitative
  * definition's `groups` — a self-owning, kind-free collection manager.
  *
  * @remarks
@@ -912,22 +912,22 @@ export interface GroupManagerInterface {
 	destroy(): void
 }
 
-/** The push observation surface of a {@link GroupManagerInterface}. */
+/** Represents the push observation surface of a {@link GroupManagerInterface}. */
 export type GroupManagerEventMap = {
-	/** A group was appended — carries its id. */
+	/** Fires when a group is appended — carries its id. */
 	readonly append: readonly [id: string]
-	/** A group was prepended — carries its id. */
+	/** Fires when a group is prepended — carries its id. */
 	readonly prepend: readonly [id: string]
-	/** A group was replaced in place — carries its id. */
+	/** Fires when a group is replaced in place — carries its id. */
 	readonly replace: readonly [id: string]
-	/** A group was removed — carries its id. */
+	/** Fires when a group is removed — carries its id. */
 	readonly remove: readonly [id: string]
-	/** The manager was destroyed. */
+	/** Fires when the manager is destroyed. */
 	readonly destroy: readonly []
 }
 
 /**
- * Options for `createGroupManager` / the `GroupManager` constructor.
+ * Configures `createGroupManager` / the `GroupManager` constructor.
  *
  * @remarks
  * `groups` — the initial collection (defaults to empty). `on` — initial event
@@ -940,7 +940,7 @@ export interface GroupManagerOptions {
 }
 
 /**
- * The {@link DefinitionBuilderInterface} manager over a `FactorGroup`'s
+ * Declares the {@link DefinitionBuilderInterface} manager over a `FactorGroup`'s
  * `factors`, threaded through the required `groupId` locator (a factor lives
  * inside its group).
  *
@@ -965,22 +965,22 @@ export interface FactorManagerInterface {
 	destroy(): void
 }
 
-/** The push observation surface of a {@link FactorManagerInterface}. */
+/** Represents the push observation surface of a {@link FactorManagerInterface}. */
 export type FactorManagerEventMap = {
-	/** A factor was appended — carries its id. */
+	/** Fires when a factor is appended — carries its id. */
 	readonly append: readonly [id: string]
-	/** A factor was prepended — carries its id. */
+	/** Fires when a factor is prepended — carries its id. */
 	readonly prepend: readonly [id: string]
-	/** A factor was replaced in place — carries its id. */
+	/** Fires when a factor is replaced in place — carries its id. */
 	readonly replace: readonly [id: string]
-	/** A factor was removed — carries its id. */
+	/** Fires when a factor is removed — carries its id. */
 	readonly remove: readonly [id: string]
-	/** The manager was destroyed. */
+	/** Fires when the manager is destroyed. */
 	readonly destroy: readonly []
 }
 
 /**
- * Options for `createFactorManager` / the `FactorManager` constructor.
+ * Configures `createFactorManager` / the `FactorManager` constructor.
  *
  * @remarks
  * The sibling `GroupManagerInterface` reference is a constructor argument, not
@@ -993,7 +993,7 @@ export interface FactorManagerOptions {
 }
 
 /**
- * The {@link DefinitionBuilderInterface} manager over a logical definition's
+ * Declares the {@link DefinitionBuilderInterface} manager over a logical definition's
  * `rules` — a self-owning, kind-free collection manager.
  *
  * @remarks
@@ -1013,22 +1013,22 @@ export interface RuleManagerInterface {
 	destroy(): void
 }
 
-/** The push observation surface of a {@link RuleManagerInterface}. */
+/** Represents the push observation surface of a {@link RuleManagerInterface}. */
 export type RuleManagerEventMap = {
-	/** A rule was appended — carries its id. */
+	/** Fires when a rule is appended — carries its id. */
 	readonly append: readonly [id: string]
-	/** A rule was prepended — carries its id. */
+	/** Fires when a rule is prepended — carries its id. */
 	readonly prepend: readonly [id: string]
-	/** A rule was replaced in place — carries its id. */
+	/** Fires when a rule is replaced in place — carries its id. */
 	readonly replace: readonly [id: string]
-	/** A rule was removed — carries its id. */
+	/** Fires when a rule is removed — carries its id. */
 	readonly remove: readonly [id: string]
-	/** The manager was destroyed. */
+	/** Fires when the manager is destroyed. */
 	readonly destroy: readonly []
 }
 
 /**
- * Options for `createRuleManager` / the `RuleManager` constructor.
+ * Configures `createRuleManager` / the `RuleManager` constructor.
  *
  * @remarks
  * `rules` — the initial collection (defaults to empty). `on` — initial event
@@ -1041,7 +1041,7 @@ export interface RuleManagerOptions {
 }
 
 /**
- * The {@link DefinitionBuilderInterface} manager over a symbolic definition's
+ * Declares the {@link DefinitionBuilderInterface} manager over a symbolic definition's
  * `equations` — a self-owning, kind-free collection manager.
  *
  * @remarks
@@ -1060,22 +1060,22 @@ export interface EquationManagerInterface {
 	destroy(): void
 }
 
-/** The push observation surface of an {@link EquationManagerInterface}. */
+/** Represents the push observation surface of an {@link EquationManagerInterface}. */
 export type EquationManagerEventMap = {
-	/** An equation was appended — carries its id. */
+	/** Fires when an equation is appended — carries its id. */
 	readonly append: readonly [id: string]
-	/** An equation was prepended — carries its id. */
+	/** Fires when an equation is prepended — carries its id. */
 	readonly prepend: readonly [id: string]
-	/** An equation was replaced in place — carries its id. */
+	/** Fires when an equation is replaced in place — carries its id. */
 	readonly replace: readonly [id: string]
-	/** An equation was removed — carries its id. */
+	/** Fires when an equation is removed — carries its id. */
 	readonly remove: readonly [id: string]
-	/** The manager was destroyed. */
+	/** Fires when the manager is destroyed. */
 	readonly destroy: readonly []
 }
 
 /**
- * Options for `createEquationManager` / the `EquationManager` constructor.
+ * Configures `createEquationManager` / the `EquationManager` constructor.
  *
  * @remarks
  * `equations` — the initial collection (defaults to empty). `on` — initial
@@ -1088,7 +1088,7 @@ export interface EquationManagerOptions {
 }
 
 /**
- * The {@link DefinitionBuilderInterface} manager over an inferential
+ * Declares the {@link DefinitionBuilderInterface} manager over an inferential
  * definition's `facts` — a self-owning, kind-free collection manager.
  */
 export interface FactManagerInterface {
@@ -1103,22 +1103,22 @@ export interface FactManagerInterface {
 	destroy(): void
 }
 
-/** The push observation surface of a {@link FactManagerInterface}. */
+/** Represents the push observation surface of a {@link FactManagerInterface}. */
 export type FactManagerEventMap = {
-	/** A fact was appended — carries its id. */
+	/** Fires when a fact is appended — carries its id. */
 	readonly append: readonly [id: string]
-	/** A fact was prepended — carries its id. */
+	/** Fires when a fact is prepended — carries its id. */
 	readonly prepend: readonly [id: string]
-	/** A fact was replaced in place — carries its id. */
+	/** Fires when a fact is replaced in place — carries its id. */
 	readonly replace: readonly [id: string]
-	/** A fact was removed — carries its id. */
+	/** Fires when a fact is removed — carries its id. */
 	readonly remove: readonly [id: string]
-	/** The manager was destroyed. */
+	/** Fires when the manager is destroyed. */
 	readonly destroy: readonly []
 }
 
 /**
- * Options for `createFactManager` / the `FactManager` constructor.
+ * Configures `createFactManager` / the `FactManager` constructor.
  *
  * @remarks
  * `facts` — the initial collection (defaults to empty). `on` — initial event
@@ -1131,7 +1131,7 @@ export interface FactManagerOptions {
 }
 
 /**
- * The {@link DefinitionBuilderInterface} manager over an inferential
+ * Declares the {@link DefinitionBuilderInterface} manager over an inferential
  * definition's `inferences` — a self-owning, kind-free collection manager.
  *
  * @remarks
@@ -1150,22 +1150,22 @@ export interface InferenceManagerInterface {
 	destroy(): void
 }
 
-/** The push observation surface of an {@link InferenceManagerInterface}. */
+/** Represents the push observation surface of an {@link InferenceManagerInterface}. */
 export type InferenceManagerEventMap = {
-	/** An inference was appended — carries its id. */
+	/** Fires when an inference is appended — carries its id. */
 	readonly append: readonly [id: string]
-	/** An inference was prepended — carries its id. */
+	/** Fires when an inference is prepended — carries its id. */
 	readonly prepend: readonly [id: string]
-	/** An inference was replaced in place — carries its id. */
+	/** Fires when an inference is replaced in place — carries its id. */
 	readonly replace: readonly [id: string]
-	/** An inference was removed — carries its id. */
+	/** Fires when an inference is removed — carries its id. */
 	readonly remove: readonly [id: string]
-	/** The manager was destroyed. */
+	/** Fires when the manager is destroyed. */
 	readonly destroy: readonly []
 }
 
 /**
- * Options for `createInferenceManager` / the `InferenceManager` constructor.
+ * Configures `createInferenceManager` / the `InferenceManager` constructor.
  *
  * @remarks
  * `inferences` — the initial collection (defaults to empty). `on` — initial
@@ -1178,7 +1178,7 @@ export interface InferenceManagerOptions {
 }
 
 /**
- * The {@link DefinitionBuilderInterface} manager over a symbolic definition's
+ * Declares the {@link DefinitionBuilderInterface} manager over a symbolic definition's
  * `variables` — a name-keyed unordered record, so `add` / `remove` are the
  * only write verbs (no placement). A self-owning, kind-free manager.
  */
@@ -1193,23 +1193,23 @@ export interface VariableManagerInterface {
 }
 
 /**
- * The push observation surface of a {@link VariableManagerInterface}.
+ * Represents the push observation surface of a {@link VariableManagerInterface}.
  *
  * @remarks
  * `variables` is a name-keyed record with no placement, so the honest verbs
  * are `add` / `remove` — each carries the variable NAME.
  */
 export type VariableManagerEventMap = {
-	/** A variable was upserted — carries its name. */
+	/** Fires when a variable is upserted — carries its name. */
 	readonly add: readonly [name: string]
-	/** A variable was removed — carries its name. */
+	/** Fires when a variable is removed — carries its name. */
 	readonly remove: readonly [name: string]
-	/** The manager was destroyed. */
+	/** Fires when the manager is destroyed. */
 	readonly destroy: readonly []
 }
 
 /**
- * Options for `createVariableManager` / the `VariableManager` constructor.
+ * Configures `createVariableManager` / the `VariableManager` constructor.
  *
  * @remarks
  * `variables` — the initial record (defaults to empty). `on` — initial event
@@ -1224,7 +1224,7 @@ export interface VariableManagerOptions {
 // === Definitions & subjects capability layer — entities
 
 /**
- * The scalar-only projection of each definition kind — the {@link DefinitionBuilderInterface}
+ * Represents the scalar-only projection of each definition kind — the {@link DefinitionBuilderInterface}
  * implementation's private envelope holds the non-collection fields; `build()` re-composes
  * the kind's collections from the managers' plural accessors.
  */
@@ -1235,32 +1235,32 @@ export type DefinitionEnvelope =
 	| Omit<InferentialDefinition, 'facts' | 'inferences'>
 
 /**
- * The optional {@link QuantitativeDefinition} fields `clearQuantitativeDefinition`
+ * Names the optional {@link QuantitativeDefinition} fields `clearQuantitativeDefinition`
  * (and a quantitative {@link DefinitionBuilderInterface}'s `clear`) can delete.
  */
 export type QuantitativeClearKey = 'description' | 'base' | 'bounds' | 'precision'
 
 /**
- * The optional {@link LogicalDefinition} fields `clearLogicalDefinition` (and a
+ * Names the optional {@link LogicalDefinition} fields `clearLogicalDefinition` (and a
  * logical {@link DefinitionBuilderInterface}'s `clear`) can delete.
  */
 export type LogicalClearKey = 'description' | 'depth'
 
 /**
- * The optional {@link SymbolicDefinition} fields `clearSymbolicDefinition` (and
+ * Names the optional {@link SymbolicDefinition} fields `clearSymbolicDefinition` (and
  * a symbolic {@link DefinitionBuilderInterface}'s `clear`) can delete.
  */
 export type SymbolicClearKey = 'description' | 'precision'
 
 /**
- * The optional {@link InferentialDefinition} fields
+ * Names the optional {@link InferentialDefinition} fields
  * `clearInferentialDefinition` (and an inferential
  * {@link DefinitionBuilderInterface}'s `clear`) can delete.
  */
 export type InferentialClearKey = 'description' | 'depth'
 
 /**
- * One chaining pass of the `LogicalReasoner` — the overall `conclusion` plus
+ * Represents one chaining pass of the `LogicalReasoner` — the overall `conclusion` plus
  * the per-rule results the pass produced.
  *
  * @remarks
@@ -1273,7 +1273,7 @@ export interface LogicalChainingOutcome {
 }
 
 /**
- * One chaining pass of the `InferentialReasoner` — the facts the pass derived
+ * Represents one chaining pass of the `InferentialReasoner` — the facts the pass derived
  * plus the proof tree, when the pass produced one.
  *
  * @remarks
@@ -1287,7 +1287,7 @@ export interface InferentialChainingOutcome {
 }
 
 /**
- * The push observation surface of a {@link DefinitionBuilderInterface} — the
+ * Represents the push observation surface of a {@link DefinitionBuilderInterface} — the
  * builder-level lifecycle events; per-element mutation
  * events live on the individual managers' own emitters.
  *
@@ -1296,16 +1296,16 @@ export interface InferentialChainingOutcome {
  * key; `destroy` fires once on teardown.
  */
 export type DefinitionBuilderEventMap = {
-	/** The definition was reconciled with an incoming definition — carries the reasoning. */
+	/** Fires when the definition is reconciled with an incoming definition — carries the reasoning. */
 	readonly merge: readonly [reasoning: Reasoning]
-	/** An optional field was cleared — carries the field key. */
+	/** Fires when an optional field is cleared — carries the field key. */
 	readonly clear: readonly [key: string]
-	/** The entity was destroyed. */
+	/** Fires when the entity is destroyed. */
 	readonly destroy: readonly []
 }
 
 /**
- * A stateful workspace builder accumulating a {@link Definition} through seven
+ * Declares a stateful workspace builder accumulating a {@link Definition} through seven
  * always-present self-owning manager properties, taverna `AgentContext`-shaped:
  * a private scalar envelope plus one manager per collection.
  *
@@ -1344,7 +1344,7 @@ export interface DefinitionBuilderInterface {
 }
 
 /**
- * Options for `createDefinitionBuilder` / the `DefinitionBuilder` constructor.
+ * Configures `createDefinitionBuilder` / the `DefinitionBuilder` constructor.
  *
  * @remarks
  * `id` — overrides the seed definition's `id` (defaults to `seed.id`). Each of
@@ -1367,24 +1367,24 @@ export interface DefinitionBuilderOptions {
 }
 
 /**
- * The push observation surface of a {@link SubjectBuilderInterface} — five
+ * Represents the push observation surface of a {@link SubjectBuilderInterface} — five
  * verb-named events, no generic `change` / `status`.
  */
 export type SubjectBuilderEventMap = {
-	/** A field was upserted — carries its key and new value. */
+	/** Fires when a field is upserted — carries its key and new value. */
 	readonly set: readonly [key: string, value: unknown]
-	/** A field was removed — carries its key. */
+	/** Fires when a field is removed — carries its key. */
 	readonly remove: readonly [key: string]
-	/** The subject was reconciled with an incoming subject — carries the incoming record. */
+	/** Fires when the subject is reconciled with an incoming subject — carries the incoming record. */
 	readonly merge: readonly [incoming: Subject]
-	/** Every non-id field was removed. */
+	/** Fires when every non-id field is removed. */
 	readonly clear: readonly []
-	/** The entity was destroyed. */
+	/** Fires when the entity is destroyed. */
 	readonly destroy: readonly []
 }
 
 /**
- * A stateful workspace builder accumulating a {@link Subject}, taverna
+ * Declares a stateful workspace builder accumulating a {@link Subject}, taverna
  * `Workspace`-shaped: a single flat collection, no managers.
  *
  * @remarks
@@ -1424,7 +1424,7 @@ export interface SubjectBuilderInterface {
 }
 
 /**
- * Options for `createSubjectBuilder` / the `SubjectBuilder` constructor.
+ * Configures `createSubjectBuilder` / the `SubjectBuilder` constructor.
  *
  * @remarks
  * `id` — overrides the seed subject's `id` (defaults to `seed.id`); OPTIONAL

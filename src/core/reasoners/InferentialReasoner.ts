@@ -33,8 +33,7 @@ import {
 import { ReasonError } from '../errors.js'
 
 /**
- * The inferential reasoner — fact derivation with unification variables and
- * proof trees.
+ * Derives facts with unification variables and proof trees.
  *
  * @remarks
  * A string term starting with `?` is a unification variable — matching is

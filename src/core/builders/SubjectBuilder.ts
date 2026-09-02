@@ -12,7 +12,7 @@ import { SUBJECT_BUILDER_BRAND } from '../constants.js'
 import { ReasonError } from '../errors.js'
 
 /**
- * A stateful workspace builder accumulating a {@link Subject}, taverna
+ * Implements a stateful workspace builder accumulating a {@link Subject}, taverna
  * `Workspace`-shaped: a single flat collection, no managers —
  * a flat sibling of `Reason.ts`.
  *

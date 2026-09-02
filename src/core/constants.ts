@@ -5,7 +5,7 @@ import type { MathOperation } from './types.js'
 // defaults.
 
 /**
- * Default `bail` for the `Reason` orchestrator — a reasoner throw is rethrown
+ * Holds the default `bail` for the `Reason` orchestrator — a reasoner throw is rethrown
  * after the `error` emit.
  *
  * @remarks
@@ -14,32 +14,32 @@ import type { MathOperation } from './types.js'
  */
 export const DEFAULT_REASON_BAIL = true
 
-/** Default `validate` for the `Reason` orchestrator — per-call validation is skipped. */
+/** Holds the default `validate` for the `Reason` orchestrator — per-call validation is skipped. */
 export const DEFAULT_VALIDATE = false
 
 /**
- * Default `depth` for chaining definitions — the forward-iteration /
+ * Holds the default `depth` for chaining definitions — the forward-iteration /
  * backward-recursion cap of the logical and inferential reasoners.
  */
 export const DEFAULT_DEPTH = 10
 
-/** Default `base` added before aggregation, at both group and definition level. */
+/** Holds the default `base` added before aggregation, at both group and definition level. */
 export const DEFAULT_BASE = 0
 
-/** Default `precision` (decimal places) for quantitative values and symbolic solutions. */
+/** Holds the default `precision` (decimal places) for quantitative values and symbolic solutions. */
 export const DEFAULT_PRECISION = 4
 
-/** Default `confidence` for facts, inferences, and injected subject facts. */
+/** Holds the default `confidence` for facts, inferences, and injected subject facts. */
 export const DEFAULT_CONFIDENCE = 1
 
-/** Default factor `weight` at group aggregation. */
+/** Holds the default factor `weight` at group aggregation. */
 export const DEFAULT_WEIGHT = 1
 
-/** Default factor / rule `priority` — evaluation order is ascending and stable. */
+/** Holds the default factor / rule `priority` — evaluation order is ascending and stable. */
 export const DEFAULT_PRIORITY = 0
 
 /**
- * Decimal places a derived fact's confidence is rounded to during forward
+ * Holds the decimal places a derived fact's confidence is rounded to during forward
  * inferential chaining.
  *
  * @remarks
@@ -49,7 +49,7 @@ export const DEFAULT_PRIORITY = 0
 export const CONFIDENCE_PRECISION = 4
 
 /**
- * The math operations the symbolic reasoner can invert while isolating a
+ * Lists the math operations the symbolic reasoner can invert while isolating a
  * target variable — anything else (a `power`, an `abs`) fails the equation
  * with a non-invertible error.
  */
@@ -57,29 +57,29 @@ export const INVERTIBLE_OPERATIONS: ReadonlySet<MathOperation> = Object.freeze(
 	new Set<MathOperation>(['add', 'subtract', 'multiply', 'divide']),
 )
 
-/** Default `id` for an `Evaluator`. */
+/** Names the default `id` for an `Evaluator`. */
 export const EVALUATOR_ID = 'evaluator'
 
-/** Default `id` for a `Transformer`. */
+/** Names the default `id` for a `Transformer`. */
 export const TRANSFORMER_ID = 'transformer'
 
-/** Default `id` for an `Aggregator`. */
+/** Names the default `id` for an `Aggregator`. */
 export const AGGREGATOR_ID = 'aggregator'
 
-/** Default `id` for a `QuantitativeReasoner`. */
+/** Names the default `id` for a `QuantitativeReasoner`. */
 export const QUANTITATIVE_ID = 'quantitative'
 
-/** Default `id` for a `LogicalReasoner`. */
+/** Names the default `id` for a `LogicalReasoner`. */
 export const LOGICAL_ID = 'logical'
 
-/** Default `id` for a `SymbolicReasoner`. */
+/** Names the default `id` for a `SymbolicReasoner`. */
 export const SYMBOLIC_ID = 'symbolic'
 
-/** Default `id` for an `InferentialReasoner`. */
+/** Names the default `id` for an `InferentialReasoner`. */
 export const INFERENTIAL_ID = 'inferential'
 
 /**
- * The `DefinitionBuilder` entity brand — a `unique symbol` key carrying
+ * Holds the `DefinitionBuilder` entity brand — a `unique symbol` key carrying
  * `readonly true` on every `DefinitionBuilderInterface` instance.
  *
  * @remarks
@@ -91,7 +91,7 @@ export const INFERENTIAL_ID = 'inferential'
 export const DEFINITION_BUILDER_BRAND: unique symbol = Symbol('reasons.definitionBuilder')
 
 /**
- * The `SubjectBuilder` entity brand — a `unique symbol` key carrying
+ * Holds the `SubjectBuilder` entity brand — a `unique symbol` key carrying
  * `readonly true` on every `SubjectBuilderInterface` instance.
  *
  * @remarks

@@ -8,7 +8,7 @@ import { Emitter } from '@orkestrel/emitter'
 import { ReasonError } from '../../errors.js'
 
 /**
- * The {@link VariableManagerInterface} implementation — a self-owning,
+ * Implements the {@link VariableManagerInterface} — a self-owning,
  * kind-free manager over a symbolic definition's `variables`, a name-keyed
  * unordered record.
  *

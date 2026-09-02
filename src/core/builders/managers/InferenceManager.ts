@@ -9,7 +9,7 @@ import { Emitter } from '@orkestrel/emitter'
 import { Collection } from './Collection.js'
 
 /**
- * The {@link InferenceManagerInterface} implementation — a self-owning,
+ * Implements the {@link InferenceManagerInterface} — a self-owning,
  * kind-free manager over an inferential definition's `inferences`.
  *
  * @remarks

@@ -41,7 +41,7 @@ import { ReasonError } from './errors.js'
 // === Field display
 
 /**
- * Format a {@link FieldPath} for display — the single string key itself, or the
+ * Formats a {@link FieldPath} for display — the single string key itself, or the
  * array segments joined with `.`.
  *
  * @remarks
@@ -64,7 +64,7 @@ export function formatField(field: FieldPath): string {
 // === Numeric helpers
 
 /**
- * Clamp a number to inclusive {@link Bounds}.
+ * Clamps a number to inclusive {@link Bounds}.
  *
  * @remarks
  * An absent bound (or absent `bounds` entirely) never constrains that side.
@@ -225,7 +225,7 @@ export function resolveSource(
 }
 
 /**
- * Round a number to a fixed count of decimal places.
+ * Rounds a number to a fixed count of decimal places.
  *
  * @remarks
  * `Math.round` semantics — halves round toward `+∞` (`2.5` → `3`, `-2.5` → `-2`).
@@ -259,7 +259,7 @@ export function roundTo(value: number, precision = 0): number {
 // === Equality, ordering & uniqueness
 
 /**
- * Determine whether two values are SameValueZero-equal — strict `===` with
+ * Determines whether two values are SameValueZero-equal — strict `===` with
  * `NaN` equal to itself (and, unlike `Object.is`, `+0` equal to `-0`).
  *
  * @remarks
@@ -272,7 +272,7 @@ export function roundTo(value: number, precision = 0): number {
  *
  * @param left - The first value
  * @param right - The second value
- * @returns `true` when the values are SameValueZero-equal
+ * @returns True if the values are SameValueZero-equal; false otherwise
  *
  * @example
  * ```ts
@@ -288,7 +288,7 @@ export function equalValues(left: unknown, right: unknown): boolean {
 }
 
 /**
- * Sort items ascending by `priority ?? DEFAULT_PRIORITY` — a stable copy sort.
+ * Sorts items ascending by `priority ?? DEFAULT_PRIORITY` — a stable copy sort.
  *
  * @remarks
  * The shared evaluation-order helper of the quantitative (factors) and logical
@@ -322,7 +322,7 @@ export function sortByPriority<T extends { readonly priority?: number }>(
 }
 
 /**
- * Collect the ids that appear MORE THAN ONCE in an id-carrying list — each
+ * Collects the ids that appear MORE THAN ONCE in an id-carrying list — each
  * duplicated id reported once, in first-occurrence order.
  *
  * @remarks
@@ -350,7 +350,7 @@ export function findDuplicates(items: ReadonlyArray<{ readonly id: string }>): r
 // === Inferential fact machinery
 
 /**
- * Derive a fact's predicate+arity bucket key — length-prefixed so the
+ * Derives a fact's predicate+arity bucket key — length-prefixed so the
  * delimiter cannot be forged.
  *
  * @remarks
@@ -381,7 +381,7 @@ export function factToArityKey(source: Fact): string {
 }
 
 /**
- * Bucket facts by predicate+arity, preserving append order within each bucket.
+ * Buckets facts by predicate+arity, preserving append order within each bucket.
  *
  * @remarks
  * The index behind the inferential reasoner's same-predicate-and-arity join
@@ -415,7 +415,7 @@ export function indexByArity(facts: readonly Fact[]): Map<string, Fact[]> {
 }
 
 /**
- * Derive one fact term's contribution to a dedup key — reference identity for
+ * Derives one fact term's contribution to a dedup key — reference identity for
  * non-null objects / functions, a SameValueZero value string for primitives.
  *
  * @remarks
@@ -452,7 +452,7 @@ export function termToKey(term: unknown, identities: Map<object, number>): strin
 }
 
 /**
- * Derive a fact's canonical dedup key — predicate + arity + per-term
+ * Derives a fact's canonical dedup key — predicate + arity + per-term
  * SameValueZero identity (confidence is NOT part of it).
  *
  * @remarks
@@ -490,7 +490,7 @@ export function factToKey(source: Fact, identities: Map<object, number>): string
 }
 
 /**
- * Positionally unify a pattern fact against a candidate fact — returning the
+ * Unifies a pattern fact positionally against a candidate fact — returning the
  * variable bindings on success, `undefined` on mismatch.
  *
  * @remarks
@@ -545,7 +545,7 @@ export function matchFacts(pattern: Fact, candidate: Fact): Record<string, unkno
 }
 
 /**
- * Substitute a fact's bound `'?'`-variables with their values — a fresh fact
+ * Substitutes a fact's bound `'?'`-variables with their values — a fresh fact
  * with unbound terms passed through unchanged.
  *
  * @remarks
@@ -624,7 +624,7 @@ export function computePremiseConfidence(
 }
 
 /**
- * Project a subject's scalar fields into `has(key, value)` base facts — the
+ * Projects a subject's scalar fields into `has(key, value)` base facts — the
  * inferential reasoner's subject-injection step.
  *
  * @remarks
@@ -717,7 +717,7 @@ export function findUnboundVariables(source: Inference): readonly string[] {
 // === Symbolic algebra machinery
 
 /**
- * Determine whether a symbolic expression contains an UNBOUND occurrence of a
+ * Determines whether a symbolic expression contains an UNBOUND occurrence of a
  * target variable.
  *
  * @remarks
@@ -732,7 +732,7 @@ export function findUnboundVariables(source: Inference): readonly string[] {
  * @param expression - The expression to probe
  * @param target - The variable name being sought
  * @param bindings - The known bindings (a bound target does NOT count as present)
- * @returns `true` when an unbound `target` occurs in the expression
+ * @returns True if an unbound `target` occurs in the expression; false otherwise
  *
  * @example
  * ```ts
@@ -764,7 +764,7 @@ export function containsVariable(
 }
 
 /**
- * Invert a `x op right = value` step, solving for the LEFT operand `x`.
+ * Inverts a `x op right = value` step, solving for the LEFT operand `x`.
  *
  * @remarks
  * The left-operand inverse of the symbolic reasoner's isolation: `add` inverts
@@ -810,7 +810,7 @@ export function invertLeft(operator: MathOperation, value: number, rightValue: n
 }
 
 /**
- * Invert a `left op x = value` step, solving for the RIGHT operand `x`.
+ * Inverts a `left op x = value` step, solving for the RIGHT operand `x`.
  *
  * @remarks
  * The right-operand inverse of the symbolic reasoner's isolation: `add` inverts
@@ -852,7 +852,7 @@ export function invertRight(operator: MathOperation, value: number, leftValue: n
 }
 
 /**
- * Apply one binary/unary math operation to already-evaluated operands.
+ * Applies one binary/unary math operation to already-evaluated operands.
  *
  * @remarks
  * The arithmetic core of the symbolic reasoner's expression evaluation: the full
@@ -914,7 +914,7 @@ export function applyOperation(operator: string, left: number, right: number): n
 // === Logical conclusion extraction & error results
 
 /**
- * Return every atom leaf of an expression tree, depth-first, left-to-right.
+ * Returns every atom leaf of an expression tree, depth-first, left-to-right.
  *
  * @remarks
  * The shared atom-walk behind both {@link extractConclusions} and the raters'
@@ -957,7 +957,7 @@ export function extractAtoms(expression: Expression): readonly Atom[] {
 }
 
 /**
- * Flatten a logical conclusion expression into its asserted `field = value`
+ * Flattens a logical conclusion expression into its asserted `field = value`
  * pairs — connectives IGNORED.
  *
  * @remarks
@@ -1048,7 +1048,7 @@ export function findOverlayMismatches(rules: readonly Rule[]): readonly string[]
 }
 
 /**
- * Build the empty, type-shaped failure {@link ReasonResult} matching a
+ * Builds the empty, type-shaped failure {@link ReasonResult} matching a
  * definition's reasoning.
  *
  * @remarks
@@ -1167,7 +1167,7 @@ export function definitionToEnvelope(definition: Definition): DefinitionEnvelope
 // mutated, and a fresh array is always returned.
 
 /**
- * Insert `item` into an id-keyed collection, deduping any existing element
+ * Inserts `item` into an id-keyed collection, deduping any existing element
  * sharing its id, then placing it at the END (or immediately AFTER `target`).
  *
  * @remarks
@@ -1212,7 +1212,7 @@ export function appendById<T extends { readonly id: string }>(
 }
 
 /**
- * Insert `item` into an id-keyed collection, deduping any existing element
+ * Inserts `item` into an id-keyed collection, deduping any existing element
  * sharing its id, then placing it at the START (or immediately BEFORE `target`).
  *
  * @remarks
@@ -1255,7 +1255,7 @@ export function prependById<T extends { readonly id: string }>(
 }
 
 /**
- * Swap the element sharing `item.id` IN PLACE, preserving its position.
+ * Swaps the element sharing `item.id` IN PLACE, preserving its position.
  *
  * @remarks
  * The position-preserving update primitive — unlike {@link appendById}, which
@@ -1285,7 +1285,7 @@ export function replaceById<T extends { readonly id: string }>(
 }
 
 /**
- * Filter every element sharing `id` out of an id-keyed collection.
+ * Filters every element sharing `id` out of an id-keyed collection.
  *
  * @remarks
  * An absent `id` yields a same-length fresh copy — a no-op, never a throw.
@@ -1311,7 +1311,7 @@ export function removeById<T extends { readonly id: string }>(
 }
 
 /**
- * Reconcile two id-keyed collections — an incoming-order upsert with
+ * Reconciles two id-keyed collections — an incoming-order upsert with
  * base-only survivors appended after.
  *
  * @remarks
@@ -1363,7 +1363,7 @@ export function mergeById<T extends { readonly id: string }>(
 // === Quantitative change/extend helpers
 
 /**
- * Insert `group` into a {@link QuantitativeDefinition}'s `groups` — dedup-then-
+ * Inserts `group` into a {@link QuantitativeDefinition}'s `groups` — dedup-then-
  * insert at the end, or immediately after `target`.
  *
  * @remarks
@@ -1393,7 +1393,7 @@ export function appendGroup(
 }
 
 /**
- * Insert `group` into a {@link QuantitativeDefinition}'s `groups` — dedup-then-
+ * Inserts `group` into a {@link QuantitativeDefinition}'s `groups` — dedup-then-
  * insert at the start, or immediately before `target`.
  *
  * @param definition - The definition to insert into
@@ -1418,7 +1418,7 @@ export function prependGroup(
 }
 
 /**
- * Swap the group sharing `group.id` in a {@link QuantitativeDefinition} IN
+ * Swaps the group sharing `group.id` in a {@link QuantitativeDefinition} IN
  * PLACE, preserving its position (appends when absent).
  *
  * @param definition - The definition to update
@@ -1441,7 +1441,7 @@ export function replaceGroup(
 }
 
 /**
- * Remove every group sharing `id` from a {@link QuantitativeDefinition}
+ * Removes every group sharing `id` from a {@link QuantitativeDefinition}
  * (no-op when absent).
  *
  * @param definition - The definition to update
@@ -1464,7 +1464,7 @@ export function removeGroup(
 }
 
 /**
- * Insert `factor` into a {@link FactorGroup}'s `factors` — dedup-then-insert
+ * Inserts `factor` into a {@link FactorGroup}'s `factors` — dedup-then-insert
  * at the end, or immediately after `target`.
  *
  * @remarks
@@ -1491,7 +1491,7 @@ export function appendFactor(group: FactorGroup, factor: Factor, target?: string
 }
 
 /**
- * Insert `factor` into a {@link FactorGroup}'s `factors` — dedup-then-insert
+ * Inserts `factor` into a {@link FactorGroup}'s `factors` — dedup-then-insert
  * at the start, or immediately before `target`.
  *
  * @param group - The group to insert into
@@ -1512,7 +1512,7 @@ export function prependFactor(group: FactorGroup, factor: Factor, target?: strin
 }
 
 /**
- * Swap the factor sharing `factor.id` in a {@link FactorGroup} IN PLACE,
+ * Swaps the factor sharing `factor.id` in a {@link FactorGroup} IN PLACE,
  * preserving its position (appends when absent).
  *
  * @param group - The group to update
@@ -1532,7 +1532,7 @@ export function replaceFactor(group: FactorGroup, factor: Factor): FactorGroup {
 }
 
 /**
- * Remove every factor sharing `id` from a {@link FactorGroup} (no-op when
+ * Removes every factor sharing `id` from a {@link FactorGroup} (no-op when
  * absent).
  *
  * @param group - The group to update
@@ -1628,7 +1628,7 @@ export function replaceRule(definition: LogicalDefinition, rule: Rule): LogicalD
 }
 
 /**
- * Remove every rule sharing `id` from a {@link LogicalDefinition} (no-op when
+ * Removes every rule sharing `id` from a {@link LogicalDefinition} (no-op when
  * absent).
  *
  * @param definition - The definition to update
@@ -1727,7 +1727,7 @@ export function replaceEquation(
 }
 
 /**
- * Remove every equation sharing `id` from a {@link SymbolicDefinition} (no-op
+ * Removes every equation sharing `id` from a {@link SymbolicDefinition} (no-op
  * when absent).
  *
  * @param definition - The definition to update
@@ -1747,7 +1747,7 @@ export function removeEquation(definition: SymbolicDefinition, id: string): Symb
 }
 
 /**
- * Upsert one entry of a {@link SymbolicDefinition}'s `variables`.
+ * Upserts one entry of a {@link SymbolicDefinition}'s `variables`.
  *
  * @remarks
  * `variables` is a name-keyed unordered record, so `add`/`remove` (no
@@ -1774,7 +1774,7 @@ export function addVariable(
 }
 
 /**
- * Remove one entry of a {@link SymbolicDefinition}'s `variables`.
+ * Removes one entry of a {@link SymbolicDefinition}'s `variables`.
  *
  * @remarks
  * The destructure-rest form OMITS the key entirely (never sets it to
@@ -1875,7 +1875,7 @@ export function replaceFact(definition: InferentialDefinition, fact: Fact): Infe
 }
 
 /**
- * Remove every fact sharing `id` from an {@link InferentialDefinition} (no-op
+ * Removes every fact sharing `id` from an {@link InferentialDefinition} (no-op
  * when absent).
  *
  * @param definition - The definition to update
@@ -1979,7 +1979,7 @@ export function replaceInference(
 }
 
 /**
- * Remove every inference sharing `id` from an {@link InferentialDefinition}
+ * Removes every inference sharing `id` from an {@link InferentialDefinition}
  * (no-op when absent).
  *
  * @param definition - The definition to update
@@ -2009,7 +2009,7 @@ export function removeInference(
 // kept — merge NEVER clears, which is what the `clear*` helpers are for.
 
 /**
- * Reconcile two {@link QuantitativeDefinition}s onto `base`'s id.
+ * Reconciles two {@link QuantitativeDefinition}s onto `base`'s id.
  *
  * @remarks
  * The merge is ADDITIVE: a base-only group survives into the result and is
@@ -2054,7 +2054,7 @@ export function mergeQuantitativeDefinition(
 }
 
 /**
- * Reconcile two {@link LogicalDefinition}s onto `base`'s id.
+ * Reconciles two {@link LogicalDefinition}s onto `base`'s id.
  *
  * @remarks
  * The merge is ADDITIVE: a base-only rule survives into the result and is never
@@ -2091,7 +2091,7 @@ export function mergeLogicalDefinition(
 }
 
 /**
- * Reconcile two {@link SymbolicDefinition}s onto `base`'s id.
+ * Reconciles two {@link SymbolicDefinition}s onto `base`'s id.
  *
  * @remarks
  * The merge is ADDITIVE: a base-only equation or variable survives into the
@@ -2132,7 +2132,7 @@ export function mergeSymbolicDefinition(
 }
 
 /**
- * Reconcile two {@link InferentialDefinition}s onto `base`'s id.
+ * Reconciles two {@link InferentialDefinition}s onto `base`'s id.
  *
  * @remarks
  * The merge is ADDITIVE: a base-only inference or fact survives into the result
@@ -2178,7 +2178,7 @@ export function mergeInferentialDefinition(
 // definition exact-record valid.
 
 /**
- * Delete one optional field of a {@link QuantitativeDefinition}.
+ * Deletes one optional field of a {@link QuantitativeDefinition}.
  *
  * @param definition - The definition to update
  * @param key - The optional field to clear
@@ -2201,7 +2201,7 @@ export function clearQuantitativeDefinition(
 }
 
 /**
- * Delete one optional field of a {@link LogicalDefinition}.
+ * Deletes one optional field of a {@link LogicalDefinition}.
  *
  * @param definition - The definition to update
  * @param key - The optional field to clear
@@ -2224,7 +2224,7 @@ export function clearLogicalDefinition(
 }
 
 /**
- * Delete one optional field of a {@link SymbolicDefinition}.
+ * Deletes one optional field of a {@link SymbolicDefinition}.
  *
  * @param definition - The definition to update
  * @param key - The optional field to clear
@@ -2247,7 +2247,7 @@ export function clearSymbolicDefinition(
 }
 
 /**
- * Delete one optional field of an {@link InferentialDefinition}.
+ * Deletes one optional field of an {@link InferentialDefinition}.
  *
  * @param definition - The definition to update
  * @param key - The optional field to clear
@@ -2276,7 +2276,7 @@ export function clearInferentialDefinition(
 // (mirrors the `addVariable`/`removeVariable` note).
 
 /**
- * Upsert one field of a {@link Subject} — copy-on-write spread.
+ * Upserts one field of a {@link Subject} — copy-on-write spread.
  *
  * @remarks
  * Named `assignField` rather than `setField` because it RETURNS a fresh subject
@@ -2301,7 +2301,7 @@ export function assignField(subject: Subject, key: string, value: unknown): Subj
 }
 
 /**
- * Delete one field of a {@link Subject} — destructure-rest omit.
+ * Deletes one field of a {@link Subject} — destructure-rest omit.
  *
  * @remarks
  * The key is DELETED entirely (never set to `undefined`), keeping the result
@@ -2324,7 +2324,7 @@ export function removeField(subject: Subject, key: string): Subject {
 }
 
 /**
- * Reconcile two {@link Subject}s — incoming-wins spread, with the base `id`
+ * Reconciles two {@link Subject}s — incoming-wins spread, with the base `id`
  * preserved when present.
  *
  * @remarks
@@ -2349,7 +2349,7 @@ export function mergeSubjects(base: Subject, incoming: Subject): Subject {
 }
 
 /**
- * Produce `count` deterministic clones of a {@link Subject}.
+ * Produces `count` deterministic clones of a {@link Subject}.
  *
  * @remarks
  * When `subject.id` is a string, each clone's id is minted
