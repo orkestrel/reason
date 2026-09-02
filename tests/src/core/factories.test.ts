@@ -36,12 +36,12 @@ import {
 import { describe, expect, it } from 'vitest'
 import { buildStaticDefinition, expectQuantitative } from '../../setup.js'
 
-// The reasons factories, in two families. The VALUE factories come first: each
+// The reasons factories, in two families. The VALUE factories: each
 // returns a fresh JSON-serializable value with absent optional keys OMITTED
 // entirely (so outputs round-trip the exact-record validators — pinned through
 // `Object.keys`, the guard round-trip itself lives in integration.test.ts),
 // `name` defaulting to the `id`, and an override bag merged LAST (an override
-// wins over a default). The ENTITY factories follow: each `create*` returns a
+// wins over a default). The ENTITY factories: each `create*` returns a
 // WORKING instance behind its interface type, with the default id when no
 // options are given and a custom id through the options object (DESIGN §2: one
 // options bag replaces scsr's positional arguments). Deep per-class behavior

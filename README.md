@@ -62,7 +62,7 @@ the discriminant and read the strategy-specific payload (`value` /
 For the full surface — the orchestrator, the four reasoners, the three
 operators, the definitions & subjects capability layer, the two workspace
 builders (`DefinitionBuilder` / `SubjectBuilder`), validators, errors, and the
-observation surface — see [`guides/src/reason.md`](guides/src/reason.md).
+observation surface — see [`guides/reason.md`](guides/reason.md).
 
 ## Package
 

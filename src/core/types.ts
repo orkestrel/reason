@@ -1188,7 +1188,7 @@ export interface VariableManagerInterface {
 	variables(): Readonly<Record<string, number>>
 	add(name: string, value: number): void
 	remove(name: string): void
-	seat(items: Readonly<Record<string, number>>): void
+	seat(variables: Readonly<Record<string, number>>): void
 	destroy(): void
 }
 

@@ -316,6 +316,16 @@ describe('DefinitionBuilder — seat (the bulk re-seat channel)', () => {
 		if (!isReasonError(error)) throw new Error('expected a ReasonError')
 		expect(error.code).toBe('DESTROYED')
 	})
+
+	it('throws DESTROYED after the variables manager is destroyed', () => {
+		const definition = createDefinitionBuilder(
+			createSymbolicDefinition('rate', 'Rate', [], { variables: { x: 1 } }),
+		)
+		definition.variables.destroy()
+		const error = captureError(() => definition.variables.seat({}))
+		if (!isReasonError(error)) throw new Error('expected a ReasonError')
+		expect(error.code).toBe('DESTROYED')
+	})
 })
 
 describe('DefinitionBuilder — merge', () => {

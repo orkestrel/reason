@@ -62,9 +62,9 @@ export class VariableManager implements VariableManagerInterface {
 
 	// The owning builder's bulk re-seat channel — replaces the whole record in
 	// one silent call (no per-entry events); used by `merge`.
-	seat(items: Readonly<Record<string, number>>): void {
+	seat(variables: Readonly<Record<string, number>>): void {
 		this.#ensureAlive()
-		this.#variables = items
+		this.#variables = variables
 	}
 
 	destroy(): void {

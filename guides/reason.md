@@ -95,7 +95,7 @@ The definitions & subjects capability layer's stateful workspace builders (taver
 
 ### Value factories
 
-The other half of `factories.ts`: plain-data constructors for the declarative definition vocabulary — no lifecycle, no emitter, no identity. Reach for the entity factories earlier when you need a working instance instead.
+Plain-data constructors for the declarative definition vocabulary — no lifecycle, no emitter, no identity. Reach for the entity factories earlier when you need a working instance instead.
 
 | API                            | Kind     | Creates…                                                                                        |
 | ------------------------------ | -------- | ----------------------------------------------------------------------------------------------- |
@@ -932,8 +932,8 @@ const reason = createReason({ reasoners: [createQuantitativeReasoner()] })
 const result = reason.reason({ age: 25, licensed: true }, draft.build()) // build OUTSIDE, pass the payload
 if (result.reasoning === 'quantitative') result.value // 40 — (10 + 25) + 5
 
+draft.groups.seat([createFactorGroup('only', 'sum', [])]) // swap a whole collection in one silent step — an authoring surface's "load this revision"
 const payload = draft.build() // a fresh plain Definition every call — store it, ship it, reason over it
-draft.groups.seat([createFactorGroup('only', 'sum', [])]) // replace the whole collection in one silent call
 draft.destroy() // idempotent; cascades to the managers; afterwards mutation throws DESTROYED
 ```
 
