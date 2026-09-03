@@ -19,13 +19,13 @@ import {
 // (BOTH false on a non-array expected value — none is NOT the raw complement),
 // inclusive between and its pure negation outside, `resolveField` semantics (a
 // STRING field is ONE key — never dot-split; an ARRAY descends), the caught
-// unknown-operator error, and order-preserving isolated `batch`. Ports the full
-// scsr Evaluator catalog onto the renamed comparison vocabulary (DESIGN §2).
-// No mocks — the real stateless instance throughout (AGENTS §16).
+// unknown-operator error, and order-preserving isolated `batch`, over the
+// project-wide one-word comparison vocabulary.
+// No mocks — the real stateless instance throughout.
 
 const evaluator = createEvaluator()
 
-// The recurring shared checks (scsr's ageGte18 / scoreGt50 / nameEqualsAlice).
+// The recurring shared checks.
 const ageFrom18 = createCheck('age', 'from', 18)
 const scoreAbove50 = createCheck('score', 'above', 50)
 const nameEqualsAlice = createCheck('name', 'equals', 'Alice')

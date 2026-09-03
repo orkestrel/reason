@@ -78,7 +78,7 @@ import { describe, expect, it } from 'vitest'
 import { captureError } from '@orkestrel/test'
 import { ADVERSARIAL_VALUE_SUBJECT, EXTREME_NUMBERS, TRICKY_KEYS, sequence } from '../../setup.js'
 
-// The reasons validators are deep TOTAL guards (AGENTS §14). Input records are
+// The reasons validators are deep TOTAL guards. Input records are
 // exact and use finite-only numeric checks because definitions must survive
 // JSON. Result records are open, accept class instances, and follow published
 // member types exactly. Every guard survives adversarial junk, including cyclic
@@ -187,7 +187,7 @@ describe('literal-union guards', () => {
 			'outside',
 		]
 		for (const value of comparisons) expect(isComparison(value)).toBe(true)
-		// The scsr multi-word vocabulary is gone (DESIGN §2).
+		// The comparison vocabulary is the project-wide one-word set.
 		expect(isComparison('greaterThan')).toBe(false)
 		expect(isComparison('notEquals')).toBe(false)
 		expect(accepted(isComparison)).toEqual([])
@@ -386,13 +386,13 @@ describe('isExpression — recursive via lazyOf', () => {
 		expect(accepted(isExpression)).toEqual([])
 	})
 
-	it('contains a CYCLIC expression — false, never a throw (AGENTS §14)', () => {
+	it('contains a CYCLIC expression — false, never a throw', () => {
 		const cyclic: Record<string, unknown> = { form: 'compound', operator: 'and' }
 		cyclic.operands = [cyclic]
 		expect(isExpression(cyclic)).toBe(false)
 	})
 
-	it('contains a BEYOND-STACK-BUDGET nest — false, never a RangeError (AGENTS §14)', () => {
+	it('contains a BEYOND-STACK-BUDGET nest — false, never a RangeError', () => {
 		// Recursion is stack-bounded, not unbounded: 100,000 levels of `not`
 		// overflow the engine stack; lazyOf contains the overflow as a non-match.
 		let deep = createAtom('a', 'equals', 1)
@@ -469,13 +469,13 @@ describe('isSymbolicExpression — recursive via lazyOf', () => {
 		expect(accepted(isSymbolicExpression)).toEqual([])
 	})
 
-	it('contains a CYCLIC operation tree — false, never a throw (AGENTS §14)', () => {
+	it('contains a CYCLIC operation tree — false, never a throw', () => {
 		const cyclic: Record<string, unknown> = { form: 'operation', operator: 'add' }
 		cyclic.left = cyclic
 		expect(isSymbolicExpression(cyclic)).toBe(false)
 	})
 
-	it('contains a BEYOND-STACK-BUDGET nest — false, never a RangeError (AGENTS §14)', () => {
+	it('contains a BEYOND-STACK-BUDGET nest — false, never a RangeError', () => {
 		let deep = createConstant(1)
 		for (let index = 0; index < 100000; index++) deep = createOperation('abs', deep)
 		expect(isSymbolicExpression(deep)).toBe(false)
@@ -716,9 +716,9 @@ describe('clearable-key guards', () => {
 })
 
 // ── Entity brand guards — isDefinitionBuilder / isSubjectBuilder ────────────────
-// PROPOSAL §4: a plain subject is an open record whose values may legally be
+// A plain subject is an open record whose values may legally be
 // functions, so a method-presence check (`typeof value.build === 'function'`)
-// is FORGEABLE. These guards check a `unique symbol` brand via `Reflect.get`
+// is FORGEABLE. These guards check a `unique symbol` brand through `Reflect.get`
 // instead — a module-owned symbol cannot be produced by a plain object
 // literal (JSON has no symbol keys), so plain data can never forge either
 // entity, and the two brands are distinct symbols so neither entity can match
@@ -846,7 +846,7 @@ describe('isGroupResult', () => {
 })
 
 describe('isRuleResult', () => {
-	const sound = { id: 'rule', applied: true, premises: [true, false], conclusion: true }
+	const sound = { id: 'rule', applied: true, premises: [true, false] }
 
 	it('accepts a class instance satisfying RuleResult', () => {
 		expect(isRuleResult(new ResultGuardFixture(sound))).toBe(true)
@@ -860,10 +860,12 @@ describe('isRuleResult', () => {
 		expect(isRuleResult(sound)).toBe(true)
 		expect(isRuleResult({ ...sound, note: 'richer' })).toBe(true)
 		expect(isRuleResult(Object.assign(Object.create({ inherited: true }), sound))).toBe(true)
-		expect(isRuleResult({ applied: true, premises: [], conclusion: true })).toBe(false)
-		expect(isRuleResult({ id: 'rule', premises: [], conclusion: true })).toBe(false)
-		expect(isRuleResult({ id: 'rule', applied: true, conclusion: true })).toBe(false)
-		expect(isRuleResult({ id: 'rule', applied: true, premises: [] })).toBe(false)
+		expect(isRuleResult({ applied: true, premises: [] })).toBe(false)
+		expect(isRuleResult({ id: 'rule', premises: [] })).toBe(false)
+		expect(isRuleResult({ id: 'rule', applied: true })).toBe(false)
+		// `applied` is the only "all premises held" member, so a result carrying
+		// no `conclusion` is sound rather than incomplete.
+		expect(isRuleResult({ id: 'rule', applied: true, premises: [] })).toBe(true)
 		expect(isRuleResult({ ...sound, premises: [true, 1] })).toBe(false)
 		expect(isRuleResult(Object.assign([], sound))).toBe(false)
 	})
@@ -1046,7 +1048,7 @@ describe('isLogicalResult', () => {
 	const sound = {
 		reasoning: 'logical',
 		conclusion: true,
-		rules: [{ id: 'adult', applied: true, premises: [true], conclusion: true }],
+		rules: [{ id: 'adult', applied: true, premises: [true] }],
 		count: 1,
 		success: true,
 		trace: ['adult'],
@@ -1403,7 +1405,7 @@ describe('isDefinitionBuilder / isSubjectBuilder — entity brand guards', () =>
 })
 
 // ── Recursion-depth boundary, numeric extremes & adversarial keys ─────────────
-// The deep hardening pass (AGENTS §14): a binary-search sweep locating the EXACT
+// The deep hardening pass: a binary-search sweep locating the EXACT
 // depth where the two lazyOf-recursive guards flip true → false (contained by the
 // engine's stack budget — never a RangeError), a cycle buried deep in an otherwise
 // valid tree, a symbolic cycle through the RIGHT operand, the numeric-field guards

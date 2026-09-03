@@ -6,6 +6,7 @@ import type {
 	FactManagerOptions,
 } from '../../types.js'
 import { Emitter } from '@orkestrel/emitter'
+import { isArray } from '@orkestrel/contract'
 import { Collection } from './Collection.js'
 
 /**
@@ -17,9 +18,28 @@ import { Collection } from './Collection.js'
  * by composition with the other list managers — plus its own {@link Emitter}
  * over {@link FactManagerEventMap}. `Fact.id` is an AUTHORING label — the
  * runtime content-dedups facts by predicate+arity+terms, independently of this
- * manager's id-keyed dedup. `seat` is the owning builder's silent bulk re-seat
+ * manager's id-keyed dedup. `remove` is the batch family (array form declared
+ * FIRST): no argument removes every fact, one id removes that fact, an id list
+ * removes those facts and returns true only when every named id existed. It
+ * emits one `remove` per fact actually removed.
+ * `seat` is the owning builder's silent bulk re-seat
  * channel (used by `merge`). `destroy()` is idempotent and tears the emitter
  * down LAST; any other call after it throws `ReasonError('DESTROYED', …)`.
+ *
+ * @example
+ * ```ts
+ * import { createFact, createFactManager } from '@orkestrel/reason'
+ *
+ * const facts = createFactManager()
+ * facts.append(createFact('f1', 'human', ['socrates']))
+ * facts.prepend(createFact('f0', 'human', ['plato']))
+ * facts.replace(createFact('f0', 'human', ['plato'], 0.9))
+ * facts.fact('f1')?.predicate // 'human'
+ * facts.facts().map((fact) => fact.id) // ['f0', 'f1']
+ * facts.remove('f0') // true — it was there
+ * facts.seat([]) // silent bulk re-seat
+ * facts.destroy()
+ * ```
  */
 export class FactManager implements FactManagerInterface {
 	readonly #facts: Collection<Fact>
@@ -57,15 +77,31 @@ export class FactManager implements FactManagerInterface {
 		this.#emitter.emit('replace', fact.id)
 	}
 
-	remove(id: string): void {
-		this.#facts.remove(id)
-		this.#emitter.emit('remove', id)
+	// Array overload first so a list resolves to the batch form.
+	remove(ids: readonly string[]): boolean
+	remove(id: string): boolean
+	remove(): void
+	remove(idOrIds?: readonly string[] | string): boolean | void {
+		if (idOrIds === undefined) {
+			// The snapshot is taken before the first removal, so the loop walks the
+			// collection as it stood when the call began.
+			for (const fact of this.#facts.items()) this.#removeOne(fact.id)
+			return
+		}
+		if (isArray<string>(idOrIds)) {
+			let all = true
+			for (const id of idOrIds) {
+				if (!this.#removeOne(id)) all = false
+			}
+			return all
+		}
+		return this.#removeOne(idOrIds)
 	}
 
 	// The owning builder's bulk re-seat channel — replaces the whole collection
 	// in one silent call (no per-element events); used by `merge`.
-	seat(items: readonly Fact[]): void {
-		this.#facts.seat(items)
+	seat(facts: readonly Fact[]): void {
+		this.#facts.seat(facts)
 	}
 
 	destroy(): void {
@@ -74,5 +110,13 @@ export class FactManager implements FactManagerInterface {
 		this.#facts.destroy()
 		this.#emitter.emit('destroy')
 		this.#emitter.destroy()
+	}
+
+	// One removal, reported: a fact that was never there is neither removed nor
+	// announced, so each batch form emits exactly what it changed.
+	#removeOne(id: string): boolean {
+		if (!this.#facts.remove(id)) return false
+		this.#emitter.emit('remove', id)
+		return true
 	}
 }

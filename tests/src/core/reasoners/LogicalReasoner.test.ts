@@ -12,7 +12,7 @@ import {
 	LogicalReasoner,
 } from '@src/core'
 import { describe, expect, it } from 'vitest'
-import { captureError, invokeUnchecked } from '@orkestrel/test'
+import { captureError, invokeUnchecked, requireValue } from '@orkestrel/test'
 import {
 	deepCompound,
 	EXTREME_NUMBERS,
@@ -32,8 +32,8 @@ import {
 // empty-premises rules vs errored missing-premises rules), eager compound
 // evaluation (and / or / not / implies / xor with their vacuous edges), the
 // duplicate-id runtime quirks validate() now warns about, and the
-// MISMATCH-throw vs malformed-shape-failure-result distinction. Ports the full
-// scsr catalog PLUS the formatField derived-overlay pin: an ARRAY-path
+// MISMATCH-throw vs malformed-shape-failure-result distinction, plus the
+// formatField derived-overlay pin: an ARRAY-path
 // conclusion derives the dot-joined flat key, which a dotted-STRING premise
 // (one key) then reads.
 
@@ -141,7 +141,7 @@ describe('LogicalReasoner — validate', () => {
 		const validation = reasoner.validate(footgun)
 		expect(validation.valid).toBe(true)
 		expect(validation.warnings).toContain(
-			'Overlay key "address.city" is written via an array path AND also read via an array path — the flat overlay key will not resolve',
+			'Overlay key "address.city" is written through an array path AND also read through an array path — the flat overlay key will not resolve',
 		)
 	})
 
@@ -181,7 +181,7 @@ describe('LogicalReasoner — validate', () => {
 		const validation = reasoner.validate(definition)
 		expect(validation.warnings).toContain('Duplicate rule id "dup"')
 		expect(validation.warnings).toContain(
-			'Overlay key "x.y" is written via an array path AND also read via an array path — the flat overlay key will not resolve',
+			'Overlay key "x.y" is written through an array path AND also read through an array path — the flat overlay key will not resolve',
 		)
 	})
 })
@@ -358,11 +358,14 @@ describe('LogicalReasoner — forward chaining', () => {
 		expect(idle.trace.some((entry) => entry.includes('converged'))).toBe(true)
 	})
 
-	it('exposes the rule-result shape (id / applied / premises / conclusion)', () => {
+	it('exposes the rule-result shape (id / applied / premises) and no derived twin of applied', () => {
 		const definition = createLogicalDefinition('d', 'd', [derivationRule('r1', 'a', true, 'b')])
 		const result = expectLogical(reasoner.reason({ a: true }, definition))
 		expect(result.rules).toHaveLength(1)
-		expect(result.rules[0]).toEqual({ id: 'r1', applied: true, premises: [true], conclusion: true })
+		expect(result.rules[0]).toEqual({ id: 'r1', applied: true, premises: [true] })
+		expect(Object.hasOwn(requireValue(result.rules[0], 'missing rule result'), 'conclusion')).toBe(
+			false,
+		)
 	})
 
 	it('runs rules in ascending priority order — lower number first (trace-observable)', () => {
@@ -616,7 +619,7 @@ describe('LogicalReasoner — backward chaining', () => {
 		expect(result.success).toBe(true)
 		expect(result.errors).toEqual([])
 		expect(result.conclusion).toBe(true)
-		expect(result.rules).toEqual([{ id: 'vac', applied: true, premises: [], conclusion: true }])
+		expect(result.rules).toEqual([{ id: 'vac', applied: true, premises: [] }])
 		expect(result.trace).toContain('Rule "vac" derived: v=true (backward, depth 0)')
 	})
 
@@ -857,7 +860,7 @@ describe('LogicalReasoner — empty-premises forward/backward divergence', () =>
 		expect(backward.success).toBe(true)
 		expect(backward.errors).toEqual([])
 		expect(backward.conclusion).toBe(true)
-		expect(backward.rules).toEqual([{ id: 'vac', applied: true, premises: [], conclusion: true }])
+		expect(backward.rules).toEqual([{ id: 'vac', applied: true, premises: [] }])
 	})
 })
 
@@ -1007,13 +1010,13 @@ describe('LogicalReasoner — backward depth-cap enforcement (sub-goal proving)'
 			.reverse()
 	}
 
-	function ruleConclusion(id: string, depth: number | undefined) {
+	function ruleApplied(id: string, depth: number | undefined) {
 		const definition = createLogicalDefinition('d', 'd', sixHopChain(), {
 			strategy: 'backward',
 			...(depth === undefined ? {} : { depth }),
 		})
 		const result = expectLogical(reasoner.reason({ k0: true }, definition))
-		return result.rules.find((entry) => entry.id === id)?.conclusion
+		return result.rules.find((entry) => entry.id === id)?.applied
 	}
 
 	it('depth 3 is insufficient — the goal (r6, needing 5 hops) is NOT proven', () => {
@@ -1026,13 +1029,11 @@ describe('LogicalReasoner — backward depth-cap enforcement (sub-goal proving)'
 			id: 'r6',
 			applied: false,
 			premises: [false],
-			conclusion: false,
 		})
 		expect(result.rules.find((entry) => entry.id === 'r5')).toEqual({
 			id: 'r5',
 			applied: false,
 			premises: [false],
-			conclusion: false,
 		})
 		expect(result.count).toBe(4)
 		expect(result.success).toBe(true)
@@ -1041,13 +1042,13 @@ describe('LogicalReasoner — backward depth-cap enforcement (sub-goal proving)'
 	})
 
 	it('the SAME 6-hop chain at a sufficient depth (10, and the default) proves the goal', () => {
-		expect(ruleConclusion('r6', 10)).toBe(true)
-		expect(ruleConclusion('r6', undefined)).toBe(true)
+		expect(ruleApplied('r6', 10)).toBe(true)
+		expect(ruleApplied('r6', undefined)).toBe(true)
 	})
 
 	it('pins the exact off-by-one boundary — 4 hops prove at depth 3, 5 hops (and beyond) do not (run twice, deep-equal)', () => {
 		function boundary() {
-			return sequence(6, 1).map((hops) => ruleConclusion(`r${hops}`, 3))
+			return sequence(6, 1).map((hops) => ruleApplied(`r${hops}`, 3))
 		}
 		const first = boundary()
 		const second = boundary()
@@ -1181,7 +1182,7 @@ describe('LogicalReasoner — array-path conclusion vs array-path premise mismat
 	})
 })
 
-describe('LogicalReasoner — builder build() output passed to supports/validate/reason (§15)', () => {
+describe('LogicalReasoner — builder build() output passed to supports/validate/reason', () => {
 	const definition = createLogicalDefinition('activation', 'Activation', [
 		createRule(
 			'activate',

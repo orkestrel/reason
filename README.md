@@ -1,6 +1,6 @@
 # @orkestrel/reason
 
-A zero-dependency, synchronous, deterministic **reasoning engine**: declarative,
+A synchronous, deterministic **reasoning engine**: declarative,
 JSON-serializable **definitions** are evaluated against **subjects** (plain
 data records) to produce traceable **results**. Four strategies behind one
 dispatch surface — `quantitative` (factor-based numeric scoring), `logical`
@@ -22,7 +22,7 @@ npm install @orkestrel/reason
 
 ## Requirements
 
-- Node.js >= 24
+- Node.js >= 22.12.0, matching the package engine declaration
 - ESM-only (no CommonJS build)
 
 ## Usage

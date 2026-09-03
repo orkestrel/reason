@@ -37,10 +37,10 @@ import {
 // bypass bail and emit nothing; MISMATCH surfaces from a reasoner; DESTROYED
 // gates every method after destroy), the `bail` / `validate` policies, ordered
 // batch dispatch, and the emitter surface (register / reason / error / destroy
-// plus the `on` hooks and the `error` listener-error handler, AGENTS §13).
+// plus the `on` hooks and the `error` listener-error handler).
 // `isReasonError` narrowing is pinned here (errors.ts carries no test file of
 // its own). Real reasoners plus the shared scripted throwing reasoner — no
-// mocks (AGENTS §16).
+// mocks.
 
 // A quantitative definition reading the subject's age on top of base 100.
 const AGE_DEFINITION = createQuantitativeDefinition(
@@ -450,7 +450,7 @@ describe('Reason — emitter (push observation surface)', () => {
 		expect(register.count).toBe(0)
 	})
 
-	it('wires initial listeners through the on option (AGENTS §8)', () => {
+	it('wires initial listeners through the on option', () => {
 		const register = createRecorder<readonly [Reasoning]>()
 		const reason = createReason({ on: { register: register.handler } })
 		reason.register(createLogicalReasoner())
@@ -466,7 +466,7 @@ describe('Reason — emitter (push observation surface)', () => {
 		})
 		reason.emitter.on('register', sibling.handler)
 		// The register still completes, the sibling still fires, the throw lands
-		// in the listener-error handler with the offending event name (AGENTS §13).
+		// in the listener-error handler with the offending event name.
 		reason.register(createQuantitativeReasoner())
 		expect(reason.supports('quantitative')).toBe(true)
 		expect(sibling.count).toBe(1)
@@ -815,7 +815,7 @@ describe('Reason — registry replace & fresh-snapshot at scale', () => {
 	})
 })
 
-describe('Reason — builder build() output passed to reason() (§15)', () => {
+describe('Reason — builder build() output passed to reason()', () => {
 	it('a built definition + built subject reasons identically to the same data written inline (run twice)', () => {
 		const reason = createReason({ reasoners: [createQuantitativeReasoner()] })
 		const plainSubject = { age: 25 }

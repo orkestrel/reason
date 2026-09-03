@@ -5,11 +5,11 @@ import { captureError, createRecorders } from '@orkestrel/test'
 import { deepFreeze, runTwice } from '../../../setup.js'
 
 // `SubjectBuilder` — the definitions & subjects capability layer's stateful
-// subject builder (PROPOSAL.md §14): a flat single-collection workspace
+// subject builder: a flat single-collection workspace
 // mutated through single-word methods, then `build()` a fresh plain
-// `Subject` at act-time. Every mutation-then-build scenario below runs
+// `Subject` at act-time. Every mutation-then-build scenario that follows runs
 // TWICE (fresh entities, same operations) and deep-equals the two outcomes,
-// pinning both correctness and determinism in one assertion (AGENTS §16.1).
+// pinning both correctness and determinism in one assertion.
 
 describe('SubjectBuilder — set / field / fields round-trip', () => {
 	it('upserts fields via set and reads them back via field/fields', () => {

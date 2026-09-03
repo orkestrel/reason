@@ -39,6 +39,26 @@ import { ReasonError } from '../errors.js'
  * see the rounded value; `solutions` reads FINAL bindings keyed by each
  * equation's target (a failed equation's target still appears when bound
  * elsewhere). Nothing mutates its inputs; fully deterministic.
+ *
+ * @example
+ * ```ts
+ * import {
+ * 	createConstant,
+ * 	createEquation,
+ * 	createSymbolicDefinition,
+ * 	createSymbolicReasoner,
+ * 	createVariable,
+ * } from '@orkestrel/reason'
+ *
+ * const reasoner = createSymbolicReasoner()
+ * const definition = createSymbolicDefinition('rate', 'Rate', [
+ * 	createEquation('e1', createVariable('x'), createConstant(42), 'x'),
+ * ])
+ * reasoner.supports(definition) // true
+ * reasoner.validate(definition).valid // true
+ * const result = reasoner.reason({}, definition)
+ * if (result.reasoning === 'symbolic') result.solutions // { x: 42 }
+ * ```
  */
 export class SymbolicReasoner implements ReasonerInterface {
 	readonly #id: string
@@ -174,7 +194,7 @@ export class SymbolicReasoner implements ReasonerInterface {
 	}
 
 	// Isolate around whichever side holds the unbound target; a pre-bound target
-	// (or one absent from both sides) just re-evaluates the right side.
+	// (or one absent from both sides) re-evaluates the right side instead.
 	#solve(equation: Equation, bindings: Record<string, number>): number {
 		const target = equation.target
 		const leftHas = containsVariable(equation.left, target, bindings)

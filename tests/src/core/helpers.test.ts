@@ -1,4 +1,4 @@
-import type { Subject } from '@src/core'
+import type { MathOperation, Subject } from '@src/core'
 import {
 	addVariable,
 	appendById,
@@ -53,6 +53,7 @@ import {
 	instantiateFact,
 	invertLeft,
 	invertRight,
+	isMathOperation,
 	isReasonError,
 	matchesBounds,
 	matchFacts,
@@ -87,6 +88,7 @@ import {
 	replaceGroup,
 	replaceInference,
 	replaceRule,
+	resolveOperand,
 	resolveSource,
 	roundTo,
 	sortByPriority,
@@ -249,7 +251,7 @@ describe('sortByPriority — stable ascending copy sort', () => {
 		expect(sortByPriority(items).map((item) => item.id)).toEqual(['c', 'd', 'a', 'b', 'e'])
 	})
 
-	it('returns a FRESH array and never mutates the input (AGENTS §11)', () => {
+	it('returns a FRESH array and never mutates the input', () => {
 		const items = [
 			{ id: 'z', priority: 9 },
 			{ id: 'a', priority: 1 },
@@ -545,7 +547,7 @@ describe('findDuplicates — empty-string, prototype-name & unicode ids, at scal
 
 // ── Extracted reasoner helpers ───────────────────────────────────────────────
 // The pure-leaf functional core lifted out of the four reasoners' `#private`
-// methods (AGENTS §5 / §7): the inferential fact machinery (indexing, term /
+// methods: the inferential fact machinery (indexing, term /
 // fact keying, unification, instantiation, subject projection), the symbolic
 // algebra (variable presence, left / right inversion, operation application),
 // the logical conclusion flattening, and the orchestrator's failure-result
@@ -747,27 +749,38 @@ describe('instantiateFact — substitute bound variables', () => {
 
 describe('subjectToFacts — subject field injection', () => {
 	it('projects scalar fields into has(k, v) facts, skipping id / null / objects / arrays', () => {
-		const trace: string[] = []
-		const facts = subjectToFacts(
-			{ id: 'p1', age: 42, name: 'bob', tags: ['a'], addr: {}, nil: null, und: undefined },
-			trace,
-		)
-		expect(facts).toEqual([
+		const injected = subjectToFacts({
+			id: 'p1',
+			age: 42,
+			name: 'bob',
+			tags: ['a'],
+			addr: {},
+			nil: null,
+			und: undefined,
+		})
+		expect(injected.facts).toEqual([
 			{ id: 'subject:age', predicate: 'has', terms: ['age', 42], confidence: 1 },
 			{ id: 'subject:name', predicate: 'has', terms: ['name', 'bob'], confidence: 1 },
 		])
 	})
 
-	it('threads the trace with a line per field plus a summary count', () => {
-		const trace: string[] = []
-		subjectToFacts({ age: 42 }, trace)
-		expect(trace).toEqual(['Subject field "age" → has(age, 42)', 'Injected 1 fact(s) from subject'])
+	it('returns the trace lines — a line per field plus a summary count', () => {
+		expect(subjectToFacts({ age: 42 }).trace).toEqual([
+			'Subject field "age" → has(age, 42)',
+			'Injected 1 fact(s) from subject',
+		])
 	})
 
-	it('injects nothing (and does not touch the trace) for an id-only subject', () => {
-		const trace: string[] = []
-		expect(subjectToFacts({ id: 'p1' }, trace)).toEqual([])
-		expect(trace).toEqual([])
+	it('injects nothing and traces nothing for an id-only subject', () => {
+		const injected = subjectToFacts({ id: 'p1' })
+		expect(injected.facts).toEqual([])
+		expect(injected.trace).toEqual([])
+	})
+
+	it('takes no caller-owned accumulator, so a frozen subject reasons without a mutable input', () => {
+		const injected = subjectToFacts(Object.freeze({ id: 'p1', age: 42 }))
+		expect(injected.facts).toHaveLength(1)
+		expect(injected.trace).toHaveLength(2)
 	})
 })
 
@@ -904,6 +917,44 @@ describe('applyOperation — evaluated-operand arithmetic', () => {
 		if (!isReasonError(error)) throw new Error('expected a ReasonError')
 		expect(error.code).toBe('OPERATOR')
 		expect(error.context).toEqual({ operator: 'bogus' })
+	})
+})
+
+describe('resolveOperand — the absent-operand default per operation', () => {
+	const IDENTITY_ONE: readonly MathOperation[] = ['multiply', 'divide', 'power']
+	const IDENTITY_ZERO: readonly MathOperation[] = [
+		'add',
+		'subtract',
+		'percentage',
+		'minimum',
+		'maximum',
+		'average',
+		'round',
+		'ceil',
+		'floor',
+		'abs',
+	]
+
+	it('defaults multiply / divide / power to the multiplicative identity', () => {
+		for (const operation of IDENTITY_ONE) expect(resolveOperand(operation)).toBe(1)
+	})
+
+	it('defaults every other operation to the additive identity', () => {
+		for (const operation of IDENTITY_ZERO) expect(resolveOperand(operation)).toBe(0)
+	})
+
+	it('returns the supplied operand for every operation, defaults never consulted', () => {
+		for (const operation of [...IDENTITY_ONE, ...IDENTITY_ZERO]) {
+			expect(resolveOperand(operation, 7)).toBe(7)
+			expect(resolveOperand(operation, 0)).toBe(0)
+			expect(resolveOperand(operation, -3.5)).toBe(-3.5)
+		}
+	})
+
+	it('names only operations the MathOperation guard accepts', () => {
+		expect(
+			[...IDENTITY_ONE, ...IDENTITY_ZERO].filter((operation) => !isMathOperation(operation)),
+		).toEqual([])
 	})
 })
 
@@ -1326,10 +1377,7 @@ describe('extractAtoms — sparse compound operands', () => {
 
 describe('subjectToFacts — enumeration order (integer-like keys first)', () => {
 	it('orders integer-like keys ascending, then string keys insertion-ordered, id skipped', () => {
-		const run = () => {
-			const trace: string[] = []
-			return subjectToFacts(INTEGER_KEY_SUBJECT, trace)
-		}
+		const run = () => subjectToFacts(INTEGER_KEY_SUBJECT).facts
 		const expected = [
 			{ id: 'subject:1', predicate: 'has', terms: ['1', 1], confidence: 1 },
 			{ id: 'subject:2', predicate: 'has', terms: ['2', 2], confidence: 1 },
@@ -1347,8 +1395,7 @@ describe('subjectToFacts — enumeration order (integer-like keys first)', () =>
 
 describe('subjectToFacts — ADVERSARIAL_VALUE_SUBJECT (symbol key, bigint/symbol/function values)', () => {
 	it('silently skips the symbol KEY, keeping bigint/symbol/function VALUES', () => {
-		const trace: string[] = []
-		const facts = subjectToFacts(ADVERSARIAL_VALUE_SUBJECT, trace)
+		const facts = subjectToFacts(ADVERSARIAL_VALUE_SUBJECT).facts
 		expect(facts).toHaveLength(3)
 
 		expect(facts[0]).toEqual({
@@ -1464,7 +1511,7 @@ describe('extractAtoms / containsVariable — totality at 10,000-deep nesting', 
 	})
 })
 
-// === Definitions & subjects capability layer (PROPOSAL.md §§5-12) ===========
+// === Definitions & subjects capability layer ================================
 
 interface Item {
 	readonly id: string
@@ -1837,7 +1884,7 @@ describe('inferential change/extend helpers — appendFact / prependFact / repla
 	})
 })
 
-describe('merge helpers — whole-definition reconciliation (PROPOSAL.md §9)', () => {
+describe('merge helpers — whole-definition reconciliation', () => {
 	it('mergeQuantitativeDefinition preserves base.id, recurses factors on a matched group, incoming order first', () => {
 		const base = deepFreeze(
 			createQuantitativeDefinition('risk', 'Risk', [
@@ -1910,7 +1957,7 @@ describe('merge helpers — whole-definition reconciliation (PROPOSAL.md §9)', 
 	})
 })
 
-describe('clear helpers — optional-field key-deletion (PROPOSAL.md §10)', () => {
+describe('clear helpers — optional-field key-deletion', () => {
 	it('clearQuantitativeDefinition omits the key entirely (never sets undefined)', () => {
 		const definition = deepFreeze(
 			createQuantitativeDefinition('risk', 'Risk', [], { precision: 2 }),
@@ -1956,7 +2003,7 @@ describe('clear helpers — optional-field key-deletion (PROPOSAL.md §10)', () 
 	})
 })
 
-describe('parseDefinition — safe JSON round-trip (PROPOSAL.md §12)', () => {
+describe('parseDefinition — safe JSON round-trip', () => {
 	it('round-trips a definition through JSON.stringify', () => {
 		const definition = createLogicalDefinition('e', 'E', [
 			createRule('r1', [], createAtom('a', 'equals', true)),
@@ -1973,8 +2020,8 @@ describe('parseDefinition — safe JSON round-trip (PROPOSAL.md §12)', () => {
 	})
 })
 
-describe('subject engine — assignField / removeField / mergeSubjects / repeatSubject (PROPOSAL.md §11)', () => {
-	it('assignField upserts a key via copy-on-write spread, id-agnostic', () => {
+describe('subject engine — assignField / removeField / mergeSubjects / repeatSubject', () => {
+	it('assignField upserts a key through a copy-on-write spread, id-agnostic', () => {
 		const subject = deepFreeze({ id: 's1', age: 30 })
 		const run = () => assignField(subject, 'age', 31)
 		expect(run()).toEqual({ id: 's1', age: 31 })

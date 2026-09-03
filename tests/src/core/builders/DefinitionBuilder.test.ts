@@ -31,14 +31,14 @@ import { captureError, createRecorders } from '@orkestrel/test'
 import { deepFreeze, runTwice } from '../../../setup.js'
 
 // `DefinitionBuilder` — the definitions & subjects capability layer's stateful
-// builder (PROPOSAL.md §13): seven always-present SELF-OWNING manager
+// builder: always-present SELF-OWNING manager
 // properties (`groups` / `factors` / `rules` / `equations` / `variables` /
 // `facts` / `inferences`), each owning its own collection state + emitter. The
 // builder owns a scalar envelope and composes `build()` from the kind's
 // managers; off-kind managers are inert (kind-free, no MISMATCH). Every
-// mutation-then-build scenario below runs TWICE (fresh entities, same
+// mutation-then-build scenario that follows runs TWICE (fresh entities, same
 // operations) and deep-equals the two outcomes, pinning both correctness and
-// determinism in one assertion (AGENTS §16.1).
+// determinism in one assertion.
 
 describe('DefinitionBuilder — groups & factors (quantitative)', () => {
 	it('round-trips append / prepend / replace / remove through the manager properties', () => {
@@ -70,7 +70,7 @@ describe('DefinitionBuilder — groups & factors (quantitative)', () => {
 		expect(second).toEqual(first)
 	})
 
-	it('exposes the §9.1 singular/plural accessors for groups and factors', () => {
+	it('exposes the singular/plural accessor pair for groups and factors', () => {
 		const definition = createDefinitionBuilder(createQuantitativeDefinition('risk', 'Risk', []))
 		const group = createFactorGroup('g1', 'sum', [])
 		definition.groups.append(group)

@@ -15,6 +15,14 @@ import { AGGREGATOR_ID, DEFAULT_WEIGHT } from '../constants.js'
  * (a zero total weight yields `0`, never a division blow-up), and is ignored by
  * `minimum` / `maximum`. An unknown aggregation yields `0`. Stateless and
  * deterministic.
+ *
+ * @example
+ * ```ts
+ * import { createAggregator } from '@orkestrel/reason'
+ *
+ * const aggregator = createAggregator()
+ * aggregator.aggregate([10, 20, 30], 'sum') // 60
+ * ```
  */
 export class Aggregator implements AggregatorInterface {
 	readonly #id: string
@@ -64,7 +72,7 @@ export class Aggregator implements AggregatorInterface {
 			}
 			case 'minimum':
 				// Seedless pairwise reduce (values is non-empty — #empty short-circuits
-				// the 0-length case above), so an arbitrarily large list never spreads
+				// the 0-length case in the preceding guard), so an arbitrarily large list never spreads
 				// past the argument-count limit. Math.min keeps NaN-propagation and the
 				// -0 < +0 sign rule a `a < b ? a : b` fold would lose.
 				return values.reduce((minimum, value) => Math.min(minimum, value))

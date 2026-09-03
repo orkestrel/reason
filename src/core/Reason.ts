@@ -33,6 +33,34 @@ import { ReasonError } from './errors.js'
  * registry, emits `destroy`, then destroys the emitter LAST and is
  * idempotent; every other method afterwards throws `DESTROYED` — only the
  * {@link emitter} getter keeps working.
+ *
+ * @example
+ * ```ts
+ * import {
+ * 	createFactorGroup,
+ * 	createFieldFactor,
+ * 	createQuantitativeDefinition,
+ * 	createQuantitativeReasoner,
+ * 	createReason,
+ * 	createStaticFactor,
+ * } from '@orkestrel/reason'
+ *
+ * const reason = createReason({ reasoners: [createQuantitativeReasoner()] })
+ * const definition = createQuantitativeDefinition('risk', 'Risk score', [
+ * 	createFactorGroup('drivers', 'sum', [
+ * 		createFieldFactor('age', 'age'),
+ * 		createStaticFactor('floor', 10),
+ * 	]),
+ * ])
+ * reason.supports('quantitative') // true
+ * const result = reason.reason({ age: 25 }, definition)
+ * if (result.reasoning === 'quantitative') result.value // 35
+ * reason.register(createQuantitativeReasoner()) // same reasoning replaces
+ * reason.reasoner('quantitative')?.id // 'quantitative'
+ * reason.reasoners().length // 1
+ * reason.validate(definition).valid // true
+ * reason.destroy()
+ * ```
  */
 export class Reason implements ReasonInterface {
 	readonly #reasoners = new Map<Reasoning, ReasonerInterface>()

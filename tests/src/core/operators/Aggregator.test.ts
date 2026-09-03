@@ -9,9 +9,9 @@ import { repeatValue, sequence } from '../../../setup.js'
 // (a weight multiplies into a sum, is an EXPONENT for a product, a weighted mean
 // for an average with zero-total-weight → 0), the silent unweighted fallback on
 // a weight-length mismatch, and the total never-throw posture (an unknown
-// aggregation → 0). Ports the full scsr Aggregator catalog; the options-object
-// constructor replaces scsr's positional id (DESIGN §2). No mocks — the real
-// stateless instance throughout (AGENTS §16).
+// aggregation → 0), over the whole aggregation catalog. The constructor takes
+// one options object. No mocks — the real
+// stateless instance throughout.
 
 const aggregator = createAggregator()
 

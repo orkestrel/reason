@@ -8,9 +8,9 @@ import { EXTREME_NUMBERS, repeatValue } from '../../../setup.js'
 // divide / power, 0 for the other binaries; the unaries ignore the operand),
 // divide-by-zero → NaN (deliberately not JS's Infinity), `Math.round`'s
 // half-toward-+∞ rounding, NaN / Infinity propagation, the unknown-operation
-// no-op, and `chain` as a strict left fold. Ports the full scsr Transformer
-// catalog; the options-object constructor replaces scsr's positional id
-// (DESIGN §2). No mocks — the real stateless instance throughout (AGENTS §16).
+// no-op, and `chain` as a strict left fold, over the whole operation catalog.
+// The constructor takes one options object.
+// No mocks — the real stateless instance throughout.
 
 const transformer = createTransformer()
 

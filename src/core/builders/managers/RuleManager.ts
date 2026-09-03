@@ -6,6 +6,7 @@ import type {
 	RuleManagerOptions,
 } from '../../types.js'
 import { Emitter } from '@orkestrel/emitter'
+import { isArray } from '@orkestrel/contract'
 import { Collection } from './Collection.js'
 
 /**
@@ -17,10 +18,31 @@ import { Collection } from './Collection.js'
  * by composition with the other list managers — plus its own {@link Emitter}
  * over {@link RuleManagerEventMap}. Rule order is LOAD-BEARING — the forward
  * conclusion is the LAST declared non-disabled rule, so `append` without a
- * `target` makes the new rule the conclusion. `seat` is the owning builder's
+ * `target` makes the new rule the conclusion. `remove` is the batch family
+ * (array form declared FIRST): no argument removes every rule, one id removes
+ * that rule, an id list removes those rules and returns true only when every
+ * named id existed. It emits one `remove` per rule actually removed. `seat` is
+ * the owning builder's
  * silent bulk re-seat channel (used by `merge`). `destroy()` is idempotent and
  * tears the emitter down LAST; any other call after it throws
  * `ReasonError('DESTROYED', …)`.
+ *
+ * @example
+ * ```ts
+ * import { createAtom, createRule, createRuleManager } from '@orkestrel/reason'
+ *
+ * const rules = createRuleManager()
+ * rules.append(
+ * 	createRule('adult', [createAtom('age', 'from', 18)], createAtom('adult', 'equals', true)),
+ * )
+ * rules.prepend(createRule('seed', [], createAtom('seed', 'equals', true)))
+ * rules.replace(createRule('seed', [], createAtom('seed', 'equals', false)))
+ * rules.rule('adult')?.name // 'adult'
+ * rules.rules().map((rule) => rule.id) // ['seed', 'adult']
+ * rules.remove('seed') // true — it was there
+ * rules.seat([]) // silent bulk re-seat
+ * rules.destroy()
+ * ```
  */
 export class RuleManager implements RuleManagerInterface {
 	readonly #rules: Collection<Rule>
@@ -58,15 +80,31 @@ export class RuleManager implements RuleManagerInterface {
 		this.#emitter.emit('replace', rule.id)
 	}
 
-	remove(id: string): void {
-		this.#rules.remove(id)
-		this.#emitter.emit('remove', id)
+	// Array overload first so a list resolves to the batch form.
+	remove(ids: readonly string[]): boolean
+	remove(id: string): boolean
+	remove(): void
+	remove(idOrIds?: readonly string[] | string): boolean | void {
+		if (idOrIds === undefined) {
+			// The snapshot is taken before the first removal, so the loop walks the
+			// collection as it stood when the call began.
+			for (const rule of this.#rules.items()) this.#removeOne(rule.id)
+			return
+		}
+		if (isArray<string>(idOrIds)) {
+			let all = true
+			for (const id of idOrIds) {
+				if (!this.#removeOne(id)) all = false
+			}
+			return all
+		}
+		return this.#removeOne(idOrIds)
 	}
 
 	// The owning builder's bulk re-seat channel — replaces the whole collection
 	// in one silent call (no per-element events); used by `merge`.
-	seat(items: readonly Rule[]): void {
-		this.#rules.seat(items)
+	seat(rules: readonly Rule[]): void {
+		this.#rules.seat(rules)
 	}
 
 	destroy(): void {
@@ -75,5 +113,13 @@ export class RuleManager implements RuleManagerInterface {
 		this.#rules.destroy()
 		this.#emitter.emit('destroy')
 		this.#emitter.destroy()
+	}
+
+	// One removal, reported: a rule that was never there is neither removed nor
+	// announced, so each batch form emits exactly what it changed.
+	#removeOne(id: string): boolean {
+		if (!this.#rules.remove(id)) return false
+		this.#emitter.emit('remove', id)
+		return true
 	}
 }

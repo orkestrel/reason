@@ -1,4 +1,6 @@
 import type { Transform, TransformerInterface, TransformerOptions } from '../types.js'
+import { applyOperation, resolveOperand } from '../helpers.js'
+import { isMathOperation } from '../validators.js'
 import { TRANSFORMER_ID } from '../constants.js'
 
 /**
@@ -13,6 +15,15 @@ import { TRANSFORMER_ID } from '../constants.js'
  * `Infinity`), an unknown operation returns the value unchanged, and `chain` is
  * a strict left fold — `NaN` flows through untouched. Stateless and
  * deterministic.
+ *
+ * @example
+ * ```ts
+ * import { createTransform, createTransformer } from '@orkestrel/reason'
+ *
+ * const transformer = createTransformer()
+ * transformer.apply(10, createTransform('multiply', 2)) // 20 — one math step
+ * transformer.chain(10, [createTransform('add', 5), createTransform('multiply', 2)]) // 30 — left-folded
+ * ```
  */
 export class Transformer implements TransformerInterface {
 	readonly #id: string
@@ -26,39 +37,14 @@ export class Transformer implements TransformerInterface {
 	}
 
 	apply(value: number, transform: Transform): number {
-		switch (transform.operation) {
-			case 'add':
-				return value + (transform.operand ?? 0)
-			case 'subtract':
-				return value - (transform.operand ?? 0)
-			case 'multiply':
-				return value * (transform.operand ?? 1)
-			case 'divide': {
-				const divisor = transform.operand ?? 1
-				return divisor === 0 ? Number.NaN : value / divisor
-			}
-			case 'percentage':
-				return value * ((transform.operand ?? 0) / 100)
-			case 'minimum':
-				return Math.min(value, transform.operand ?? 0)
-			case 'maximum':
-				return Math.max(value, transform.operand ?? 0)
-			case 'average':
-				return (value + (transform.operand ?? 0)) / 2
-			case 'power':
-				return Math.pow(value, transform.operand ?? 1)
-			case 'round':
-				return Math.round(value)
-			case 'ceil':
-				return Math.ceil(value)
-			case 'floor':
-				return Math.floor(value)
-			case 'abs':
-				return Math.abs(value)
-			default:
-				// An unknown operation from an untrusted definition is a silent no-op.
-				return value
-		}
+		// An unknown operation from an untrusted definition is a silent no-op, and
+		// the guard is what keeps `applyOperation`'s throwing default unreachable.
+		if (!isMathOperation(transform.operation)) return value
+		return applyOperation(
+			transform.operation,
+			value,
+			resolveOperand(transform.operation, transform.operand),
+		)
 	}
 
 	chain(value: number, transforms: readonly Transform[]): number {

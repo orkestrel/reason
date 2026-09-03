@@ -511,7 +511,7 @@ export function createInferenceManager(
 	return new InferenceManager(options)
 }
 
-// The value factories below assemble the declarative definition vocabulary.
+// The value factories that follow assemble the declarative definition vocabulary.
 // Each returns a fresh, JSON-serializable value and OMITS absent optional keys
 // entirely (never sets them to `undefined`), so the output round-trips through
 // the exact-record validators. A factory with an `overrides` bag spreads it

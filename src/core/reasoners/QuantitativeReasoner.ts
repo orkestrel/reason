@@ -41,6 +41,25 @@ import { Aggregator } from '../operators/Aggregator.js'
  * string is unresolvable and takes the fallback path. Lookup sources read only
  * OWN table keys, and a missing / `null` field falls back directly. Nothing
  * mutates its inputs; fully deterministic.
+ *
+ * @example
+ * ```ts
+ * import {
+ * 	createFactorGroup,
+ * 	createQuantitativeDefinition,
+ * 	createQuantitativeReasoner,
+ * 	createStaticFactor,
+ * } from '@orkestrel/reason'
+ *
+ * const reasoner = createQuantitativeReasoner()
+ * const definition = createQuantitativeDefinition('risk', 'Risk', [
+ * 	createFactorGroup('drivers', 'sum', [createStaticFactor('floor', 10)]),
+ * ])
+ * reasoner.supports(definition) // true
+ * reasoner.validate(definition).valid // true
+ * const result = reasoner.reason({}, definition)
+ * if (result.reasoning === 'quantitative') result.value // 10
+ * ```
  */
 export class QuantitativeReasoner implements ReasonerInterface {
 	readonly #id: string

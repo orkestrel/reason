@@ -2,7 +2,7 @@ import type {
 	Definition,
 	EvaluatorInterface,
 	Expression,
-	LogicalChainingOutcome,
+	LogicalChainingResult,
 	LogicalDefinition,
 	LogicalReasonerOptions,
 	Reasoning,
@@ -36,7 +36,7 @@ import { Evaluator } from '../operators/Evaluator.js'
  * one full pass with no new derivation — appends a trace containing
  * `converged`. Final rule results re-evaluate against the settled overlay in
  * ORIGINAL rule order (forward) / priority-sorted order (backward), and the
- * overall `conclusion` is the LAST result's conclusion. Backward chaining
+ * overall `conclusion` is whether the LAST result applied. Backward chaining
  * proves EVERY rule goal-first: an unmet premise triggers sub-goal search
  * through rules whose conclusion atoms assert the needed `field = value` pair,
  * guarded by a visited-rule set (cycle-safe) plus the depth cap; `not` succeeds
@@ -47,6 +47,25 @@ import { Evaluator } from '../operators/Evaluator.js'
  * compares with SameValueZero (`equalValues`), so a NaN-valued conclusion
  * derives once and the fixpoint converges. Nothing mutates its inputs; fully
  * deterministic.
+ *
+ * @example
+ * ```ts
+ * import {
+ * 	createAtom,
+ * 	createLogicalDefinition,
+ * 	createLogicalReasoner,
+ * 	createRule,
+ * } from '@orkestrel/reason'
+ *
+ * const reasoner = createLogicalReasoner()
+ * const definition = createLogicalDefinition('e', 'Eligibility', [
+ * 	createRule('adult', [createAtom('age', 'from', 18)], createAtom('adult', 'equals', true)),
+ * ])
+ * reasoner.supports(definition) // true
+ * reasoner.validate(definition).valid // true
+ * const result = reasoner.reason({ age: 25 }, definition)
+ * if (result.reasoning === 'logical') result.conclusion // true
+ * ```
  */
 export class LogicalReasoner implements ReasonerInterface {
 	readonly #id: string
@@ -101,10 +120,10 @@ export class LogicalReasoner implements ReasonerInterface {
 		}
 
 		// Cross-rule overlay-key mismatch: an array-path conclusion write whose
-		// flat overlay key is also read via an array-path premise elsewhere.
+		// flat overlay key is also read through an array-path premise elsewhere.
 		for (const key of findOverlayMismatches(definition.rules ?? [])) {
 			warnings.push(
-				`Overlay key "${key}" is written via an array path AND also read via an array path — the flat overlay key will not resolve`,
+				`Overlay key "${key}" is written through an array path AND also read through an array path — the flat overlay key will not resolve`,
 			)
 		}
 
@@ -160,7 +179,7 @@ export class LogicalReasoner implements ReasonerInterface {
 		subject: Subject,
 		trace: string[],
 		errors: string[],
-	): LogicalChainingOutcome {
+	): LogicalChainingResult {
 		const maxDepth = definition.depth ?? DEFAULT_DEPTH
 		const derived: Record<string, unknown> = {}
 
@@ -196,7 +215,7 @@ export class LogicalReasoner implements ReasonerInterface {
 
 				const ruleResult = this.#evaluateRule(rule, currentSubject)
 
-				if (ruleResult.applied && ruleResult.conclusion) {
+				if (ruleResult.applied) {
 					const conclusions = extractConclusions(rule.conclusion)
 					for (const [key, value] of Object.entries(conclusions)) {
 						// SameValueZero — a NaN conclusion must not re-derive forever.
@@ -227,7 +246,7 @@ export class LogicalReasoner implements ReasonerInterface {
 		}
 
 		const conclusion =
-			finalResults.length > 0 ? (finalResults[finalResults.length - 1]?.conclusion ?? false) : false
+			finalResults.length > 0 ? (finalResults[finalResults.length - 1]?.applied ?? false) : false
 
 		return { conclusion, rules: finalResults }
 	}
@@ -239,7 +258,7 @@ export class LogicalReasoner implements ReasonerInterface {
 		subject: Subject,
 		trace: string[],
 		errors: string[],
-	): LogicalChainingOutcome {
+	): LogicalChainingResult {
 		const maxDepth = definition.depth ?? DEFAULT_DEPTH
 		const derived: Record<string, unknown> = {}
 		const ruleResults = new Map<string, RuleResult>()
@@ -252,7 +271,7 @@ export class LogicalReasoner implements ReasonerInterface {
 				if (rule.enabled === false) return false
 				// A missing / non-array premises cannot be walked — errored and
 				// excluded. An EMPTY premises array is kept: backward applies it
-				// VACUOUSLY (scsr semantics — forward reports it instead).
+				// VACUOUSLY (forward reports it instead).
 				if (!rule.premises || !Array.isArray(rule.premises)) {
 					errors.push(`Rule "${rule.id}" has no premises — skipped`)
 					return false
@@ -295,7 +314,7 @@ export class LogicalReasoner implements ReasonerInterface {
 		}
 
 		const conclusion =
-			finalResults.length > 0 ? (finalResults[finalResults.length - 1]?.conclusion ?? false) : false
+			finalResults.length > 0 ? (finalResults[finalResults.length - 1]?.applied ?? false) : false
 
 		return { conclusion, rules: finalResults }
 	}
@@ -340,12 +359,7 @@ export class LogicalReasoner implements ReasonerInterface {
 
 		const allMet = premiseResults.every(Boolean)
 
-		ruleResults.set(rule.id, {
-			id: rule.id,
-			applied: allMet,
-			premises: premiseResults,
-			conclusion: allMet,
-		})
+		ruleResults.set(rule.id, { id: rule.id, applied: allMet, premises: premiseResults })
 
 		if (allMet) {
 			const conclusions = extractConclusions(rule.conclusion)
@@ -446,12 +460,7 @@ export class LogicalReasoner implements ReasonerInterface {
 						}
 					}
 
-					ruleResults.set(rule.id, {
-						id: rule.id,
-						applied: allMet,
-						premises: premiseResults,
-						conclusion: allMet,
-					})
+					ruleResults.set(rule.id, { id: rule.id, applied: allMet, premises: premiseResults })
 
 					if (allMet) {
 						for (const [key, entry] of Object.entries(conclusionFacts)) {
@@ -592,27 +601,21 @@ export class LogicalReasoner implements ReasonerInterface {
 		return false
 	}
 
-	// A rule applies exactly when ALL premises hold — `applied` and `conclusion`
-	// are the same boolean; a premise-less or conclusion-less rule never applies.
+	// A rule applies exactly when ALL premises hold; a premise-less or
+	// conclusion-less rule never applies.
 	#evaluateRule(rule: Rule, subject: Subject): RuleResult {
 		if (!rule.premises || rule.premises.length === 0) {
-			return { id: rule.id, applied: false, premises: [], conclusion: false }
+			return { id: rule.id, applied: false, premises: [] }
 		}
 		if (!rule.conclusion) {
-			return { id: rule.id, applied: false, premises: [], conclusion: false }
+			return { id: rule.id, applied: false, premises: [] }
 		}
 
 		const premiseResults = rule.premises.map((premise) =>
 			this.#evaluateExpression(premise, subject),
 		)
-		const allPremisesMet = premiseResults.every(Boolean)
 
-		return {
-			id: rule.id,
-			applied: allPremisesMet,
-			premises: premiseResults,
-			conclusion: allPremisesMet,
-		}
+		return { id: rule.id, applied: premiseResults.every(Boolean), premises: premiseResults }
 	}
 
 	// EAGER evaluation (no short-circuit): `not` reads only its first operand

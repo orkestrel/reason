@@ -43,8 +43,7 @@ import { buildStaticDefinition, expectQuantitative } from '../../setup.js'
 // `name` defaulting to the `id`, and an override bag merged LAST (an override
 // wins over a default). The ENTITY factories: each `create*` returns a
 // WORKING instance behind its interface type, with the default id when no
-// options are given and a custom id through the options object (DESIGN §2: one
-// options bag replaces scsr's positional arguments). Deep per-class behavior
+// options are given and a custom id through the options object. Deep per-class behavior
 // lives in the operator / reasoner / orchestrator test files; here each factory
 // is proven usable end to end. Operator INJECTION through
 // `createQuantitativeReasoner` is exercised in integration.test.ts (scenario 5).

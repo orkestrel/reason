@@ -6,6 +6,7 @@ import type {
 	InferenceManagerOptions,
 } from '../../types.js'
 import { Emitter } from '@orkestrel/emitter'
+import { isArray } from '@orkestrel/contract'
 import { Collection } from './Collection.js'
 
 /**
@@ -17,9 +18,38 @@ import { Collection } from './Collection.js'
  * shared by composition with the other list managers — plus its own
  * {@link Emitter} over {@link InferenceManagerEventMap}. Inference order is
  * LOAD-BEARING — backward proving iterates in declaration order and returns on
- * first success. `seat` is the owning builder's silent bulk re-seat channel
+ * first success. `remove` is the batch family (array form declared FIRST): no
+ * argument removes every inference, one id removes that inference, an id list
+ * removes those inferences and returns true only when every named id existed.
+ * It emits one `remove` per inference actually removed.
+ * `seat` is the owning builder's silent bulk re-seat channel
  * (used by `merge`). `destroy()` is idempotent and tears the emitter down LAST;
  * any other call after it throws `ReasonError('DESTROYED', …)`.
+ *
+ * @example
+ * ```ts
+ * import { createFact, createInference, createInferenceManager } from '@orkestrel/reason'
+ *
+ * const inferences = createInferenceManager()
+ * inferences.append(
+ * 	createInference(
+ * 		'mortal',
+ * 		[createFact('p1', 'human', ['?x'])],
+ * 		createFact('c1', 'mortal', ['?x']),
+ * 	),
+ * )
+ * inferences.prepend(
+ * 	createInference('wise', [createFact('p2', 'human', ['?x'])], createFact('c2', 'wise', ['?x'])),
+ * )
+ * inferences.replace(
+ * 	createInference('wise', [createFact('p2', 'human', ['?x'])], createFact('c2', 'sage', ['?x'])),
+ * )
+ * inferences.inference('mortal')?.name // 'mortal'
+ * inferences.inferences().map((inference) => inference.id) // ['wise', 'mortal']
+ * inferences.remove('wise') // true — it was there
+ * inferences.seat([]) // silent bulk re-seat
+ * inferences.destroy()
+ * ```
  */
 export class InferenceManager implements InferenceManagerInterface {
 	readonly #inferences: Collection<Inference>
@@ -57,15 +87,31 @@ export class InferenceManager implements InferenceManagerInterface {
 		this.#emitter.emit('replace', inference.id)
 	}
 
-	remove(id: string): void {
-		this.#inferences.remove(id)
-		this.#emitter.emit('remove', id)
+	// Array overload first so a list resolves to the batch form.
+	remove(ids: readonly string[]): boolean
+	remove(id: string): boolean
+	remove(): void
+	remove(idOrIds?: readonly string[] | string): boolean | void {
+		if (idOrIds === undefined) {
+			// The snapshot is taken before the first removal, so the loop walks the
+			// collection as it stood when the call began.
+			for (const inference of this.#inferences.items()) this.#removeOne(inference.id)
+			return
+		}
+		if (isArray<string>(idOrIds)) {
+			let all = true
+			for (const id of idOrIds) {
+				if (!this.#removeOne(id)) all = false
+			}
+			return all
+		}
+		return this.#removeOne(idOrIds)
 	}
 
 	// The owning builder's bulk re-seat channel — replaces the whole collection
 	// in one silent call (no per-element events); used by `merge`.
-	seat(items: readonly Inference[]): void {
-		this.#inferences.seat(items)
+	seat(inferences: readonly Inference[]): void {
+		this.#inferences.seat(inferences)
 	}
 
 	destroy(): void {
@@ -74,5 +120,13 @@ export class InferenceManager implements InferenceManagerInterface {
 		this.#inferences.destroy()
 		this.#emitter.emit('destroy')
 		this.#emitter.destroy()
+	}
+
+	// One removal, reported: an inference that was never there is neither removed
+	// nor announced, so each batch form emits exactly what it changed.
+	#removeOne(id: string): boolean {
+		if (!this.#inferences.remove(id)) return false
+		this.#emitter.emit('remove', id)
+		return true
 	}
 }

@@ -95,10 +95,10 @@ export function expectInferential(
 
 /**
  * Recursively `Object.freeze` a value and every nested plain object/array it
- * reaches — the deep-frozen-input stress the no-mutation reasoner tests share
- * (AGENTS §16.1), so a mutation anywhere in the input tree throws in strict
+ * reaches — the deep-frozen-input stress the no-mutation reasoner tests share,
+ * so a mutation anywhere in the input tree throws in strict
  * mode instead of silently succeeding. Narrows with {@link isArray} /
- * {@link isRecord} (never an `as`, AGENTS §1) and recurses only into a plain
+ * {@link isRecord} (never an `as`) and recurses only into a plain
  * array's elements or a plain record's `Object.values` — any other value
  * (a primitive, `Date`, `Map`, function) is returned unchanged.
  *
@@ -124,8 +124,7 @@ export function deepFreeze<T>(value: T): T {
 /**
  * The recurring flat `Subject` of the evaluator / reasoner tests — one field of
  * each scalar kind (number / string / boolean) plus an `id`, so check operators
- * and subject-binding paths read real data without re-typing the literal
- * (AGENTS §16.1).
+ * and subject-binding paths read real data without re-typing the literal.
  */
 export const BASIC_SUBJECT: Subject = {
 	id: 'subject-1',
@@ -148,7 +147,7 @@ export const NESTED_SUBJECT: Subject = {
 
 /**
  * The recurring driver-scoring `Subject` — the multi-factor scenario the
- * evaluator and quantitative-reasoner tests share (AGENTS §16.1).
+ * evaluator and quantitative-reasoner tests share.
  */
 export const DRIVER_SUBJECT: Subject = {
 	driverAge: 22,
@@ -160,7 +159,7 @@ export const DRIVER_SUBJECT: Subject = {
  * Build the simplest runnable `QuantitativeDefinition` — one sum group holding
  * one static factor, producing `value` on ANY subject. The shared definition the
  * orchestrator / factory tests dispatch when the scenario only needs SOME
- * working definition (AGENTS §16.1).
+ * working definition.
  *
  * @param id - The definition id (and name); defaults to `'static-quant'`
  * @param value - The static factor's value (the run's result); defaults to `42`
@@ -175,8 +174,8 @@ export function buildStaticDefinition(id = 'static-quant', value = 42): Quantita
 /**
  * Create a REAL `ReasonerInterface` whose `reason` always throws
  * `new Error(message)` — the scripted collaborator driving the orchestrator's
- * `bail` / `error`-event paths (AGENTS §16.1: a real implementation of the
- * seam, not a mock of the orchestrator).
+ * `bail` / `error`-event paths (a real implementation of the seam, not a mock
+ * of the orchestrator).
  *
  * @param message - The thrown error's message; defaults to `'boom'`
  * @param reasoning - The reasoning to register under; defaults to `'quantitative'`
@@ -200,7 +199,7 @@ export function createThrowingReasoner(
 /**
  * Run `scenario` twice against fresh state and return both outcomes — the shared
  * form of the byte-identical `twice(scenario)` closure `DefinitionBuilder.test.ts`
- * and `SubjectBuilder.test.ts` each define locally (AGENTS §16.1), used throughout
+ * and `SubjectBuilder.test.ts` each define locally, used throughout
  * both files to run a mutation scenario twice and deep-equal the two outcomes,
  * pinning both correctness and determinism in one assertion.
  *
@@ -214,8 +213,8 @@ export function runTwice<T>(scenario: () => T): readonly [T, T] {
 
 /**
  * A `count`-long ascending integer range starting at `start` — the shared
- * numeric-sequence fixture the aggregation / scale tests build inputs from
- * (AGENTS §16.1), replacing repeated `Array.from({ length: n }, (_, i) => i)`.
+ * numeric-sequence fixture the aggregation / scale tests build inputs from,
+ * replacing repeated `Array.from({ length: n }, (_, i) => i)`.
  * an empty range for `count <= 0`.
  *
  * @param count - How many integers to produce
@@ -228,7 +227,7 @@ export function sequence(count: number, start = 0): readonly number[] {
 
 /**
  * An array of `count` copies of `value` — the uniform-input fill the aggregator /
- * transformer scale tests exercise (AGENTS §16.1). For a reference `value` every slot
+ * transformer scale tests exercise. For a reference `value` every slot
  * shares the one reference (a fill, not a deep clone); an empty array for `count <= 0`.
  *
  * @typeParam T - The element type
@@ -289,7 +288,7 @@ export const TRICKY_KEYS: readonly string[] = Object.freeze([
 /**
  * A `length`-long array with REAL holes everywhere except the given
  * `(index, value)` pairs — the sparse-array fixture the array-handling tests
- * probe (AGENTS §16.1). Built from `new Array(length)`, so unfilled slots are
+ * probe. Built from `new Array(length)`, so unfilled slots are
  * genuine holes (absent from `Object.keys` / `for…in`, skipped by `forEach` /
  * `map`), never `undefined` values written into every slot.
  *
@@ -309,7 +308,7 @@ export function sparse<T>(length: number, filled: ReadonlyArray<readonly [number
 /**
  * Nest `leaf` inside `depth` layers of a single-operand `'and'`
  * compound — the deep-expression-tree fixture the recursion / stack
- * -depth tests probe (AGENTS §16.1). `depth <= 0` returns `leaf` itself,
+ * -depth tests probe. `depth <= 0` returns `leaf` itself,
  * unwrapped.
  *
  * @param depth - How many `'and'` compound layers to nest
@@ -327,7 +326,7 @@ export function deepCompound(depth: number, leaf: Expression): Expression {
 /**
  * Left-nest `depth` layers of an `'add'` operation around `leaf`,
  * each layer adding `step` — the deep-symbolic-tree fixture the recursion /
- * stack-depth tests probe (AGENTS §16.1). `depth <= 0` returns `leaf` itself,
+ * stack-depth tests probe. `depth <= 0` returns `leaf` itself,
  * unwrapped. When `step` is a `constant`, the resulting expression evaluates
  * to `leaf + depth * step`.
  *
@@ -351,7 +350,7 @@ export function deepAddition(
 /**
  * A frozen `Subject` whose integer-like keys are authored deliberately
  * OUT of order — the enumeration-order fixture the subject-key / field-path
- * tests probe (AGENTS §16.1). Per the spec, integer-index string keys
+ * tests probe. Per the spec, integer-index string keys
  * (`"1"`, `"2"`, `"10"`) always enumerate ascending numerically FIRST,
  * regardless of authoring order, followed by the ordinary string keys in
  * insertion order: `Object.keys(INTEGER_KEY_SUBJECT)` yields
@@ -373,7 +372,7 @@ export const ADVERSARIAL_SYMBOL_KEY: unique symbol = Symbol('adversarial')
 
 /**
  * A frozen `Subject` exercising the adversarial value shapes
- * `subjectToFacts` must classify correctly (AGENTS §16.1): a
+ * `subjectToFacts` must classify correctly: a
  * symbol-keyed property (invisible to `Object.keys`, so never surfaced as a
  * fact), plus string-keyed `bigint`, `symbol`, and `function` values — each
  * `typeof` is NOT `'object'`, so `subjectToFacts` keeps them as fact terms
@@ -392,7 +391,7 @@ export const ADVERSARIAL_VALUE_SUBJECT: Subject = Object.freeze({
  * `count` subjects `{ id: "s0", value: 0 }, { id: "s1", value: 1 }, …` built
  * from {@link sequence} — the batch-of-subjects fixture the scale /
  * aggregation tests feed a reasoner instead of hand-writing a
- * literal array (AGENTS §16.1).
+ * literal array.
  *
  * @param count - How many subjects to produce
  * @returns The `count`-long array of subjects

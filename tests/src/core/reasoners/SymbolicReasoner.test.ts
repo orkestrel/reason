@@ -34,7 +34,7 @@ import {
 // variable / divide-by-zero / non-invertible power / unknown operator fail THAT
 // equation and continue), precision rounding applied BEFORE binding (so later
 // equations see the rounded value), and solutions keyed by equation targets
-// only. Ports the full scsr catalog onto the `form` discriminant (DESIGN §2).
+// only, all keyed on the `form` discriminant.
 
 const reasoner = createSymbolicReasoner()
 
@@ -1421,7 +1421,7 @@ describe('SymbolicReasoner — precision drift over a long additive chain', () =
 	})
 })
 
-describe('SymbolicReasoner — builder build() output passed to supports/validate/reason (§15)', () => {
+describe('SymbolicReasoner — builder build() output passed to supports/validate/reason', () => {
 	const definition = createSymbolicDefinition('d', 'd', [
 		createEquation('e1', createVariable('x'), createConstant(42), 'x'),
 	])

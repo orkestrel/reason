@@ -2,8 +2,8 @@ import { appendById, prependById, removeById, replaceById } from '../../helpers.
 import { ReasonError } from '../../errors.js'
 
 /**
- * Holds the id-keyed collection state five of the `DefinitionBuilder`'s managers
- * share — the array, the four placement verbs, the silent re-seat, and the
+ * Holds the id-keyed collection state the `DefinitionBuilder`'s list managers
+ * share — the array, the placement verbs, the silent re-seat, and the
  * destroyed flag.
  *
  * @remarks
@@ -12,7 +12,9 @@ import { ReasonError } from '../../errors.js'
  * nothing to a published surface. It owns the collection as copy-on-write
  * state — every write verb delegates to the matching collection-level pure
  * helper ({@link appendById} and its siblings) and reassigns the fresh array,
- * emitting nothing (the owning manager emits, after the mutation). `seat`
+ * emitting nothing (the owning manager emits, after the mutation). `remove`
+ * reports whether an element with that id was there, which is what lets the
+ * owning manager emit once per element it actually removed. `seat`
  * replaces the whole collection in one silent assignment, which is the owning
  * builder's bulk re-seat channel. `destroy()` is idempotent; every other call
  * after it throws `ReasonError('DESTROYED', …)` naming the owner.
@@ -59,9 +61,11 @@ export class Collection<T extends { readonly id: string }> {
 		this.#items = replaceById(this.#items, item)
 	}
 
-	remove(id: string): void {
+	remove(id: string): boolean {
 		this.#ensureAlive()
+		const existed = this.#items.some((candidate) => candidate.id === id)
 		this.#items = removeById(this.#items, id)
+		return existed
 	}
 
 	destroy(): void {

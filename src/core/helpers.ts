@@ -35,7 +35,10 @@ import { ReasonError } from './errors.js'
 // id-keyed collection primitives, and the copy-on-write change / extend / merge
 // / clear family over definitions and subjects. Every function here is
 // referentially transparent — it returns a fresh, JSON-serializable value and
-// never touches its input. The value constructors that assemble that vocabulary
+// touches no input — with one deliberate exception: `termToKey` and `factToKey`
+// thread a caller-created `identities` ledger and REGISTER each newly seen
+// object term in it, because reference identity has to survive across every
+// call of one dedupe pass. The value constructors that assemble that vocabulary
 // live in `factories.ts` under the `create*` form.
 
 // === Field display
@@ -364,7 +367,7 @@ export function findDuplicates(items: ReadonlyArray<{ readonly id: string }>): r
  * different predicate+arity pairing; `terms.length` is always a plain
  * non-negative integer (never itself contains a space) so it needs no prefix.
  *
- * @param source - The fact (or premise pattern) to key
+ * @param fact - The fact (or premise pattern) to key
  * @returns The predicate+arity key string
  *
  * @example
@@ -375,9 +378,9 @@ export function findDuplicates(items: ReadonlyArray<{ readonly id: string }>): r
  * factToArityKey(createFact('b', 'human', ['x', 'y'])) // arity 2 — distinct key
  * ```
  */
-export function factToArityKey(source: Fact): string {
-	const p = source.predicate
-	return `${p.length}:${p} ${source.terms.length}`
+export function factToArityKey(fact: Fact): string {
+	const p = fact.predicate
+	return `${p.length}:${p} ${fact.terms.length}`
 }
 
 /**
@@ -393,7 +396,7 @@ export function factToArityKey(source: Fact): string {
  * scan finds the same fact a full linear pass would.
  *
  * @param facts - The facts to index
- * @returns A fresh `Map` from {@link factToArityKey} to its facts, in append order
+ * @returns A fresh readonly index from {@link factToArityKey} to its facts, in append order
  *
  * @example
  * ```ts
@@ -403,7 +406,7 @@ export function factToArityKey(source: Fact): string {
  * index.get(factToArityKey(createFact('c', 'human', ['z'])))?.length // 2
  * ```
  */
-export function indexByArity(facts: readonly Fact[]): Map<string, Fact[]> {
+export function indexByArity(facts: readonly Fact[]): ReadonlyMap<string, readonly Fact[]> {
 	const index = new Map<string, Fact[]>()
 	for (const entry of facts) {
 		const key = factToArityKey(entry)
@@ -428,7 +431,7 @@ export function indexByArity(facts: readonly Fact[]): Map<string, Fact[]> {
  * objects never collide and the SAME reference always reproduces its key.
  *
  * @param term - The term to key
- * @param identities - The reference-identity map, threaded across a dedupe pass (mutated: a new object/function is registered)
+ * @param identities - The caller-created reference-identity ledger, threaded across a dedupe pass (a newly seen object/function is registered in it)
  * @returns The term's key string
  *
  * @example
@@ -465,8 +468,8 @@ export function termToKey(term: unknown, identities: Map<object, number>): strin
  * term embedding it: two distinct facts always produce distinct keys, even when
  * a term string contains the delimiter (an injective framing raw joining lacked).
  *
- * @param source - The fact to key
- * @param identities - The reference-identity map threaded across the dedupe pass (see {@link termToKey})
+ * @param fact - The fact to key
+ * @param identities - The reference-identity ledger threaded across the dedupe pass (see {@link termToKey})
  * @returns The fact's canonical key string
  *
  * @example
@@ -478,11 +481,11 @@ export function termToKey(term: unknown, identities: Map<object, number>): strin
  * factToKey(createFact('a', 'p', ['x'], 1), identities) === factToKey(createFact('b', 'p', ['x'], 0.5), identities)
  * ```
  */
-export function factToKey(source: Fact, identities: Map<object, number>): string {
+export function factToKey(fact: Fact, identities: Map<object, number>): string {
 	const parts = [
-		source.predicate,
-		String(source.terms.length),
-		...Array.from(source.terms, (term) => termToKey(term, identities)),
+		fact.predicate,
+		String(fact.terms.length),
+		...Array.from(fact.terms, (term) => termToKey(term, identities)),
 	]
 	// Length-prefix every part so the '\0' delimiter cannot be forged by a
 	// term string that embeds it — the framing stays injective.
@@ -555,7 +558,7 @@ export function matchFacts(pattern: Fact, candidate: Fact): Record<string, unkno
  * returned fact is a fresh copy (`{ ...fact, terms }`) — the input is never
  * mutated.
  *
- * @param source - The fact (or pattern) to instantiate
+ * @param fact - The fact (or pattern) to instantiate
  * @param bindings - The variable bindings to apply
  * @returns A fresh fact with bound variables substituted
  *
@@ -566,14 +569,14 @@ export function matchFacts(pattern: Fact, candidate: Fact): Record<string, unkno
  * instantiateFact(createFact('c', 'mortal', ['?x']), { '?x': 'socrates' }).terms // ['socrates']
  * ```
  */
-export function instantiateFact(source: Fact, bindings: Record<string, unknown>): Fact {
-	const terms = source.terms.map((term) => {
+export function instantiateFact(fact: Fact, bindings: Record<string, unknown>): Fact {
+	const terms = fact.terms.map((term) => {
 		if (typeof term === 'string' && term.startsWith('?') && term in bindings) {
 			return bindings[term]
 		}
 		return term
 	})
-	return { ...source, terms }
+	return { ...fact, terms }
 }
 
 /**
@@ -630,24 +633,26 @@ export function computePremiseConfidence(
  * @remarks
  * Every own subject field EXCEPT `id` becomes a `has(key, value)` fact at full
  * `DEFAULT_CONFIDENCE`; `null` / `undefined` and any `object` (including arrays)
- * value is skipped. Each injection appends a line to `trace` (mutated), plus a
- * final count when at least one fact was produced. The injected fact ids are
- * `subject:<key>`.
+ * value is skipped. The returned `trace` carries one line per injection plus a
+ * final count when at least one fact was produced, so no caller-owned
+ * accumulator is written to. The injected fact ids are `subject:<key>`.
  *
  * @param subject - The subject to project
- * @param trace - The trace accumulator to append to (mutated)
- * @returns The fresh `has(...)` facts (in `Object.keys` order)
+ * @returns The fresh `has(...)` facts (in `Object.keys` order) and the trace lines narrating them
  *
  * @example
  * ```ts
  * import { subjectToFacts } from '@src/core'
  *
- * const trace: string[] = []
- * subjectToFacts({ id: 'p1', age: 42, tags: ['a'] }, trace) // one fact: has('age', 42) — tags skipped
+ * subjectToFacts({ id: 'p1', age: 42, tags: ['a'] }).facts // one fact: has('age', 42) — tags skipped
  * ```
  */
-export function subjectToFacts(subject: Subject, trace: string[]): Fact[] {
+export function subjectToFacts(subject: Subject): {
+	readonly facts: readonly Fact[]
+	readonly trace: readonly string[]
+} {
 	const facts: Fact[] = []
+	const trace: string[] = []
 
 	for (const key of Object.keys(subject)) {
 		if (key === 'id') continue
@@ -665,7 +670,7 @@ export function subjectToFacts(subject: Subject, trace: string[]): Fact[] {
 	}
 
 	if (facts.length > 0) trace.push(`Injected ${facts.length} fact(s) from subject`)
-	return facts
+	return { facts, trace }
 }
 
 /**
@@ -682,7 +687,7 @@ export function subjectToFacts(subject: Subject, trace: string[]): Fact[] {
  * premise's `terms`, and returns the remainder once each, in the conclusion's
  * authored order.
  *
- * @param source - The inference whose conclusion is checked against its premises
+ * @param inference - The inference whose conclusion is checked against its premises
  * @returns The unbound conclusion variable names, once each, authored order
  *
  * @example
@@ -694,9 +699,9 @@ export function subjectToFacts(subject: Subject, trace: string[]): Fact[] {
  * ) // ['?y'] — '?x' is bound by the premise, '?y' is not
  * ```
  */
-export function findUnboundVariables(source: Inference): readonly string[] {
+export function findUnboundVariables(inference: Inference): readonly string[] {
 	const bound = new Set<string>()
-	for (const premise of source.premises) {
+	for (const premise of inference.premises) {
 		for (const term of premise.terms) {
 			if (isString(term) && term.startsWith('?')) bound.add(term)
 		}
@@ -704,7 +709,7 @@ export function findUnboundVariables(source: Inference): readonly string[] {
 
 	const unbound: string[] = []
 	const seen = new Set<string>()
-	for (const term of source.conclusion.terms) {
+	for (const term of inference.conclusion.terms) {
 		if (!isString(term) || !term.startsWith('?')) continue
 		if (bound.has(term) || seen.has(term)) continue
 		seen.add(term)
@@ -911,6 +916,35 @@ export function applyOperation(operator: string, left: number, right: number): n
 	}
 }
 
+/**
+ * Resolves the effective right operand of a math operation — the supplied
+ * `operand`, or the operation's own identity-preserving default when absent.
+ *
+ * @remarks
+ * The operand-default half of the transform pipeline, paired with
+ * {@link applyOperation}: `multiply` / `divide` / `power` default to `1` and
+ * every other operation to `0`, so an absent operand leaves the value
+ * unchanged. The unary operations (`round` / `ceil` / `floor` / `abs`) ignore
+ * the operand entirely, so their default is never observable.
+ *
+ * @param operation - The operation whose operand default applies
+ * @param operand - The supplied operand; an absent one takes the default
+ * @returns The effective right operand. Default: `1` for `multiply` / `divide` / `power`, `0` otherwise
+ *
+ * @example
+ * ```ts
+ * import { resolveOperand } from '@src/core'
+ *
+ * resolveOperand('multiply')    // 1 — identity-preserving
+ * resolveOperand('add')         // 0 — identity-preserving
+ * resolveOperand('multiply', 3) // 3 — the supplied operand
+ * ```
+ */
+export function resolveOperand(operation: MathOperation, operand?: number): number {
+	if (operand !== undefined) return operand
+	return operation === 'multiply' || operation === 'divide' || operation === 'power' ? 1 : 0
+}
+
 // === Logical conclusion extraction & error results
 
 /**
@@ -964,7 +998,7 @@ export function extractAtoms(expression: Expression): readonly Atom[] {
  * The conclusion-extraction step of the logical reasoner's chaining: every
  * `atom` inside the expression asserts its `formatField(check.field) =
  * check.value` pair, and compounds are walked without regard to the connective
- * (an atom under `not` / `or` is asserted just the same). Later operands WIN on
+ * (an atom under `not` / `or` is asserted the same way). Later operands WIN on
  * a key clash (`Object.assign` order). Recursion runs through this exported
  * function itself; the derived-overlay keys are `formatField` strings (an array
  * field path flattens to its dot-joined form).
@@ -998,8 +1032,8 @@ export function extractConclusions(expression: Expression): Record<string, unkno
  * probe behind `LogicalReasoner.validate`'s overlay-key-mismatch warning: a
  * logical conclusion's derived overlay is a FLAT record keyed by
  * `formatField(check.field)` — an array `FieldPath` dot-joins into one string
- * key. A premise that reads the same field via a DOTTED-STRING path resolves
- * that flat key correctly, but a premise that reads it via an ARRAY path
+ * key. A premise that reads the same field through a DOTTED-STRING path resolves
+ * that flat key correctly, but a premise that reads it through an ARRAY path
  * calls `resolveField`, which descends key-by-key into nesting the flat
  * overlay never created, so the chain silently fails to connect. Collects the
  * flattened keys of every array-path conclusion atom across `rules` (once
@@ -1158,7 +1192,7 @@ export function definitionToEnvelope(definition: Definition): DefinitionEnvelope
 
 // === Id-keyed collection primitives
 //
-// Five exported generic primitives every per-kind change/merge helper below
+// The exported generic primitives every per-kind change/merge helper that follows
 // composes over. No parameter selects behavior (`.claude/rules/names.md`
 // § Split instead of compounding): `appendById` and `prependById` are
 // separately named functions, and the optional `target` each takes is DATA — an
@@ -1470,7 +1504,7 @@ export function removeGroup(
  * @remarks
  * Factor order is LOAD-BEARING: the same-priority tiebreak is declaration
  * order ({@link sortByPriority} is a stable ascending sort). Operates on the
- * factor's DIRECT container — compose into a definition via
+ * factor's DIRECT container — compose into a definition through
  * `appendGroup(def, appendFactor(group, factor))`.
  *
  * @param group - The group to insert into
@@ -2015,8 +2049,8 @@ export function removeInference(
  * The merge is ADDITIVE: a base-only group survives into the result and is
  * never deleted, and a scalar absent from `incoming` keeps its base value —
  * merge never clears a field, which is what {@link clearQuantitativeDefinition}
- * is for. `groups` merges via {@link mergeById}; a matched (same-id) PAIR of
- * groups recurses one level deeper — their `factors` also merge via
+ * is for. `groups` merges through {@link mergeById}; a matched (same-id) PAIR of
+ * groups recurses one level deeper — their `factors` also merge through
  * `mergeById` — the one exception to incoming-wins-wholesale. Every other
  * scalar / value-object field is incoming-wins-when-present, else base kept.
  *
@@ -2060,7 +2094,7 @@ export function mergeQuantitativeDefinition(
  * The merge is ADDITIVE: a base-only rule survives into the result and is never
  * deleted, and a scalar absent from `incoming` keeps its base value — merge
  * never clears a field, which is what {@link clearLogicalDefinition} is for.
- * `rules` merges via {@link mergeById} (incoming-wins-wholesale on a matched
+ * `rules` merges through {@link mergeById} (incoming-wins-wholesale on a matched
  * id). Every other scalar field is incoming-wins-when-present, else base kept.
  *
  * @param base - The definition merge targets (its `id` is preserved)
@@ -2097,7 +2131,7 @@ export function mergeLogicalDefinition(
  * The merge is ADDITIVE: a base-only equation or variable survives into the
  * result and is never deleted, and a scalar absent from `incoming` keeps its
  * base value — merge never clears a field, which is what
- * {@link clearSymbolicDefinition} is for. `equations` merges via
+ * {@link clearSymbolicDefinition} is for. `equations` merges through
  * {@link mergeById} (incoming-wins-wholesale on a matched id); `variables` is a
  * plain incoming-wins spread (`{ ...base.variables, ...incoming.variables }`).
  * Every other scalar field is incoming-wins-when-present, else base kept.
@@ -2139,7 +2173,7 @@ export function mergeSymbolicDefinition(
  * and is never deleted, and a scalar absent from `incoming` keeps its base
  * value — merge never clears a field, which is what
  * {@link clearInferentialDefinition} is for. `inferences` and `facts` each
- * merge via {@link mergeById} (incoming-wins-wholesale on a matched id). Every
+ * merge through {@link mergeById} (incoming-wins-wholesale on a matched id). Every
  * other scalar field is incoming-wins-when-present, else base kept.
  *
  * @param base - The definition merge targets (its `id` is preserved)
@@ -2271,7 +2305,7 @@ export function clearInferentialDefinition(
 
 // === Subject engine
 //
-// The subject counterpart of the definition engine above — four pure helpers.
+// The subject counterpart of the preceding definition engine — four pure helpers.
 // Records are unordered, so there is no `append*`/`prepend*` on a subject
 // (mirrors the `addVariable`/`removeVariable` note).
 

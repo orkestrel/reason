@@ -34,9 +34,8 @@ import {
 // (confidence = the inference's own; variable terms stay uninstantiated; a
 // base-fact goal yields a bare leaf proof; depth cap is the ONLY recursion
 // guard; a malformed-premises candidate skips silently) plus its ProofNode
-// tree (`fact` / `inference` — DESIGN §2 renames of scsr's factId /
-// inferenceId), and validate()'s duplicate-id + confidence-range warnings.
-// Ports the full scsr catalog (terms, not arguments).
+// tree (`fact` / `inference` — the single-word proof-node members), and
+// validate()'s duplicate-id + confidence-range warnings.
 
 const reasoner = createInferentialReasoner()
 
@@ -424,7 +423,7 @@ describe('InferentialReasoner — forward chaining', () => {
 		)
 		const result = expectInferential(reasoner.reason({}, definition))
 		expect(result.trace).toContain(
-			'Derived mortal(socrates) via "i1" [confidence: 0.4] (iteration 1)',
+			'Derived mortal(socrates) through "i1" [confidence: 0.4] (iteration 1)',
 		)
 	})
 
@@ -1553,9 +1552,9 @@ describe('InferentialReasoner — predicate+arity index determinism (before/afte
 	]
 
 	const PINNED_TRACE = [
-		'Derived pair(a, b) via "pair-rule" [confidence: 0.45] (iteration 1)',
-		'Derived pair(b, c) via "pair-rule" [confidence: 0.35] (iteration 1)',
-		'Derived triple(x, y, z) via "triple-rule" [confidence: 0.4] (iteration 1)',
+		'Derived pair(a, b) through "pair-rule" [confidence: 0.45] (iteration 1)',
+		'Derived pair(b, c) through "pair-rule" [confidence: 0.35] (iteration 1)',
+		'Derived triple(x, y, z) through "triple-rule" [confidence: 0.4] (iteration 1)',
 		'Forward chaining converged at iteration 2',
 	]
 
@@ -1829,7 +1828,7 @@ describe('InferentialReasoner — sparse array positions are hole-tolerant', () 
 	})
 })
 
-describe('InferentialReasoner — builder build() output passed to supports/validate/reason (§15)', () => {
+describe('InferentialReasoner — builder build() output passed to supports/validate/reason', () => {
 	const definition = mortality()
 
 	it('a built definition + built subject behave identically to the same data written inline (run twice)', () => {

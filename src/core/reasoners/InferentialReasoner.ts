@@ -2,7 +2,7 @@ import type {
 	Definition,
 	Fact,
 	Inference,
-	InferentialChainingOutcome,
+	InferentialChainingResult,
 	InferentialDefinition,
 	InferentialReasonerOptions,
 	ProofNode,
@@ -53,6 +53,34 @@ import { ReasonError } from '../errors.js'
  * plus its {@link ProofNode} tree; recursion is guarded only by the depth cap.
  * Deriving nothing is still success. Nothing mutates its inputs; fully
  * deterministic.
+ *
+ * @example
+ * ```ts
+ * import {
+ * 	createFact,
+ * 	createInference,
+ * 	createInferentialDefinition,
+ * 	createInferentialReasoner,
+ * } from '@orkestrel/reason'
+ *
+ * const reasoner = createInferentialReasoner()
+ * const definition = createInferentialDefinition(
+ * 	'mortality',
+ * 	'Mortality',
+ * 	[createFact('f1', 'human', ['socrates'])],
+ * 	[
+ * 		createInference(
+ * 			'mortal',
+ * 			[createFact('p1', 'human', ['?x'])],
+ * 			createFact('c1', 'mortal', ['?x']),
+ * 		),
+ * 	],
+ * )
+ * reasoner.supports(definition) // true
+ * reasoner.validate(definition).valid // true
+ * const result = reasoner.reason({}, definition)
+ * if (result.reasoning === 'inferential') result.derived[0]?.terms // ['socrates']
+ * ```
  */
 export class InferentialReasoner implements ReasonerInterface {
 	readonly #id: string
@@ -162,12 +190,13 @@ export class InferentialReasoner implements ReasonerInterface {
 
 		const trace: string[] = []
 		const errors: string[] = []
-		const subjectFacts = subjectToFacts(subject, trace)
+		const injected = subjectToFacts(subject)
+		trace.push(...injected.trace)
 
 		const result =
 			definition.strategy === 'backward'
-				? this.#backward(definition, subjectFacts, trace, errors)
-				: this.#forward(definition, subjectFacts, trace, errors)
+				? this.#backward(definition, injected.facts, trace, errors)
+				: this.#forward(definition, injected.facts, trace, errors)
 
 		return {
 			reasoning: 'inferential',
@@ -186,7 +215,7 @@ export class InferentialReasoner implements ReasonerInterface {
 		subjectFacts: readonly Fact[],
 		trace: string[],
 		errors: string[],
-	): InferentialChainingOutcome {
+	): InferentialChainingResult {
 		const maxDepth = definition.depth ?? DEFAULT_DEPTH
 		const knownFacts: Fact[] = []
 		for (const known of [...definition.facts, ...subjectFacts]) {
@@ -194,7 +223,7 @@ export class InferentialReasoner implements ReasonerInterface {
 			knownFacts.push(known)
 		}
 		const derived: Fact[] = []
-		// Dedup via a Set of canonical fact keys maintained ALONGSIDE knownFacts, so
+		// Dedup through a Set of canonical fact keys maintained ALONGSIDE knownFacts, so
 		// membership is O(1) instead of a full linear rescan per candidate. `identities`
 		// keys object/function terms by REFERENCE (mirroring equalValues' `===`) so
 		// distinct objects never collide; primitives collapse under SameValueZero.
@@ -208,8 +237,11 @@ export class InferentialReasoner implements ReasonerInterface {
 		// intra-iteration growth (an early derivation feeds a later inference in the
 		// same pass). Arity-refinement only NARROWS each bucket to facts matchFacts
 		// would have accepted anyway, so the surviving matches and their append
-		// order are identical to a predicate-only index.
-		const byArity = indexByArity(knownFacts)
+		// order are identical to a predicate-only index. `indexByArity` publishes a
+		// READONLY index, so the pass copies each bucket into state it owns before
+		// appending to it.
+		const byArity = new Map<string, Fact[]>()
+		for (const [key, bucket] of indexByArity(knownFacts)) byArity.set(key, [...bucket])
 
 		if (definition.inferences.length === 0) {
 			trace.push('No inference rules defined')
@@ -264,7 +296,7 @@ export class InferentialReasoner implements ReasonerInterface {
 						newDerivation = true
 						trace.push(
 							`Derived ${derivedFact.predicate}(${derivedFact.terms.join(', ')}) ` +
-								`via "${inference.id}" [confidence: ${derivedFact.confidence}] (iteration ${iteration + 1})`,
+								`through "${inference.id}" [confidence: ${derivedFact.confidence}] (iteration ${iteration + 1})`,
 						)
 					}
 				}
@@ -286,7 +318,7 @@ export class InferentialReasoner implements ReasonerInterface {
 		subjectFacts: readonly Fact[],
 		trace: string[],
 		errors: string[],
-	): InferentialChainingOutcome {
+	): InferentialChainingResult {
 		const maxDepth = definition.depth ?? DEFAULT_DEPTH
 		const derived: Fact[] = []
 		const allBaseFacts: Fact[] = []

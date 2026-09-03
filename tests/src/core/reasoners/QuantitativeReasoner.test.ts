@@ -35,10 +35,9 @@ import {
 // stable ascending priority order, strict all-or-nothing groups, required-
 // factor errors that never abort the run, stacked bases, weighted group
 // aggregation, definition-level clamp + precision rounding, and the
-// MISMATCH-throw vs malformed-shape-failure-result distinction. Ports the full
-// scsr catalog PLUS the parseNumber coercion divergences (DESIGN §2: a
-// non-finite subject number or a non-numeric string like '12px' is UNRESOLVABLE
-// and takes the fallback path — scsr's parseFloat prefix-parse is gone) and the
+// MISMATCH-throw vs malformed-shape-failure-result distinction, the
+// parseNumber coercion rules (a non-finite subject number or a non-numeric
+// string like '12px' is UNRESOLVABLE and takes the fallback path), and the
 // FieldPath cases (a dotted STRING is ONE key; an ARRAY descends).
 
 const reasoner = createQuantitativeReasoner()
@@ -661,7 +660,7 @@ describe('QuantitativeReasoner — parseNumber coercion (contracts semantics)', 
 		expect(expectQuantitative(reasoner.reason({ value: 'abc' }, readValue(0))).value).toBe(0)
 	})
 
-	it('a prefix-numeric string like "12px" is UNRESOLVABLE (diverges from scsr parseFloat)', () => {
+	it('a prefix-numeric string like "12px" is UNRESOLVABLE — no prefix parse', () => {
 		expect(expectQuantitative(reasoner.reason({ value: '12px' }, readValue(7))).value).toBe(7)
 	})
 
@@ -1547,7 +1546,7 @@ describe('QuantitativeReasoner — empty min/max aggregate over unapplied groups
 	})
 })
 
-describe('QuantitativeReasoner — builder build() output passed to supports/validate/reason (§15)', () => {
+describe('QuantitativeReasoner — builder build() output passed to supports/validate/reason', () => {
 	const definition = createQuantitativeDefinition('d', 'd', [
 		createFactorGroup('g1', 'sum', [createFieldFactor('age', 'age')]),
 	])

@@ -12,17 +12,17 @@ import { SUBJECT_BUILDER_BRAND } from '../constants.js'
 import { ReasonError } from '../errors.js'
 
 /**
- * Implements a stateful workspace builder accumulating a {@link Subject}, taverna
- * `Workspace`-shaped: a single flat collection, no managers —
- * a flat sibling of `Reason.ts`.
+ * Implements a stateful workspace builder accumulating a {@link Subject} — one
+ * flat key-value collection, no managers.
  *
  * @remarks
  * `id` is OPTIONAL (`options?.id ?? seed.id`). When present, the builder is
- * id-ful and behaves as before. When absent, the builder is ANONYMOUS —
+ * id-ful: `build()` carries that `id` and `clear()` restores it. When absent,
+ * the builder is ANONYMOUS —
  * `.id` is `undefined` and the accumulated subject carries no `id` key.
  * `field(key)` / `fields()` are the singular / plural accessor pair over
  * TOP-LEVEL keys only. `set(key, value)` delegates to `assignField`;
- * `set('id', …)` throws `ReasonError('MISMATCH', …)` — id is immutable via the entity,
+ * `set('id', …)` throws `ReasonError('MISMATCH', …)` — id is immutable through the entity,
  * id-ful or anonymous alike. `remove` is the batch overload
  * (array form declared first); removing `'id'` throws the same `MISMATCH`
  * for the same reason. `merge(incoming)` delegates to `mergeSubjects`
@@ -35,6 +35,22 @@ import { ReasonError } from '../errors.js'
  * `ReasonError('DESTROYED', …)` — only the `emitter` getter and `destroy`
  * itself keep working, mirroring `Reason`. `destroy()` is idempotent and
  * tears the emitter down LAST.
+ *
+ * @example
+ * ```ts
+ * import { createSubjectBuilder } from '@orkestrel/reason'
+ *
+ * const applicant = createSubjectBuilder({ id: 'alice', age: 25 })
+ * applicant.set('region', 'CA')
+ * applicant.merge({ licensed: true, accidents: 0 }) // incoming wins, id kept
+ * applicant.remove(['accidents']) // batch form first — true when ALL existed
+ * applicant.field('region') // 'CA'
+ * applicant.fields() // the live record
+ * applicant.repeat(2) // ids 'alice-0', 'alice-1'
+ * applicant.build() // { id: 'alice', age: 25, region: 'CA', licensed: true }
+ * applicant.clear() // { id: 'alice' }
+ * applicant.destroy()
+ * ```
  */
 export class SubjectBuilder implements SubjectBuilderInterface {
 	readonly [SUBJECT_BUILDER_BRAND]: true = true
@@ -143,11 +159,13 @@ export class SubjectBuilder implements SubjectBuilderInterface {
 		}
 	}
 
-	// `id` is immutable via the entity — writing or removing it through the
+	// `id` is immutable through the entity — writing or removing it through the
 	// generic key-based verbs would desync `this.#id` from `this.#subject`.
 	#ensureNotId(key: string): void {
 		if (key === 'id') {
-			throw new ReasonError('MISMATCH', 'SubjectBuilder id is immutable via this method', { key })
+			throw new ReasonError('MISMATCH', 'SubjectBuilder id is immutable through this method', {
+				key,
+			})
 		}
 	}
 

@@ -16,6 +16,15 @@ import { EVALUATOR_ID } from '../constants.js'
  * input), while `outside` IS the pure negation of `between` (so a malformed
  * range is `outside`). Fields resolve through the core `resolveField` — a string
  * is ONE key, an array descends. Stateless and deterministic.
+ *
+ * @example
+ * ```ts
+ * import { createCheck, createEvaluator } from '@orkestrel/reason'
+ *
+ * const evaluator = createEvaluator()
+ * evaluator.evaluate(createCheck('age', 'above', 18), { age: 25 }) // { field: 'age', met: true, actual: 25 }
+ * evaluator.batch([createCheck('age', 'above', 18)], { age: 25 }) // one CheckResult per check, positionally
+ * ```
  */
 export class Evaluator implements EvaluatorInterface {
 	readonly #id: string

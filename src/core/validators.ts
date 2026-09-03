@@ -971,8 +971,8 @@ export function isGroupResult(value: unknown): value is GroupResult {
  * ```ts
  * import { isRuleResult } from '@src/core'
  *
- * isRuleResult({ id: 'adult', applied: true, premises: [true], conclusion: true }) // true
- * isRuleResult({ id: 'adult', applied: true, premises: [1], conclusion: true })    // false
+ * isRuleResult({ id: 'adult', applied: true, premises: [true] }) // true
+ * isRuleResult({ id: 'adult', applied: true, premises: [1] })    // false
  * ```
  */
 export function isRuleResult(value: unknown): value is RuleResult {
@@ -981,8 +981,7 @@ export function isRuleResult(value: unknown): value is RuleResult {
 			!isArray(result) &&
 			isString(Reflect.get(result, 'id')) &&
 			isBoolean(Reflect.get(result, 'applied')) &&
-			arrayOf(isBoolean)(Reflect.get(result, 'premises')) &&
-			isBoolean(Reflect.get(result, 'conclusion'))
+			arrayOf(isBoolean)(Reflect.get(result, 'premises'))
 		)
 	})(value)
 }

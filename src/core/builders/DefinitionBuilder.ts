@@ -43,24 +43,45 @@ import { RuleManager } from './managers/RuleManager.js'
 import { VariableManager } from './managers/VariableManager.js'
 
 /**
- * Implements a stateful workspace builder accumulating a {@link Definition} through seven
- * always-present self-owning manager properties, shaped like `AgentContext`: a
- * private SCALAR ENVELOPE (reasoning / id / name plus the kind's scalars)
- * composed with each collection read from its manager.
+ * Implements a stateful workspace builder accumulating a {@link Definition}
+ * through always-present self-owning manager properties: a private SCALAR
+ * ENVELOPE (reasoning / id / name plus the kind's scalars) composed with each
+ * collection read from its manager.
  *
  * @remarks
  * Each manager is BRING-YOUR-OWN (a supplied one is reused) or a fresh one
  * seeded from the seed's matching collection (empty for off-kind collections).
- * Managers are KIND-FREE — an off-kind manager is simply ignored by `build()`,
+ * Managers are KIND-FREE — an off-kind manager is ignored by `build()`,
  * never a `MISMATCH`. `build()` is TOTAL, deterministic, and returns a FRESH
  * plain {@link Definition} each call. `merge(incoming)` requires the SAME
  * `reasoning` (else `MISMATCH`) and distributes incoming scalars into the
- * envelope and collections into the managers via the matching `merge*` helper.
- * `clear(key)` deletes one optional field of the envelope for the instance's
- * `reasoning` (a non-clearable key throws `MISMATCH`). `destroy()` cascades to
- * all seven managers, emits `destroy`, then tears the builder emitter down
- * LAST; it is idempotent, and post-destroy mutation / build throws
+ * envelope and collections into the managers through the matching `merge*`
+ * helper. `clear(key)` deletes one optional field of the envelope for the
+ * instance's `reasoning` (a non-clearable key throws `MISMATCH`). `destroy()`
+ * cascades to every manager, emits `destroy`, then tears the builder emitter
+ * down LAST; it is idempotent, and post-destroy mutation / build throws
  * `ReasonError('DESTROYED', …)`.
+ *
+ * @example
+ * ```ts
+ * import {
+ * 	createDefinitionBuilder,
+ * 	createFactorGroup,
+ * 	createFieldFactor,
+ * 	createQuantitativeDefinition,
+ * 	createStaticFactor,
+ * } from '@orkestrel/reason'
+ *
+ * const draft = createDefinitionBuilder(
+ * 	createQuantitativeDefinition('risk', 'Risk', [
+ * 		createFactorGroup('drivers', 'sum', [createStaticFactor('floor', 10)]),
+ * 	]),
+ * )
+ * draft.factors.append('drivers', createFieldFactor('age', 'age'))
+ * draft.groups.append(createFactorGroup('region', 'sum', [createStaticFactor('flat', 5)]))
+ * draft.build() // a fresh plain Definition every call
+ * draft.destroy() // idempotent; cascades to the managers
+ * ```
  */
 export class DefinitionBuilder implements DefinitionBuilderInterface {
 	readonly [DEFINITION_BUILDER_BRAND]: true = true

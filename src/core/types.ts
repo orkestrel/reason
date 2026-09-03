@@ -2,7 +2,7 @@ import type { FieldPath } from '@orkestrel/contract'
 import type { EmitterErrorHandler, EmitterHooks, EmitterInterface } from '@orkestrel/emitter'
 import type { DEFINITION_BUILDER_BRAND, SUBJECT_BUILDER_BRAND } from './constants.js'
 
-// Reasons — a zero-dependency, synchronous, deterministic reasoning engine.
+// A synchronous, deterministic reasoning engine.
 // Declarative, JSON-serializable DEFINITIONS are evaluated against SUBJECTS
 // (plain data records) to produce traceable RESULTS. Three layers: the `Reason`
 // orchestrator (registry + dispatch + events), four reasoners (quantitative /
@@ -143,9 +143,9 @@ export interface CheckResult {
  * Represents one math step applied to a number by the {@link TransformerInterface}.
  *
  * @remarks
- * The absent-`operand` default is operation-specific: `1` for `multiply` /
- * `divide` / `power` (identity-preserving), `0` for every other binary
- * operation; unary operations ignore it.
+ * The absent-`operand` default is operation-specific and identity-preserving;
+ * unary operations ignore it. Default: `1` for `multiply` / `divide` /
+ * `power`, `0` for every other binary operation.
  */
 export interface Transform {
 	readonly operation: MathOperation
@@ -227,8 +227,8 @@ export interface FactorRange {
  * Evaluated as a pipeline: `checks` gate (ALL must be met) → `source` resolve
  * (`fallback` when unresolvable) → finite check → `transforms` chain →
  * `bounds` clamp → finite recheck. `weight` participates only at group
- * aggregation (default `1`); `priority` orders evaluation ascending (default
- * `0`, stable); `enabled: false` skips the factor entirely (omitted from
+ * aggregation. Default: `1`. `priority` orders evaluation ascending, stable.
+ * Default: `0`. `enabled: false` skips the factor entirely (omitted from
  * results); `required: true` promotes a gate / resolution failure to a result
  * error (making `success` false) without aborting the run.
  */
@@ -251,7 +251,8 @@ export interface Factor {
  * Represents a group of factors aggregated into one value.
  *
  * @remarks
- * The group value is `base` (default `0`) plus the aggregation of its APPLIED
+ * `base` is added before aggregation. Default: `0`.
+ * The group value is `base` plus the aggregation of its APPLIED
  * factors' values (with per-factor weights), clamped to `bounds` — never
  * rounded. `strict: true` makes the group all-or-nothing: if any evaluated
  * factor did not apply, the group contributes only its `base` and reports
@@ -274,9 +275,10 @@ export interface FactorGroup {
  * Defines factor-based numeric scoring.
  *
  * @remarks
- * The final value is `base` (default `0`) plus the aggregation of the applied
+ * `base` is added before aggregation. Default: `0`.
+ * The final value is `base` plus the aggregation of the applied
  * groups' values (NO weights at this level), clamped to `bounds`, then rounded
- * to `precision` decimal places (default `4`).
+ * to `precision` decimal places. Default: `4`.
  */
 export interface QuantitativeDefinition {
 	readonly reasoning: 'quantitative'
@@ -313,7 +315,7 @@ export type Expression = Atom | Compound
  * asserted as derived facts.
  *
  * @remarks
- * `priority` orders evaluation ascending (default `0`, lower runs first);
+ * `priority` orders evaluation ascending, lower first. Default: `0`.
  * `enabled: false` skips the rule (omitted from results). Conclusion extraction
  * ignores connectives — EVERY atom inside the conclusion is asserted as a
  * `field = value` fact, even under `not` / `or`.
@@ -332,8 +334,8 @@ export interface Rule {
  * Defines rule-based deduction.
  *
  * @remarks
- * `strategy` picks forward fixpoint chaining or backward goal-driven proving;
- * `depth` caps forward iterations / backward recursion (default `10`).
+ * `strategy` picks forward fixpoint chaining or backward goal-driven proving.
+ * `depth` caps forward iterations / backward recursion. Default: `10`.
  */
 export interface LogicalDefinition {
 	readonly reasoning: 'logical'
@@ -399,8 +401,8 @@ export interface Equation {
  * @remarks
  * `variables` seeds the bindings; numeric subject fields OVERRIDE same-named
  * variables. Equations solve strictly in order, each solution rounded to
- * `precision` decimal places (default `4`) BEFORE feeding forward into later
- * equations.
+ * `precision` decimal places BEFORE feeding forward into later equations.
+ * Default: `4`.
  */
 export interface SymbolicDefinition {
 	readonly reasoning: 'symbolic'
@@ -420,7 +422,7 @@ export interface SymbolicDefinition {
  * @remarks
  * A string term starting with `?` is a unification variable (the prefix is
  * part of its name). `confidence` is `0–1` and propagates multiplicatively
- * through derivations (default `1`).
+ * through derivations. Default: `1`.
  */
 export interface Fact {
 	readonly id: string
@@ -436,8 +438,8 @@ export interface Fact {
  *
  * @remarks
  * A derived fact's confidence is the product of its matched premise facts'
- * confidences times the inference's own `confidence` (default `1`), rounded to
- * four decimal places. `enabled: false` skips the inference silently.
+ * confidences times the inference's own `confidence`, rounded to four decimal
+ * places. Default: `1`. `enabled: false` skips the inference silently.
  */
 export interface Inference {
 	readonly id: string
@@ -456,7 +458,7 @@ export interface Inference {
  * `facts` is the base knowledge; scalar subject fields are additionally
  * injected as `has(key, value)` facts. `strategy` picks a forward fixpoint
  * (derive everything) or backward proving (first provable conclusion wins,
- * returning a proof tree); `depth` caps iterations / recursion (default `10`).
+ * returning a proof tree). `depth` caps iterations / recursion. Default: `10`.
  */
 export interface InferentialDefinition {
 	readonly reasoning: 'inferential'
@@ -534,21 +536,20 @@ export interface QuantitativeResult {
  * Represents one rule's evaluation outcome.
  *
  * @remarks
- * `applied` and `conclusion` are always equal — both mean "all premises held".
- * `premises` carries the per-premise truth values.
+ * `premises` carries the per-premise truth values; `applied` is true exactly
+ * when every premise held.
  */
 export interface RuleResult {
 	readonly id: string
 	readonly applied: boolean
 	readonly premises: readonly boolean[]
-	readonly conclusion: boolean
 }
 
 /**
  * Represents the outcome of logical reasoning.
  *
  * @remarks
- * `conclusion` is the LAST evaluated rule's conclusion (`false` when no rule
+ * `conclusion` is the LAST evaluated rule's `applied` (`false` when no rule
  * was evaluated); `count` tallies the applied rules; disabled rules are
  * omitted from `rules` entirely.
  */
@@ -618,7 +619,7 @@ export type ReasonResult = QuantitativeResult | LogicalResult | SymbolicResult |
  * @remarks
  * Warnings cover empty collections, duplicate ids (`Duplicate <noun> id`),
  * inferential confidences outside `[0, 1]`, a logical conclusion's array-path
- * overlay key also read via an array-path premise elsewhere (the flat overlay
+ * overlay key also read through an array-path premise elsewhere (the flat overlay
  * key will not resolve), and an inferential conclusion carrying a `?variable`
  * unbound by all of its inference's premises — the runtime stays permissive
  * about all of them.
@@ -635,7 +636,7 @@ export interface ReasonValidationResult {
  * Configures `createEvaluator` / the `Evaluator` constructor.
  *
  * @remarks
- * `id` — the evaluator's identity string (defaults to `EVALUATOR_ID`).
+ * `id` — the evaluator's identity string. Default: `EVALUATOR_ID`.
  */
 export interface EvaluatorOptions {
 	readonly id?: string
@@ -645,7 +646,7 @@ export interface EvaluatorOptions {
  * Configures `createTransformer` / the `Transformer` constructor.
  *
  * @remarks
- * `id` — the transformer's identity string (defaults to `TRANSFORMER_ID`).
+ * `id` — the transformer's identity string. Default: `TRANSFORMER_ID`.
  */
 export interface TransformerOptions {
 	readonly id?: string
@@ -655,7 +656,7 @@ export interface TransformerOptions {
  * Configures `createAggregator` / the `Aggregator` constructor.
  *
  * @remarks
- * `id` — the aggregator's identity string (defaults to `AGGREGATOR_ID`).
+ * `id` — the aggregator's identity string. Default: `AGGREGATOR_ID`.
  */
 export interface AggregatorOptions {
 	readonly id?: string
@@ -668,9 +669,9 @@ export interface AggregatorOptions {
  * constructor.
  *
  * @remarks
- * `id` — the reasoner's identity string (defaults to `QUANTITATIVE_ID`).
- * `evaluator` / `transformer` / `aggregator` — injectable operators (each
- * defaults to a fresh default-constructed instance).
+ * `id` — the reasoner's identity string. Default: `QUANTITATIVE_ID`.
+ * `evaluator` / `transformer` / `aggregator` — injectable operators. Default:
+ * a fresh default-constructed instance of each.
  */
 export interface QuantitativeReasonerOptions {
 	readonly id?: string
@@ -683,9 +684,9 @@ export interface QuantitativeReasonerOptions {
  * Configures `createLogicalReasoner` / the `LogicalReasoner` constructor.
  *
  * @remarks
- * `id` — the reasoner's identity string (defaults to `LOGICAL_ID`).
- * `evaluator` — the injectable check evaluator (defaults to a fresh
- * default-constructed instance).
+ * `id` — the reasoner's identity string. Default: `LOGICAL_ID`.
+ * `evaluator` — the injectable check evaluator. Default: a fresh
+ * default-constructed instance.
  */
 export interface LogicalReasonerOptions {
 	readonly id?: string
@@ -696,7 +697,7 @@ export interface LogicalReasonerOptions {
  * Configures `createSymbolicReasoner` / the `SymbolicReasoner` constructor.
  *
  * @remarks
- * `id` — the reasoner's identity string (defaults to `SYMBOLIC_ID`).
+ * `id` — the reasoner's identity string. Default: `SYMBOLIC_ID`.
  */
 export interface SymbolicReasonerOptions {
 	readonly id?: string
@@ -707,7 +708,7 @@ export interface SymbolicReasonerOptions {
  * constructor.
  *
  * @remarks
- * `id` — the reasoner's identity string (defaults to `INFERENTIAL_ID`).
+ * `id` — the reasoner's identity string. Default: `INFERENTIAL_ID`.
  */
 export interface InferentialReasonerOptions {
 	readonly id?: string
@@ -832,11 +833,12 @@ export type ReasonEventMap = {
  *
  * @remarks
  * `reasoners` — the initial registry (a later entry of the same reasoning
- * replaces an earlier one). `bail` — when `true` (the default) a reasoner
- * throw is rethrown after the `error` emit; when `false` it becomes a failure
- * result. `validate` — when `true`, every `reason` call validates the
- * definition first and throws `INVALID` on failure (default `false`). `on` —
- * initial event listeners. `error` — the emitter's listener-error handler.
+ * replaces an earlier one). `bail` — if `true`, a reasoner throw is rethrown
+ * after the `error` emit; if `false`, it becomes a failure result. Default:
+ * `true`. `validate` — if `true`, every `reason` call validates the definition
+ * first and throws `INVALID` on failure; if `false`, no call validates.
+ * Default: `false`. `on` — initial event listeners. `error` — the emitter's
+ * listener-error handler.
  */
 export interface ReasonOptions {
 	readonly reasoners?: readonly ReasonerInterface[]
@@ -875,15 +877,14 @@ export interface ReasonInterface {
 
 // === Definitions & subjects capability layer — entity managers
 //
-// The seven `DefinitionBuilder` manager contracts: each is a SELF-OWNING
-// manager (taverna `InstructionManager`-shaped) — it OWNS its collection as
-// private copy-on-write state, OWNS its own
+// The `DefinitionBuilder` manager contracts: each is a SELF-OWNING manager — it
+// OWNS its collection as private copy-on-write state, OWNS its own
 // {@link EmitterInterface} over its own verb-named event map, and takes its own
 // options record (a seed collection + `on` / `error`). Managers are KIND-FREE:
-// a `DefinitionBuilder` composes all seven regardless of `reasoning`, and an
-// off-kind manager is simply IGNORED by `build()` (no `MISMATCH` gating —
+// a `DefinitionBuilder` composes every one of them regardless of `reasoning`,
+// and an off-kind manager is IGNORED by `build()` (no `MISMATCH` gating —
 // appending a rule to a quantitative builder is inert, never a throw). A write
-// verb copies-on-write into the manager's OWN state via the exported
+// verb copies-on-write into the manager's OWN state through the exported
 // collection-level pure helpers and emits through the manager's OWN emitter;
 // the accessors are pure reads and do NOT emit. `destroy()` is idempotent and
 // tears the emitter down LAST; any call after it throws
@@ -898,7 +899,11 @@ export interface ReasonInterface {
  * @remarks
  * `append` / `prepend` place a group relative to an optional `target` id (a
  * naming miss throws `ReasonError('TARGET', …)`); `replace` swaps a same-id
- * group in place; `remove` filters a group out (no-op when absent).
+ * group in place. `remove` is the batch family: no argument removes every
+ * group, one id removes that group, an id list removes those groups and
+ * returns true only when every named id existed. It emits one `remove` per
+ * group actually removed — an id naming no group emits nothing and returns
+ * false.
  */
 export interface GroupManagerInterface {
 	readonly emitter: EmitterInterface<GroupManagerEventMap>
@@ -907,8 +912,11 @@ export interface GroupManagerInterface {
 	append(group: FactorGroup, target?: string): void
 	prepend(group: FactorGroup, target?: string): void
 	replace(group: FactorGroup): void
-	remove(id: string): void
-	seat(items: readonly FactorGroup[]): void
+	// Array overload first so a list resolves to the batch form.
+	remove(ids: readonly string[]): boolean
+	remove(id: string): boolean
+	remove(): void
+	seat(groups: readonly FactorGroup[]): void
 	destroy(): void
 }
 
@@ -930,7 +938,7 @@ export type GroupManagerEventMap = {
  * Configures `createGroupManager` / the `GroupManager` constructor.
  *
  * @remarks
- * `groups` — the initial collection (defaults to empty). `on` — initial event
+ * `groups` — the initial collection. Default: `[]`. `on` — initial event
  * listeners. `error` — the emitter's listener-error handler.
  */
 export interface GroupManagerOptions {
@@ -952,7 +960,12 @@ export interface GroupManagerOptions {
  * `ReasonError('TARGET', …, { groupId })`. `append` / `prepend` additionally
  * take an optional `target` factor id (a naming miss throws
  * `ReasonError('TARGET', …)`). It still owns its OWN emitter (factor-id
- * payloads).
+ * payloads). `remove` is the batch family behind the leading `groupId`
+ * locator: the locator alone removes every factor of that group, a further id
+ * removes that factor, a further id list removes those factors and returns
+ * true only when every named id existed. It emits one `remove` per factor
+ * actually removed, each paired with the sibling `GroupManagerInterface`'s
+ * `replace` for the containing group.
  */
 export interface FactorManagerInterface {
 	readonly emitter: EmitterInterface<FactorManagerEventMap>
@@ -961,7 +974,10 @@ export interface FactorManagerInterface {
 	append(groupId: string, factor: Factor, target?: string): void
 	prepend(groupId: string, factor: Factor, target?: string): void
 	replace(groupId: string, factor: Factor): void
-	remove(groupId: string, id: string): void
+	// Array overload first so a list resolves to the batch form.
+	remove(groupId: string, ids: readonly string[]): boolean
+	remove(groupId: string, id: string): boolean
+	remove(groupId: string): void
 	destroy(): void
 }
 
@@ -999,7 +1015,10 @@ export interface FactorManagerOptions {
  * @remarks
  * Rule order is load-bearing — the forward conclusion is the LAST declared
  * non-disabled rule, so `append` without a `target` makes a new rule the
- * conclusion.
+ * conclusion. `remove` is the batch family: no argument removes every rule,
+ * one id removes that rule, an id list removes those rules and returns true
+ * only when every named id existed. It emits one `remove` per rule actually
+ * removed — an id naming no rule emits nothing and returns false.
  */
 export interface RuleManagerInterface {
 	readonly emitter: EmitterInterface<RuleManagerEventMap>
@@ -1008,8 +1027,11 @@ export interface RuleManagerInterface {
 	append(rule: Rule, target?: string): void
 	prepend(rule: Rule, target?: string): void
 	replace(rule: Rule): void
-	remove(id: string): void
-	seat(items: readonly Rule[]): void
+	// Array overload first so a list resolves to the batch form.
+	remove(ids: readonly string[]): boolean
+	remove(id: string): boolean
+	remove(): void
+	seat(rules: readonly Rule[]): void
 	destroy(): void
 }
 
@@ -1031,7 +1053,7 @@ export type RuleManagerEventMap = {
  * Configures `createRuleManager` / the `RuleManager` constructor.
  *
  * @remarks
- * `rules` — the initial collection (defaults to empty). `on` — initial event
+ * `rules` — the initial collection. Default: `[]`. `on` — initial event
  * listeners. `error` — the emitter's listener-error handler.
  */
 export interface RuleManagerOptions {
@@ -1046,7 +1068,11 @@ export interface RuleManagerOptions {
  *
  * @remarks
  * Equation order is strongly load-bearing — equations solve strictly in
- * order and each rounded solution feeds forward.
+ * order and each rounded solution feeds forward. `remove` is the batch family:
+ * no argument removes every equation, one id removes that equation, an id list
+ * removes those equations and returns true only when every named id existed. It
+ * emits one `remove` per equation actually removed — an id naming no equation
+ * emits nothing and returns false.
  */
 export interface EquationManagerInterface {
 	readonly emitter: EmitterInterface<EquationManagerEventMap>
@@ -1055,8 +1081,11 @@ export interface EquationManagerInterface {
 	append(equation: Equation, target?: string): void
 	prepend(equation: Equation, target?: string): void
 	replace(equation: Equation): void
-	remove(id: string): void
-	seat(items: readonly Equation[]): void
+	// Array overload first so a list resolves to the batch form.
+	remove(ids: readonly string[]): boolean
+	remove(id: string): boolean
+	remove(): void
+	seat(equations: readonly Equation[]): void
 	destroy(): void
 }
 
@@ -1078,7 +1107,7 @@ export type EquationManagerEventMap = {
  * Configures `createEquationManager` / the `EquationManager` constructor.
  *
  * @remarks
- * `equations` — the initial collection (defaults to empty). `on` — initial
+ * `equations` — the initial collection. Default: `[]`. `on` — initial
  * event listeners. `error` — the emitter's listener-error handler.
  */
 export interface EquationManagerOptions {
@@ -1090,6 +1119,12 @@ export interface EquationManagerOptions {
 /**
  * Declares the {@link DefinitionBuilderInterface} manager over an inferential
  * definition's `facts` — a self-owning, kind-free collection manager.
+ *
+ * @remarks
+ * `remove` is the batch family: no argument removes every fact, one id removes
+ * that fact, an id list removes those facts and returns true only when every
+ * named id existed. It emits one `remove` per fact actually removed — an id
+ * naming no fact emits nothing and returns false.
  */
 export interface FactManagerInterface {
 	readonly emitter: EmitterInterface<FactManagerEventMap>
@@ -1098,8 +1133,11 @@ export interface FactManagerInterface {
 	append(fact: Fact, target?: string): void
 	prepend(fact: Fact, target?: string): void
 	replace(fact: Fact): void
-	remove(id: string): void
-	seat(items: readonly Fact[]): void
+	// Array overload first so a list resolves to the batch form.
+	remove(ids: readonly string[]): boolean
+	remove(id: string): boolean
+	remove(): void
+	seat(facts: readonly Fact[]): void
 	destroy(): void
 }
 
@@ -1121,7 +1159,7 @@ export type FactManagerEventMap = {
  * Configures `createFactManager` / the `FactManager` constructor.
  *
  * @remarks
- * `facts` — the initial collection (defaults to empty). `on` — initial event
+ * `facts` — the initial collection. Default: `[]`. `on` — initial event
  * listeners. `error` — the emitter's listener-error handler.
  */
 export interface FactManagerOptions {
@@ -1136,7 +1174,11 @@ export interface FactManagerOptions {
  *
  * @remarks
  * Inference order is load-bearing — backward proving iterates in declaration
- * order and returns on first success.
+ * order and returns on first success. `remove` is the batch family: no
+ * argument removes every inference, one id removes that inference, an id list
+ * removes those inferences and returns true only when every named id existed.
+ * It emits one `remove` per inference actually removed — an id naming no
+ * inference emits nothing and returns false.
  */
 export interface InferenceManagerInterface {
 	readonly emitter: EmitterInterface<InferenceManagerEventMap>
@@ -1145,8 +1187,11 @@ export interface InferenceManagerInterface {
 	append(inference: Inference, target?: string): void
 	prepend(inference: Inference, target?: string): void
 	replace(inference: Inference): void
-	remove(id: string): void
-	seat(items: readonly Inference[]): void
+	// Array overload first so a list resolves to the batch form.
+	remove(ids: readonly string[]): boolean
+	remove(id: string): boolean
+	remove(): void
+	seat(inferences: readonly Inference[]): void
 	destroy(): void
 }
 
@@ -1168,7 +1213,7 @@ export type InferenceManagerEventMap = {
  * Configures `createInferenceManager` / the `InferenceManager` constructor.
  *
  * @remarks
- * `inferences` — the initial collection (defaults to empty). `on` — initial
+ * `inferences` — the initial collection. Default: `[]`. `on` — initial
  * event listeners. `error` — the emitter's listener-error handler.
  */
 export interface InferenceManagerOptions {
@@ -1181,13 +1226,23 @@ export interface InferenceManagerOptions {
  * Declares the {@link DefinitionBuilderInterface} manager over a symbolic definition's
  * `variables` — a name-keyed unordered record, so `add` / `remove` are the
  * only write verbs (no placement). A self-owning, kind-free manager.
+ *
+ * @remarks
+ * The record is keyed by NAME, so `remove`'s batch family is over names: no
+ * argument removes every variable, one name removes that variable, a name list
+ * removes those variables and returns true only when every named variable
+ * existed. It emits one `remove` per variable actually removed — a name
+ * matching nothing emits nothing and returns false.
  */
 export interface VariableManagerInterface {
 	readonly emitter: EmitterInterface<VariableManagerEventMap>
 	variable(name: string): number | undefined
 	variables(): Readonly<Record<string, number>>
 	add(name: string, value: number): void
-	remove(name: string): void
+	// Array overload first so a list resolves to the batch form.
+	remove(names: readonly string[]): boolean
+	remove(name: string): boolean
+	remove(): void
 	seat(variables: Readonly<Record<string, number>>): void
 	destroy(): void
 }
@@ -1212,7 +1267,7 @@ export type VariableManagerEventMap = {
  * Configures `createVariableManager` / the `VariableManager` constructor.
  *
  * @remarks
- * `variables` — the initial record (defaults to empty). `on` — initial event
+ * `variables` — the initial record. Default: `{}`. `on` — initial event
  * listeners. `error` — the emitter's listener-error handler.
  */
 export interface VariableManagerOptions {
@@ -1267,7 +1322,7 @@ export type InferentialClearKey = 'description' | 'depth'
  * The shared return shape of the forward-fixpoint and backward-proving passes;
  * `LogicalResult.count` is derived from `rules` rather than carried here.
  */
-export interface LogicalChainingOutcome {
+export interface LogicalChainingResult {
 	readonly conclusion: boolean
 	readonly rules: readonly RuleResult[]
 }
@@ -1281,7 +1336,7 @@ export interface LogicalChainingOutcome {
  * `proof` is produced only by the backward pass, and only when a conclusion was
  * proved.
  */
-export interface InferentialChainingOutcome {
+export interface InferentialChainingResult {
 	readonly derived: readonly Fact[]
 	readonly proof?: ProofNode
 }
@@ -1305,9 +1360,9 @@ export type DefinitionBuilderEventMap = {
 }
 
 /**
- * Declares a stateful workspace builder accumulating a {@link Definition} through seven
- * always-present self-owning manager properties, taverna `AgentContext`-shaped:
- * a private scalar envelope plus one manager per collection.
+ * Declares a stateful workspace builder accumulating a {@link Definition}
+ * through always-present self-owning manager properties: a private scalar
+ * envelope plus one manager per collection.
  *
  * @remarks
  * `build()` is TOTAL, deterministic, and returns a FRESH plain
@@ -1315,12 +1370,12 @@ export type DefinitionBuilderEventMap = {
  * collections, read from the relevant managers' plural accessors — off-kind
  * managers are ignored). `merge(incoming)` requires the SAME `reasoning`,
  * distributes incoming scalars into the envelope and collections into the
- * managers via the matching `merge*` helper (a cross-reasoning `incoming`
+ * managers through the matching `merge*` helper (a cross-reasoning `incoming`
  * throws `ReasonError('MISMATCH', …)`). `clear(key)` is the uniform
  * optional-key selector over the scalar envelope; a `key` that
  * is not a clearable optional field for the current kind throws
- * `ReasonError('MISMATCH', …, { key, reasoning })`. `destroy()` cascades to all
- * seven managers, emits `destroy`, then tears the builder emitter down LAST;
+ * `ReasonError('MISMATCH', …, { key, reasoning })`. `destroy()` cascades to
+ * every manager, emits `destroy`, then tears the builder emitter down LAST;
  * it is idempotent, and post-destroy mutation / build throws
  * `ReasonError('DESTROYED', …)` — only the `emitter` / manager getters and
  * `destroy` keep working.
@@ -1347,8 +1402,8 @@ export interface DefinitionBuilderInterface {
  * Configures `createDefinitionBuilder` / the `DefinitionBuilder` constructor.
  *
  * @remarks
- * `id` — overrides the seed definition's `id` (defaults to `seed.id`). Each of
- * the seven manager slots is BRING-YOUR-OWN — a supplied manager is reused,
+ * `id` — overrides the seed definition's `id`. Default: `seed.id`. Every
+ * manager slot is BRING-YOUR-OWN — a supplied manager is reused,
  * else one is constructed and seeded from the seed's matching collection. `on`
  * — initial event listeners. `error` — the emitter's
  * listener-error handler.
@@ -1384,8 +1439,8 @@ export type SubjectBuilderEventMap = {
 }
 
 /**
- * Declares a stateful workspace builder accumulating a {@link Subject}, taverna
- * `Workspace`-shaped: a single flat collection, no managers.
+ * Declares a stateful workspace builder accumulating a {@link Subject} — one
+ * flat key-value collection, no managers.
  *
  * @remarks
  * `id` is OPTIONAL on the entity (`options?.id ?? seed.id`). When present,
@@ -1394,15 +1449,15 @@ export type SubjectBuilderEventMap = {
  * `build()`'s output carries NO `id` key, and `clear()` empties the record
  * entirely. `field` / `fields` are the singular / plural accessor pair over
  * TOP-LEVEL keys only. `set(key, value)` delegates to `assignField`;
- * `set('id', …)` throws — id is immutable via the entity, id-ful or
+ * `set('id', …)` throws — id is immutable through the entity, id-ful or
  * anonymous alike. `remove` is the batch overload, array form
  * declared FIRST. `merge(incoming)` delegates to `mergeSubjects`
  * (incoming-wins, base `id` preserved — plain {@link Subject} data only).
  * `clear()` removes every non-id field. `repeat(count)` returns `count`
  * deterministic minted-id clones as PLAIN payloads — a pure read that does
  * NOT emit. `build(): Subject` is total, deterministic, and returns a fresh
- * durable payload each call — distinct from `fields()` (a live inspection
- * read) even though both currently return the whole record. Post-destroy
+ * durable payload each call — `fields()` returns the live record and `build()`
+ * returns a fresh copy of it. Post-destroy
  * mutation throws `ReasonError('DESTROYED', …)`; `destroy()` is idempotent
  * and tears the emitter down LAST.
  */
@@ -1427,7 +1482,7 @@ export interface SubjectBuilderInterface {
  * Configures `createSubjectBuilder` / the `SubjectBuilder` constructor.
  *
  * @remarks
- * `id` — overrides the seed subject's `id` (defaults to `seed.id`); OPTIONAL
+ * `id` — overrides the seed subject's `id`. Default: `seed.id`. OPTIONAL
  * — when neither `options.id` nor a string `seed.id` is present the builder
  * is ANONYMOUS (`.id` is `undefined`, `build()` emits no `id` key). `on` —
  * initial event listeners. `error` — the emitter's listener-error handler.
