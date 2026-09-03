@@ -1212,7 +1212,7 @@ describe('InferentialReasoner — recursion termination', () => {
 		expect(result.proof).toBeUndefined()
 	})
 
-	it('a forward self-loop converges immediately via dedup', () => {
+	it('a forward self-loop converges immediately through dedup', () => {
 		const definition = createInferentialDefinition(
 			'self-loop',
 			'Self-loop',
@@ -1655,7 +1655,7 @@ describe('InferentialReasoner — confidence pins', () => {
 		expect(b?.confidence).toBe(0.25)
 		expect(c?.confidence).toBe(0.125)
 
-		// Backward proves goal "b" via i1 alone; confidence is i1's OWN 0.5 — the
+		// Backward proves goal "b" through i1 alone; confidence is i1's OWN 0.5 — the
 		// 0.5-confidence premise fact never enters the product.
 		const backward = expectInferential(
 			reasoner.reason(
@@ -1716,7 +1716,7 @@ describe('InferentialReasoner — subject injection edge fixtures', () => {
 	it('ADVERSARIAL_VALUE_SUBJECT: the symbol key is invisible, bigint/symbol/function kept as terms', () => {
 		const definition = createInferentialDefinition('d', 'd', [], [])
 		const result = expectInferential(reasoner.reason(ADVERSARIAL_VALUE_SUBJECT, definition))
-		// id skipped by name; the symbol-keyed property never surfaces via Object.keys —
+		// id skipped by name; the symbol-keyed property never surfaces through Object.keys —
 		// only big / sym / fn become has() facts. typeof bigint/symbol/function is never
 		// 'object', so subjectToFacts keeps them rather than skipping them.
 		expect(result.trace).toEqual([

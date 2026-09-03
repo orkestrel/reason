@@ -28,7 +28,7 @@ import {
 // order incl. negative priorities, `count` = fired rules, disabled rules
 // omitted from the results entirely, SameValueZero bookkeeping so a NaN
 // conclusion converges), backward chaining as goal-driven sub-goal search
-// (cycle-safe via the visited set, exact backward trace formats, vacuous
+// (cycle-safe through the visited set, exact backward trace formats, vacuous
 // empty-premises rules vs errored missing-premises rules), eager compound
 // evaluation (and / or / not / implies / xor with their vacuous edges), the
 // duplicate-id runtime quirks validate() now warns about, and the
@@ -129,7 +129,7 @@ describe('LogicalReasoner — validate', () => {
 		).toHaveLength(1)
 	})
 
-	it('an array-path conclusion overlay key also read via an array-path premise is a WARNING (runnable)', () => {
+	it('an array-path conclusion overlay key also read through an array-path premise is a WARNING (runnable)', () => {
 		const footgun = createLogicalDefinition('d', 'd', [
 			createRule('a', [], createAtom(['address', 'city'], 'equals', 'NYC')),
 			createRule(
@@ -909,7 +909,7 @@ describe('LogicalReasoner — SameValueZero convergence on signed zero', () => {
 })
 
 describe('LogicalReasoner — backward long cycle terminates', () => {
-	it('a 20-rule cycle with no base facts terminates via the visited set and depth cap', () => {
+	it('a 20-rule cycle with no base facts terminates through the visited set and depth cap', () => {
 		// c_i needs k_{i+1} to conclude k_i, closing k1←k2←…←k20←k1 — unprovable, must not recurse forever.
 		const cycle = sequence(20, 1).map((index) => {
 			const next = (index % 20) + 1

@@ -669,7 +669,7 @@ describe('QuantitativeReasoner — parseNumber coercion (contracts semantics)', 
 		expect(result.value).toBe(5)
 		expect(result.success).toBe(true)
 
-		// Without a fallback the factor is simply unresolvable — still no error.
+		// Without a fallback the factor is unresolvable — still no error.
 		const bare = expectQuantitative(reasoner.reason({ value: Number.NaN }, readValue()))
 		expect(bare.success).toBe(true)
 		expect(bare.trace).toContain('Factor "f1": could not resolve source')
@@ -1417,7 +1417,7 @@ describe('QuantitativeReasoner — field-source coercion divergences', () => {
 })
 
 describe('QuantitativeReasoner — lookup-site stringification of non-record field values', () => {
-	it('an array field value stringifies via String() to the joined key', () => {
+	it('an array field value stringifies by using String() to the joined key', () => {
 		const definition = createQuantitativeDefinition('d', 'd', [
 			createFactorGroup('g1', 'sum', [
 				createLookupFactor('f1', 'code', { '1,2': 77 }, { fallback: -1 }),

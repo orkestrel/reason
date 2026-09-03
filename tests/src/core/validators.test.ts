@@ -362,7 +362,7 @@ describe('isFactor / isFactorGroup', () => {
 	})
 })
 
-describe('isExpression — recursive via lazyOf', () => {
+describe('isExpression — recursive through lazyOf', () => {
 	it('accepts atoms, compounds, and deeply nested trees', () => {
 		expect(isExpression(createAtom('age', 'from', 18))).toBe(true)
 		expect(
@@ -435,7 +435,7 @@ describe('isRule', () => {
 	})
 })
 
-describe('isSymbolicExpression — recursive via lazyOf', () => {
+describe('isSymbolicExpression — recursive through lazyOf', () => {
 	it('accepts variables, constants, and nested operations (right optional)', () => {
 		expect(isSymbolicExpression(createVariable('x'))).toBe(true)
 		expect(isSymbolicExpression(createConstant(42))).toBe(true)

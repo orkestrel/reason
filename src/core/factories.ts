@@ -78,7 +78,7 @@ import { InferenceManager } from './builders/managers/InferenceManager.js'
  * Creates a check evaluator.
  *
  * @remarks
- * `id` — the evaluator's identity string (defaults to `'evaluator'`).
+ * `id` — the evaluator's identity string. Default: `'evaluator'`.
  *
  * @param options - Optional `id`
  * @returns A stateless {@link EvaluatorInterface}
@@ -100,7 +100,7 @@ export function createEvaluator(options?: EvaluatorOptions): EvaluatorInterface 
  * Creates a math transformer.
  *
  * @remarks
- * `id` — the transformer's identity string (defaults to `'transformer'`).
+ * `id` — the transformer's identity string. Default: `'transformer'`.
  *
  * @param options - Optional `id`
  * @returns A stateless {@link TransformerInterface}
@@ -121,7 +121,7 @@ export function createTransformer(options?: TransformerOptions): TransformerInte
  * Creates a number aggregator.
  *
  * @remarks
- * `id` — the aggregator's identity string (defaults to `'aggregator'`).
+ * `id` — the aggregator's identity string. Default: `'aggregator'`.
  *
  * @param options - Optional `id`
  * @returns A stateless {@link AggregatorInterface}
@@ -142,9 +142,9 @@ export function createAggregator(options?: AggregatorOptions): AggregatorInterfa
  * Creates the quantitative reasoner — factor-based numeric scoring.
  *
  * @remarks
- * `id` — the reasoner's identity string (defaults to `'quantitative'`).
- * `evaluator` / `transformer` / `aggregator` — injectable operators, each
- * defaulting to a fresh default-constructed instance.
+ * `id` — the reasoner's identity string. Default: `'quantitative'`.
+ * `evaluator` / `transformer` / `aggregator` — injectable operators. Default:
+ * a fresh default-constructed instance for each.
  *
  * @param options - Optional `id` and operator injections
  * @returns A {@link ReasonerInterface} with reasoning `'quantitative'`
@@ -171,8 +171,8 @@ export function createQuantitativeReasoner(
  * chaining.
  *
  * @remarks
- * `id` — the reasoner's identity string (defaults to `'logical'`). `evaluator`
- * — the injectable check evaluator (defaults to a fresh instance).
+ * `id` — the reasoner's identity string. Default: `'logical'`. `evaluator`
+ * — the injectable check evaluator. Default: a fresh instance.
  *
  * @param options - Optional `id` and evaluator injection
  * @returns A {@link ReasonerInterface} with reasoning `'logical'`
@@ -197,7 +197,7 @@ export function createLogicalReasoner(options?: LogicalReasonerOptions): Reasone
  * isolation.
  *
  * @remarks
- * `id` — the reasoner's identity string (defaults to `'symbolic'`).
+ * `id` — the reasoner's identity string. Default: `'symbolic'`.
  *
  * @param options - Optional `id`
  * @returns A {@link ReasonerInterface} with reasoning `'symbolic'`
@@ -222,7 +222,7 @@ export function createSymbolicReasoner(options?: SymbolicReasonerOptions): Reaso
  * and proof trees.
  *
  * @remarks
- * `id` — the reasoner's identity string (defaults to `'inferential'`).
+ * `id` — the reasoner's identity string. Default: `'inferential'`.
  *
  * @param options - Optional `id`
  * @returns A {@link ReasonerInterface} with reasoning `'inferential'`
@@ -276,10 +276,11 @@ export function createReason(options?: ReasonOptions): ReasonInterface {
 
 /**
  * Creates a `DefinitionBuilder` — a stateful workspace builder accumulating a
- * {@link Definition} through seven self-owning manager properties.
+ * {@link Definition} through the `groups`, `factors`, `rules`, `equations`,
+ * `variables`, `facts`, and `inferences` self-owning manager properties.
  *
  * @remarks
- * `id` defaults to `seed.id`. Each manager slot is BRING-YOUR-OWN (a supplied
+ * `id`. Default: `seed.id`. Each manager slot is BRING-YOUR-OWN (a supplied
  * one is reused, else a fresh one is seeded from the seed's matching
  * collection). `on` — initial event listeners. `error` — the emitter's
  * listener-error handler. Mutate through the manager
@@ -313,7 +314,7 @@ export function createDefinitionBuilder(
  * {@link Subject}.
  *
  * @remarks
- * `id` defaults to `seed.id` and is OPTIONAL — when neither `options.id` nor
+ * `id`. Default: `seed.id`; OPTIONAL — when neither `options.id` nor
  * a string `seed.id` is present the builder is ANONYMOUS (`.id` is
  * `undefined`, `build()` emits no `id` key). `on` — initial event listeners.
  * `error` — the emitter's listener-error handler.
@@ -346,7 +347,7 @@ export function createSubjectBuilder(
  * definition's `groups`.
  *
  * @remarks
- * `groups` — the initial collection (defaults to empty). `on` / `error` —
+ * `groups` — the initial collection. Default: empty. `on` / `error` —
  * emitter hooks. Kind-free: hand it to a {@link createDefinitionBuilder}
  * `groups` slot regardless of reasoning.
  *
@@ -399,7 +400,7 @@ export function createFactorManager(
  * `rules`.
  *
  * @remarks
- * `rules` — the initial collection (defaults to empty). `on` / `error` —
+ * `rules` — the initial collection. Default: empty. `on` / `error` —
  * emitter hooks. Rule order is load-bearing.
  *
  * @param options - Optional seed collection and emitter hooks
@@ -422,7 +423,7 @@ export function createRuleManager(options?: RuleManagerOptions): RuleManagerInte
  * definition's `equations`.
  *
  * @remarks
- * `equations` — the initial collection (defaults to empty). `on` / `error` —
+ * `equations` — the initial collection. Default: empty. `on` / `error` —
  * emitter hooks. Equation order is strongly load-bearing.
  *
  * @param options - Optional seed collection and emitter hooks
@@ -445,7 +446,7 @@ export function createEquationManager(options?: EquationManagerOptions): Equatio
  * definition's `variables` (a name-keyed record; `add` / `remove` only).
  *
  * @remarks
- * `variables` — the initial record (defaults to empty). `on` / `error` —
+ * `variables` — the initial record. Default: empty. `on` / `error` —
  * emitter hooks.
  *
  * @param options - Optional seed record and emitter hooks
@@ -468,7 +469,7 @@ export function createVariableManager(options?: VariableManagerOptions): Variabl
  * definition's `facts`.
  *
  * @remarks
- * `facts` — the initial collection (defaults to empty). `on` / `error` —
+ * `facts` — the initial collection. Default: empty. `on` / `error` —
  * emitter hooks.
  *
  * @param options - Optional seed collection and emitter hooks
@@ -491,7 +492,7 @@ export function createFactManager(options?: FactManagerOptions): FactManagerInte
  * definition's `inferences`.
  *
  * @remarks
- * `inferences` — the initial collection (defaults to empty). `on` / `error` —
+ * `inferences` — the initial collection. Default: empty. `on` / `error` —
  * emitter hooks. Inference order is load-bearing.
  *
  * @param options - Optional seed collection and emitter hooks
@@ -584,7 +585,7 @@ export function createCompound(
  * Creates a {@link Rule} — premises and a conclusion.
  *
  * @remarks
- * `name` defaults to the `id`; set `name`, `description`, `priority`, or
+ * `name`. Default: the `id`; set `name`, `description`, `priority`, or
  * `enabled` through `overrides`.
  *
  * @param id - The rule id
@@ -732,7 +733,7 @@ export function createOperation(
  * Creates an {@link Equation} — `left = right`, solved for `target`.
  *
  * @remarks
- * `name` defaults to the `id`; set `name` or `description` through `overrides`.
+ * `name`. Default: the `id`; set `name` or `description` through `overrides`.
  *
  * @param id - The equation id
  * @param left - The left side
@@ -765,13 +766,13 @@ export function createEquation(
  * Creates a {@link Fact} — a predicate over positional terms.
  *
  * @remarks
- * `confidence` defaults to `1` (the key is always set). A string term starting
+ * `confidence`. Default: `1` (the key is always set). A string term starting
  * with `?` is a unification variable.
  *
  * @param id - The fact id
  * @param predicate - The predicate name
  * @param terms - The positional terms
- * @param confidence - The fact's confidence (`0–1`, defaults to `1`)
+ * @param confidence - The fact's confidence (`0–1`). Default: `1`.
  * @returns A fresh fact
  *
  * @example
@@ -795,7 +796,7 @@ export function createFact(
  * Creates an {@link Inference} — premise patterns and a conclusion pattern.
  *
  * @remarks
- * `name` defaults to the `id`; set `name`, `description`, `confidence`, or
+ * `name`. Default: the `id`; set `name`, `description`, `confidence`, or
  * `enabled` through `overrides`.
  *
  * @param id - The inference id
@@ -906,7 +907,7 @@ export function createRangeSource(field: FieldPath, ranges: readonly FactorRange
  * Creates a {@link Factor} over a static {@link Source}.
  *
  * @remarks
- * `name` defaults to the `id`; every other {@link Factor} field (checks,
+ * `name`. Default: the `id`; every other {@link Factor} field (checks,
  * transforms, bounds, weight, priority, enabled, required, fallback) comes
  * through `overrides`.
  *
@@ -1007,7 +1008,7 @@ export function createRangeFactor(
  * Creates a {@link FactorGroup}.
  *
  * @remarks
- * `name` defaults to the `id`; set `name`, `description`, `base`, `bounds`,
+ * `name`. Default: the `id`; set `name`, `description`, `base`, `bounds`,
  * `enabled`, or `strict` through `overrides`.
  *
  * @param id - The group id
@@ -1036,7 +1037,7 @@ export function createFactorGroup(
  * Creates a {@link QuantitativeDefinition}.
  *
  * @remarks
- * `aggregation` defaults to `'sum'`; set `aggregation`, `description`, `base`,
+ * `aggregation`. Default: `'sum'`; set `aggregation`, `description`, `base`,
  * `bounds`, or `precision` through `overrides`.
  *
  * @param id - The definition id
@@ -1067,7 +1068,7 @@ export function createQuantitativeDefinition(
  * Creates a {@link LogicalDefinition}.
  *
  * @remarks
- * `strategy` defaults to `'forward'`; set `strategy`, `description`, or `depth`
+ * `strategy`. Default: `'forward'`; set `strategy`, `description`, or `depth`
  * through `overrides`.
  *
  * @param id - The definition id
@@ -1098,7 +1099,7 @@ export function createLogicalDefinition(
  * Creates a {@link SymbolicDefinition}.
  *
  * @remarks
- * `variables` defaults to `{}`; set `variables`, `description`, or `precision`
+ * `variables`. Default: `{}`; set `variables`, `description`, or `precision`
  * through `overrides`.
  *
  * @param id - The definition id
@@ -1129,7 +1130,7 @@ export function createSymbolicDefinition(
  * Creates an {@link InferentialDefinition}.
  *
  * @remarks
- * `strategy` defaults to `'forward'`; set `strategy`, `description`, or `depth`
+ * `strategy`. Default: `'forward'`; set `strategy`, `description`, or `depth`
  * through `overrides`.
  *
  * @param id - The definition id

@@ -12,7 +12,7 @@ import { deepFreeze, runTwice } from '../../../setup.js'
 // pinning both correctness and determinism in one assertion.
 
 describe('SubjectBuilder — set / field / fields round-trip', () => {
-	it('upserts fields via set and reads them back via field/fields', () => {
+	it('upserts fields through set and reads them back through field/fields', () => {
 		const seed = deepFreeze<Subject>({ id: 's1', age: 30 })
 
 		const scenario = (): Subject => {

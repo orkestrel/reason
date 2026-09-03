@@ -741,7 +741,7 @@ describe('Reason — registry scale: several hundred distinct definitions in one
 describe('Reason — batch scale beyond 1500: 7500 subjects', () => {
 	// Scale/perf regression guard: 7500 subjects pins order preservation and
 	// per-subject emission well past the 1500-subject batch above.
-	it('7500 subjects via buildSubjects through a static definition — exact count, values, and order', () => {
+	it('7500 subjects by using buildSubjects through a static definition — exact count, values, and order', () => {
 		const runOnce = () => {
 			const reason = createReason({ reasoners: [createQuantitativeReasoner()] })
 			const events = createRecorders<ReasonEventMap, ReasonEvent>(reason.emitter, REASON_EVENTS)

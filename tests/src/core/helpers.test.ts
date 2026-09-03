@@ -334,7 +334,7 @@ describe('findDuplicates — the validate uniqueness scan', () => {
 // REAL observed behavior.
 
 describe('roundTo — signed zero, numeric extremes & overflow boundaries', () => {
-	it('preserves a negative-zero result (sign asserted via Object.is)', () => {
+	it('preserves a negative-zero result (sign asserted through Object.is)', () => {
 		// Math.round(-0.4) is -0; dividing by the 10^0 factor keeps the sign.
 		expect(Object.is(roundTo(-0.4), -0)).toBe(true)
 		expect(Object.is(roundTo(-0.5), -0)).toBe(true)
@@ -416,7 +416,7 @@ describe('clamp — signed zero, extreme bounds & NaN bounds', () => {
 		expect(clamp(-5, { minimum: Number.MIN_VALUE })).toBe(Number.MIN_VALUE)
 	})
 
-	it('yields -0 only when the -0 minimum wins (sign asserted via Object.is)', () => {
+	it('yields -0 only when the -0 minimum wins (sign asserted through Object.is)', () => {
 		// Any negative is < -0, so the result becomes the -0 minimum; the +0 maximum
 		// does not push it back (−0 > 0 is false).
 		expect(Object.is(clamp(-5, { minimum: -0, maximum: 0 }), -0)).toBe(true)
@@ -1156,7 +1156,7 @@ describe('extractConclusions — flatten a logical conclusion', () => {
 })
 
 describe('findOverlayMismatches — cross-rule array-path overlay-key collision', () => {
-	it('flags an array-path conclusion whose key is also read via an array-path premise', () => {
+	it('flags an array-path conclusion whose key is also read through an array-path premise', () => {
 		const mismatched = [
 			createRule('a', [], createAtom(['address', 'city'], 'equals', 'NYC')),
 			createRule(
@@ -1630,7 +1630,7 @@ describe('replaceById / removeById — position-preserving swap & filter', () =>
 })
 
 describe('mergeById — incoming-order-first upsert with base-only survivors', () => {
-	it('matched ids resolve via the default (incoming-wins-wholesale), unmatched incoming leads', () => {
+	it('matched ids resolve through the default (incoming-wins-wholesale), unmatched incoming leads', () => {
 		const base = deepFreeze<readonly Item[]>([
 			{ id: 'a', v: 1 },
 			{ id: 'b', v: 2 },

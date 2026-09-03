@@ -1,6 +1,6 @@
 // Base test setup — environment-agnostic helpers loaded first by every
 // Vitest project (`setupFiles[0]`). Keep this file free of `node:*` and of
-// `document` / `window` / Vue: DOM/Vue helpers live in `setupBrowser.ts`.
+// `document` / `window` / Vue.
 
 import { isArray, isRecord } from '@orkestrel/contract'
 import type {
@@ -156,7 +156,7 @@ export const DRIVER_SUBJECT: Subject = {
 }
 
 /**
- * Build the simplest runnable `QuantitativeDefinition` — one sum group holding
+ * Build a minimal runnable `QuantitativeDefinition` — one sum group holding
  * one static factor, producing `value` on ANY subject. The shared definition the
  * orchestrator / factory tests dispatch when the scenario only needs SOME
  * working definition.
