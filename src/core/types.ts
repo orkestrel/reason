@@ -1450,10 +1450,13 @@ export type SubjectBuilderEventMap = {
  * entirely. `field` / `fields` are the singular / plural accessor pair over
  * TOP-LEVEL keys only. `set(key, value)` delegates to `assignField`;
  * `set('id', …)` throws — id is immutable through the entity, id-ful or
- * anonymous alike. `remove` is the batch overload, array form
- * declared FIRST. `merge(incoming)` delegates to `mergeSubjects`
- * (incoming-wins, base `id` preserved — plain {@link Subject} data only).
- * `clear()` removes every non-id field. `repeat(count)` returns `count`
+ * anonymous alike. `remove` is the batch family: no argument removes every
+ * non-id field and emits one `remove` per key in the builder's key order, one
+ * key removes that field, and a key list removes those fields and returns true
+ * only when every named key existed. The array form is declared FIRST.
+ * `merge(incoming)` delegates to `mergeSubjects` (incoming-wins, base `id`
+ * preserved — plain {@link Subject} data only). `clear()` removes every
+ * non-id field. `repeat(count)` returns `count`
  * deterministic minted-id clones as PLAIN payloads — a pure read that does
  * NOT emit. `build(): Subject` is total, deterministic, and returns a fresh
  * durable payload each call — `fields()` returns the live record and `build()`
@@ -1471,6 +1474,7 @@ export interface SubjectBuilderInterface {
 	// Array overload first so a list resolves to the batch form.
 	remove(keys: readonly string[]): boolean
 	remove(key: string): boolean
+	remove(): void
 	merge(incoming: Subject): void
 	clear(): void
 	repeat(count: number): readonly Subject[]

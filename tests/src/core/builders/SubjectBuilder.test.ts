@@ -73,6 +73,22 @@ describe('SubjectBuilder — remove', () => {
 		expect(subject.build()).toEqual({ id: 's1' })
 	})
 
+	it('the no-argument overload removes every field in key order and refuses a destroyed builder', () => {
+		const subject = createSubjectBuilder({ second: 2, first: 1, third: 3 })
+		const events = createRecorders<SubjectBuilderEventMap, 'remove'>(subject.emitter, ['remove'])
+
+		subject.remove()
+
+		expect(subject.fields()).toEqual({})
+		expect(events.remove.calls).toEqual([['second'], ['first'], ['third']])
+
+		subject.destroy()
+		const error = captureError(() => subject.remove())
+		if (!isReasonError(error)) throw new Error('expected a ReasonError')
+		expect(error.code).toBe('DESTROYED')
+		expect(error.message).toBe('SubjectBuilder has been destroyed')
+	})
+
 	it('removing "id" throws MISMATCH and leaves the id intact', () => {
 		const subject = createSubjectBuilder({ id: 's1', age: 30 })
 		const error = captureError(() => subject.remove('id'))

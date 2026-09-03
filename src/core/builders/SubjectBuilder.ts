@@ -23,9 +23,11 @@ import { ReasonError } from '../errors.js'
  * `field(key)` / `fields()` are the singular / plural accessor pair over
  * TOP-LEVEL keys only. `set(key, value)` delegates to `assignField`;
  * `set('id', …)` throws `ReasonError('MISMATCH', …)` — id is immutable through the entity,
- * id-ful or anonymous alike. `remove` is the batch overload
- * (array form declared first); removing `'id'` throws the same `MISMATCH`
- * for the same reason. `merge(incoming)` delegates to `mergeSubjects`
+ * id-ful or anonymous alike. `remove` is the batch family (array form
+ * declared first): no argument removes every non-id field and emits one
+ * `remove` per key in key order, one key removes that field, and a key list
+ * removes those fields. Removing `'id'` through a keyed form throws the same
+ * `MISMATCH` for the same reason. `merge(incoming)` delegates to `mergeSubjects`
  * (incoming-wins, base `id` preserved — plain {@link Subject} data only).
  * `clear()` removes every non-id field, restoring `{ id }` when id-ful or
  * an empty record when anonymous. `repeat(count)` returns `count`
@@ -101,8 +103,15 @@ export class SubjectBuilder implements SubjectBuilderInterface {
 	// Array overload first so a list resolves to the batch form.
 	remove(keys: readonly string[]): boolean
 	remove(key: string): boolean
-	remove(keyOrKeys: readonly string[] | string): boolean {
+	remove(): void
+	remove(keyOrKeys?: readonly string[] | string): boolean | void {
 		this.#ensureAlive()
+		if (keyOrKeys === undefined) {
+			for (const key of Object.keys(this.#subject)) {
+				if (key !== 'id') this.#removeOne(key)
+			}
+			return
+		}
 		if (isArray<string>(keyOrKeys)) {
 			let all = true
 			for (const key of keyOrKeys) {

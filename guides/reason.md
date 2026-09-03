@@ -81,17 +81,17 @@ reason.reasoner('quantitative')?.supports(definition) // the reasoner's own guar
 
 The definitions & subjects capability layer's stateful workspace builders: mutate through named methods, then `build()` a fresh plain payload to hand to `reason` at the call site. The managers are SELF-OWNING (each owns its own collection state and emitter, takes its own options, and has its own factory) and KIND-FREE (an off-kind manager accumulates silently and is ignored by `build()` — never a `MISMATCH`).
 
-| API                 | Kind  | Summary                                                                                                                                                                                                                 |
-| ------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DefinitionBuilder` | class | The `DEFINITION_BUILDER_BRAND`-carrying stateful builder — `groups` / `factors` / `rules` / `equations` / `variables` / `facts` / `inferences` self-owning manager properties, `build` / `merge` / `clear` / `destroy`. |
-| `GroupManager`      | class | The self-owning, kind-free manager over a quantitative definition's `groups`.                                                                                                                                           |
-| `FactorManager`     | class | The divergent manager over a group's `factors`, `groupId`-threaded (holds no state; reads/writes through the sibling `GroupManager`).                                                                                   |
-| `RuleManager`       | class | The self-owning, kind-free manager over a logical definition's `rules`.                                                                                                                                                 |
-| `EquationManager`   | class | The self-owning, kind-free manager over a symbolic definition's `equations`.                                                                                                                                            |
-| `VariableManager`   | class | The self-owning, kind-free manager over a symbolic definition's `variables` (name-keyed record) — `add` / `remove` only, no placement.                                                                                  |
-| `FactManager`       | class | The self-owning, kind-free manager over an inferential definition's `facts`.                                                                                                                                            |
-| `InferenceManager`  | class | The self-owning, kind-free manager over an inferential definition's `inferences`.                                                                                                                                       |
-| `SubjectBuilder`    | class | The `SUBJECT_BUILDER_BRAND`-carrying stateful builder — a flat single-collection workspace — `field` / `fields` + `set` / `remove` / `merge` / `clear` / `repeat` / `build` / `destroy`.                                |
+| API                 | Kind  | Summary                                                                                                                                                                                                                     |
+| ------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DefinitionBuilder` | class | The `DEFINITION_BUILDER_BRAND`-carrying stateful builder — `groups` / `factors` / `rules` / `equations` / `variables` / `facts` / `inferences` self-owning manager properties, `build` / `merge` / `clear` / `destroy`.     |
+| `GroupManager`      | class | The self-owning, kind-free manager over a quantitative definition's `groups`.                                                                                                                                               |
+| `FactorManager`     | class | The divergent manager over a group's `factors`, `groupId`-threaded (holds no state; reads/writes through the sibling `GroupManager`).                                                                                       |
+| `RuleManager`       | class | The self-owning, kind-free manager over a logical definition's `rules`.                                                                                                                                                     |
+| `EquationManager`   | class | The self-owning, kind-free manager over a symbolic definition's `equations`.                                                                                                                                                |
+| `VariableManager`   | class | The self-owning, kind-free manager over a symbolic definition's `variables` (name-keyed record) — `add` / `remove` only, no placement.                                                                                      |
+| `FactManager`       | class | The self-owning, kind-free manager over an inferential definition's `facts`.                                                                                                                                                |
+| `InferenceManager`  | class | The self-owning, kind-free manager over an inferential definition's `inferences`.                                                                                                                                           |
+| `SubjectBuilder`    | class | The `SUBJECT_BUILDER_BRAND`-carrying stateful builder — a flat single-collection workspace — `field` / `fields` + `set` / `remove` (no argument / one key / key list) / `merge` / `clear` / `repeat` / `build` / `destroy`. |
 
 ### Value factories
 
@@ -387,7 +387,7 @@ Total guards return `false`, never throw, for adversarial input such as junk, cy
 | `DefinitionBuilderInterface`  | interface | The `DEFINITION_BUILDER_BRAND`-carrying stateful builder — `groups` / `factors` / `rules` / `equations` / `variables` / `facts` / `inferences` self-owning manager properties + `build` / `merge` / `clear` / `destroy`. |
 | `DefinitionBuilderOptions`    | interface | `{ id?, groups?, factors?, rules?, equations?, variables?, facts?, inferences?, on?, error? }` — input to `createDefinitionBuilder` (each manager slot is bring-your-own).                                               |
 | `SubjectBuilderEventMap`      | type      | The `SubjectBuilder`'s push surface — `set(key, value)` · `remove(key)` · `merge(incoming)` · `clear()` · `destroy()`.                                                                                                   |
-| `SubjectBuilderInterface`     | interface | The `SUBJECT_BUILDER_BRAND`-carrying stateful builder — `field` / `fields` + `set` / `remove` / `merge` / `clear` / `repeat` / `build` / `destroy`.                                                                      |
+| `SubjectBuilderInterface`     | interface | The `SUBJECT_BUILDER_BRAND`-carrying stateful builder — `field` / `fields` + `set` / `remove` (no argument / one key / key list) / `merge` / `clear` / `repeat` / `build` / `destroy`.                                   |
 | `SubjectBuilderOptions`       | interface | `{ id?, on?, error? }` — input to `createSubjectBuilder`; `id` is OPTIONAL — an anonymous builder results when neither `id` nor `seed.id` is present.                                                                    |
 
 ## Methods
@@ -555,17 +555,17 @@ The `DEFINITION_BUILDER_BRAND`-carrying stateful builder accumulating a `Definit
 
 The `SUBJECT_BUILDER_BRAND`-carrying stateful builder accumulating a `Subject`. The array overload of `remove` is declared FIRST so a key list resolves to the batch form. After `destroy()`, every method except `destroy` itself and the `emitter` getter throws `DESTROYED`.
 
-| Method    | Returns              | Behavior                                                                                                           |
-| --------- | -------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `field`   | `unknown`            | Read ONE top-level field by key.                                                                                   |
-| `fields`  | `Subject`            | A live read of the whole current record.                                                                           |
-| `set`     | `void`               | Upsert one field (delegates to `assignField`); `set('id', …)` throws — id is immutable, id-ful or anonymous alike. |
-| `remove`  | `boolean`            | Delete keys — array form batch, single form one key.                                                               |
-| `merge`   | `void`               | Reconcile with an incoming plain `Subject`; incoming wins, base `id` kept.                                         |
-| `clear`   | `void`               | Remove every non-id field.                                                                                         |
-| `repeat`  | `readonly Subject[]` | Produce `count` deterministic minted-id clones as plain payloads — a pure read, does NOT emit.                     |
-| `build`   | `Subject`            | TOTAL, deterministic — a fresh durable payload snapshot of the current state, every call.                          |
-| `destroy` | `void`               | Idempotent teardown — destroys the emitter LAST.                                                                   |
+| Method    | Returns              | Behavior                                                                                                                                                                                                    |
+| --------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `field`   | `unknown`            | Read ONE top-level field by key.                                                                                                                                                                            |
+| `fields`  | `Subject`            | A live read of the whole current record.                                                                                                                                                                    |
+| `set`     | `void`               | Upsert one field (delegates to `assignField`); `set('id', …)` throws — id is immutable, id-ful or anonymous alike.                                                                                          |
+| `remove`  | `boolean \| void`    | Remove non-id fields — no argument every one, one key that one, a key list those; the keyed forms report whether every named key existed, and the no-argument form emits one `remove` per key in key order. |
+| `merge`   | `void`               | Reconcile with an incoming plain `Subject`; incoming wins, base `id` kept.                                                                                                                                  |
+| `clear`   | `void`               | Remove every non-id field.                                                                                                                                                                                  |
+| `repeat`  | `readonly Subject[]` | Produce `count` deterministic minted-id clones as plain payloads — a pure read, does NOT emit.                                                                                                              |
+| `build`   | `Subject`            | TOTAL, deterministic — a fresh durable payload snapshot of the current state, every call.                                                                                                                   |
+| `destroy` | `void`               | Idempotent teardown — destroys the emitter LAST.                                                                                                                                                            |
 
 ## Contract
 
