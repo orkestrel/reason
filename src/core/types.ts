@@ -855,7 +855,7 @@ export interface ReasonOptions {
  * @remarks
  * Dispatch is purely by `definition.reasoning` registry lookup; a missing
  * reasoner throws `MISSING` (never subject to `bail`, no `error` emit). The
- * batch `reason` overload maps subjects in order to an equal-length result
+ * batch `reason` overload maps subjects in order onto an equal-length result
  * array. After `destroy()` every method except the `emitter` getter and
  * `destroy` itself throws `DESTROYED`. `reason` and `validate` each take
  * plain data only — a {@link DefinitionBuilderInterface} /

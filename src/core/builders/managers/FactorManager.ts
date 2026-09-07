@@ -20,7 +20,8 @@ import { ReasonError } from '../../errors.js'
  * @remarks
  * Constructor-injected with the sibling {@link GroupManagerInterface}: each
  * write verb reads the located group (`groups.group(groupId)`), applies the
- * factor-level pure helper ({@link appendFactor} etc.), and writes the updated
+ * factor-level pure helper ({@link appendFactor}, {@link prependFactor},
+ * {@link replaceFactor}, or {@link removeFactor}), and writes the updated
  * group back through `groups.replace(…)`. A `groupId` naming no existing group
  * throws `ReasonError('TARGET', …, { groupId })`. It still owns its OWN
  * {@link Emitter} over {@link FactorManagerEventMap} (factor-id payloads).

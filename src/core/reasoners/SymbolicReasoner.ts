@@ -162,8 +162,8 @@ export class SymbolicReasoner implements ReasonerInterface {
 				// value that OVERFLOWS during rounding (a huge constant scaled past the
 				// double range → ±Infinity) — the latter previously slipped past the
 				// pre-round check and bound Infinity with success:true. Describe whichever
-				// is non-finite: the pre-round value keeps its exact rendering (e.g. a
-				// non-numeric "[object Object]"), a round-overflow renders the ±Infinity.
+				// is non-finite: the pre-round value keeps its exact rendering (for example
+				// a non-numeric "[object Object]"), a round-overflow renders the ±Infinity.
 				if (!Number.isFinite(value) || !Number.isFinite(rounded)) {
 					const offender = Number.isFinite(value) ? rounded : value
 					const description = Number.isNaN(offender) ? 'NaN' : `${offender}`

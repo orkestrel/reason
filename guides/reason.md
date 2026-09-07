@@ -35,7 +35,7 @@ reason.supports('quantitative') // true — a reasoner IS registered for this re
 reason.reasoner('quantitative')?.supports(definition) // the reasoner's own guard, same check
 ```
 
-`reason` dispatches by `definition.reasoning` — pass an ARRAY of subjects and the batch overload maps them in order to an equal-length result array. Results are a discriminated union (`reasoning` names the axis): narrow with the discriminant and read the strategy-specific payload (`value` / `conclusion` / `solutions` / `derived`).
+`reason` dispatches by `definition.reasoning` — pass an ARRAY of subjects and the batch overload maps them in order onto an equal-length result array. Results are a discriminated union (`reasoning` names the axis): narrow with the discriminant and read the strategy-specific payload (`value` / `conclusion` / `solutions` / `derived`).
 
 ### Entity factories
 
@@ -679,7 +679,7 @@ roundTo(1 / 1_000_000, 4) // 0 — the ppm value is gone
 roundTo(1 / 1_000_000, 6) // 0.000001 — recovered only at a finer precision
 ```
 
-(b) Error that compounds across several `percentage` / `divide` steps BEFORE the terminal round can cross a half-ulp boundary at the 4th place even though rounding still happens only once. Three chained 5% / 5% / 15% increases on `100` followed by a `divide` by `6` land EXACTLY on a rounding boundary, `21.13125`, which rounds half-up to `21.1313` — but the float chain's accumulated binary error lands just under it, so `roundTo` rounds the wrong way:
+(b) Error that compounds across several `percentage` / `divide` steps BEFORE the terminal round can cross a half-ulp boundary at the 4th place even though rounding still happens only once. Three chained 5% / 5% / 15% increases on `100` followed by a `divide` by `6` land EXACTLY on a rounding boundary, `21.13125`, which rounds half-up to `21.1313` — but the float chain's accumulated binary error lands slightly under it, so `roundTo` rounds the wrong way:
 
 ```ts
 ;(100 * 1.05 * 1.05 * 1.15) / 6 // 21.131249999999998 — not the exact 21.13125

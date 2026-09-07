@@ -30,7 +30,7 @@ afterEach(() => {
 })
 
 /**
- * Narrow a `reason()` return to a `QuantitativeResult` — throws on a batch
+ * Narrows a `reason()` return to a `QuantitativeResult` — throws on a batch
  * array or a result of another reasoning.
  *
  * @param result - The single-or-batch return of a `reason()` call
@@ -47,8 +47,8 @@ export function expectQuantitative(
 }
 
 /**
- * Narrow a `reason()` return to a `LogicalResult` — throws on a batch array or
- * a result of another reasoning (the {@link expectQuantitative} sibling).
+ * Narrows a `reason()` return to a `LogicalResult` — throws on a batch array
+ * or a result of another reasoning (the {@link expectQuantitative} sibling).
  *
  * @param result - The single-or-batch return of a `reason()` call
  * @returns The result, narrowed to `LogicalResult`
@@ -62,8 +62,8 @@ export function expectLogical(result: ReasonResult | readonly ReasonResult[]): L
 }
 
 /**
- * Narrow a `reason()` return to a `SymbolicResult` — throws on a batch array or
- * a result of another reasoning (the {@link expectQuantitative} sibling).
+ * Narrows a `reason()` return to a `SymbolicResult` — throws on a batch array
+ * or a result of another reasoning (the {@link expectQuantitative} sibling).
  *
  * @param result - The single-or-batch return of a `reason()` call
  * @returns The result, narrowed to `SymbolicResult`
@@ -77,7 +77,7 @@ export function expectSymbolic(result: ReasonResult | readonly ReasonResult[]): 
 }
 
 /**
- * Narrow a `reason()` return to an `InferentialResult` — throws on a batch
+ * Narrows a `reason()` return to an `InferentialResult` — throws on a batch
  * array or a result of another reasoning (the {@link expectQuantitative} sibling).
  *
  * @param result - The single-or-batch return of a `reason()` call
@@ -94,8 +94,8 @@ export function expectInferential(
 }
 
 /**
- * Recursively `Object.freeze` a value and every nested plain object/array it
- * reaches — the deep-frozen-input stress the no-mutation reasoner tests share,
+ * Freezes a value and every nested plain object/array it reaches, recursively
+ * — the deep-frozen-input stress the no-mutation reasoner tests share,
  * so a mutation anywhere in the input tree throws in strict
  * mode instead of silently succeeding. Narrows with {@link isArray} /
  * {@link isRecord} (never an `as`) and recurses only into a plain
@@ -122,7 +122,7 @@ export function deepFreeze<T>(value: T): T {
 }
 
 /**
- * The recurring flat `Subject` of the evaluator / reasoner tests — one field of
+ * Holds the recurring flat `Subject` of the evaluator / reasoner tests — one field of
  * each scalar kind (number / string / boolean) plus an `id`, so check operators
  * and subject-binding paths read real data without re-typing the literal.
  */
@@ -136,7 +136,7 @@ export const BASIC_SUBJECT: Subject = {
 }
 
 /**
- * The recurring nested `Subject` — two levels of nesting for the `FieldPath`
+ * Holds the recurring nested `Subject` — two levels of nesting for the `FieldPath`
  * array-descent cases (a STRING field is ONE key; an ARRAY descends).
  */
 export const NESTED_SUBJECT: Subject = {
@@ -146,7 +146,7 @@ export const NESTED_SUBJECT: Subject = {
 }
 
 /**
- * The recurring driver-scoring `Subject` — the multi-factor scenario the
+ * Holds the recurring driver-scoring `Subject` — the multi-factor scenario the
  * evaluator and quantitative-reasoner tests share.
  */
 export const DRIVER_SUBJECT: Subject = {
@@ -156,7 +156,7 @@ export const DRIVER_SUBJECT: Subject = {
 }
 
 /**
- * Build a minimal runnable `QuantitativeDefinition` — one sum group holding
+ * Builds a minimal runnable `QuantitativeDefinition` — one sum group holding
  * one static factor, producing `value` on ANY subject. The shared definition the
  * orchestrator / factory tests dispatch when the scenario only needs SOME
  * working definition.
@@ -172,7 +172,7 @@ export function buildStaticDefinition(id = 'static-quant', value = 42): Quantita
 }
 
 /**
- * Create a REAL `ReasonerInterface` whose `reason` always throws
+ * Creates a REAL `ReasonerInterface` whose `reason` always throws
  * `new Error(message)` — the scripted collaborator driving the orchestrator's
  * `bail` / `error`-event paths (a real implementation of the seam, not a mock
  * of the orchestrator).
@@ -197,7 +197,7 @@ export function createThrowingReasoner(
 }
 
 /**
- * Run `scenario` twice against fresh state and return both outcomes — the shared
+ * Runs `scenario` twice against fresh state and returns both outcomes — the shared
  * form of the byte-identical `twice(scenario)` closure `DefinitionBuilder.test.ts`
  * and `SubjectBuilder.test.ts` each define locally, used throughout
  * both files to run a mutation scenario twice and deep-equal the two outcomes,
@@ -212,10 +212,10 @@ export function runTwice<T>(scenario: () => T): readonly [T, T] {
 }
 
 /**
- * A `count`-long ascending integer range starting at `start` — the shared
- * numeric-sequence fixture the aggregation / scale tests build inputs from,
- * replacing repeated `Array.from({ length: n }, (_, i) => i)`.
- * an empty range for `count <= 0`.
+ * Returns a `count`-long ascending integer range starting at `start` — the
+ * shared numeric-range fixture the aggregation / scale tests build inputs from,
+ * replacing repeated `Array.from({ length: n }, (_, i) => i)`. Produces an empty
+ * range for `count <= 0`.
  *
  * @param count - How many integers to produce
  * @param start - The first integer of the range; defaults to `0`
@@ -226,7 +226,7 @@ export function sequence(count: number, start = 0): readonly number[] {
 }
 
 /**
- * An array of `count` copies of `value` — the uniform-input fill the aggregator /
+ * Returns an array of `count` copies of `value` — the uniform-input fill the aggregator /
  * transformer scale tests exercise. For a reference `value` every slot
  * shares the one reference (a fill, not a deep clone); an empty array for `count <= 0`.
  *
@@ -240,7 +240,7 @@ export function repeatValue<T>(count: number, value: T): readonly T[] {
 }
 
 /**
- * The curated JavaScript numeric edge values the numeric-quirk tests probe — signed
+ * Lists the curated JavaScript numeric edge values the numeric-quirk tests probe — signed
  * zero, the safe-integer and representable-magnitude bounds, `EPSILON`, an overflow-scale
  * pair, and the classic `0.1 + 0.2 !== 0.3` floats. Every entry is FINITE; the non-finite
  * cases (`NaN` / `±Infinity`) are named explicitly at their own sites, never smuggled in
@@ -264,7 +264,7 @@ export const EXTREME_NUMBERS: readonly number[] = Object.freeze([
 ])
 
 /**
- * The curated adversarial / unicode object keys the field-path, subject-key, id, and
+ * Lists the curated adversarial / unicode object keys the field-path, subject-key, id, and
  * lookup-table tests probe — the `Object.prototype` / prototype-pollution names, an empty
  * key, a surrogate-pair (astral) key, a precomposed accented key (`é`, single code point
  * `U+00E9`, already NFC-stable), a precomposed key (`Å`, single code point `U+00C5` LATIN
@@ -286,9 +286,9 @@ export const TRICKY_KEYS: readonly string[] = Object.freeze([
 ])
 
 /**
- * A `length`-long array with REAL holes everywhere except the given
- * `(index, value)` pairs — the sparse-array fixture the array-handling tests
- * probe. Built from `new Array(length)`, so unfilled slots are
+ * Returns a `length`-long array with REAL holes everywhere except the given
+ * `(index, value)` pairs — the hole-bearing array fixture the array-handling
+ * tests probe. Built from `new Array(length)`, so unfilled slots are
  * genuine holes (absent from `Object.keys` / `for…in`, skipped by `forEach` /
  * `map`), never `undefined` values written into every slot.
  *
@@ -306,7 +306,7 @@ export function sparse<T>(length: number, filled: ReadonlyArray<readonly [number
 }
 
 /**
- * Nest `leaf` inside `depth` layers of a single-operand `'and'`
+ * Nests `leaf` inside `depth` layers of a single-operand `'and'`
  * compound — the deep-expression-tree fixture the recursion / stack
  * -depth tests probe. `depth <= 0` returns `leaf` itself,
  * unwrapped.
@@ -324,7 +324,7 @@ export function deepCompound(depth: number, leaf: Expression): Expression {
 }
 
 /**
- * Left-nest `depth` layers of an `'add'` operation around `leaf`,
+ * Nests `depth` left-leaning layers of an `'add'` operation around `leaf`,
  * each layer adding `step` — the deep-symbolic-tree fixture the recursion /
  * stack-depth tests probe. `depth <= 0` returns `leaf` itself,
  * unwrapped. When `step` is a `constant`, the resulting expression evaluates
@@ -348,7 +348,7 @@ export function deepAddition(
 }
 
 /**
- * A frozen `Subject` whose integer-like keys are authored deliberately
+ * Holds a frozen `Subject` whose integer-like keys are authored deliberately
  * OUT of order — the enumeration-order fixture the subject-key / field-path
  * tests probe. Per the spec, integer-index string keys
  * (`"1"`, `"2"`, `"10"`) always enumerate ascending numerically FIRST,
@@ -367,11 +367,11 @@ export const INTEGER_KEY_SUBJECT: Subject = Object.freeze({
 	alpha: 1,
 })
 
-/** A symbol key used by {@link ADVERSARIAL_VALUE_SUBJECT} — invisible to `Object.keys`. */
+/** Provides the symbol key {@link ADVERSARIAL_VALUE_SUBJECT} carries — invisible to `Object.keys`. */
 export const ADVERSARIAL_SYMBOL_KEY: unique symbol = Symbol('adversarial')
 
 /**
- * A frozen `Subject` exercising the adversarial value shapes
+ * Holds a frozen `Subject` exercising the adversarial value shapes
  * `subjectToFacts` must classify correctly: a
  * symbol-keyed property (invisible to `Object.keys`, so never surfaced as a
  * fact), plus string-keyed `bigint`, `symbol`, and `function` values — each
@@ -388,7 +388,7 @@ export const ADVERSARIAL_VALUE_SUBJECT: Subject = Object.freeze({
 })
 
 /**
- * `count` subjects `{ id: "s0", value: 0 }, { id: "s1", value: 1 }, …` built
+ * Builds `count` subjects `{ id: "s0", value: 0 }, { id: "s1", value: 1 }, …`
  * from {@link sequence} — the batch-of-subjects fixture the scale /
  * aggregation tests feed a reasoner instead of hand-writing a
  * literal array.

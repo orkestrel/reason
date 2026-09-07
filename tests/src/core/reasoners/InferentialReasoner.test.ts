@@ -953,9 +953,9 @@ describe('InferentialReasoner — mismatch vs malformed shape', () => {
 // The transitive-closure fixture: a `parent` chain 0→1→…→5 plus a base rule
 // (parent ⇒ ancestor) and a recursive rule (parent + ancestor ⇒ ancestor). With
 // forward chaining's LIVE-growing knownFacts the first pass derives BOTH distance-1
-// (base rule) and distance-2 (recursive rule reading the just-added distance-1
-// ancestors) — so completeness is reached in L-1 passes, not L, for a chain of L
-// edges. The full closure is every (i, j) with i < j — C(6, 2) = 15 pairs.
+// (base rule) and distance-2 (recursive rule reading the distance-1 ancestors that
+// same pass added) — so completeness is reached in L-1 passes, not L, for a chain of
+// L edges. The full closure is every (i, j) with i < j — C(6, 2) = 15 pairs.
 function ancestry(depth: number) {
 	return createInferentialDefinition(
 		'ancestry',

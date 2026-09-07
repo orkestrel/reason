@@ -52,7 +52,7 @@ result.trace // the step-by-step account of how the value came to be
 ```
 
 `reason` dispatches by `definition.reasoning` — pass an ARRAY of subjects and
-the batch overload maps them in order to an equal-length result array.
+the batch overload maps them in order onto an equal-length result array.
 Results are a discriminated union (`reasoning` names the axis): narrow with
 the discriminant and read the strategy-specific payload (`value` /
 `conclusion` / `solutions` / `derived`).
