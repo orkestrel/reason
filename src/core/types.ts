@@ -311,7 +311,7 @@ export interface Compound {
 export type Expression = Atom | Compound
 
 /**
- * Represents one deduction rule: when ALL `premises` hold, the `conclusion`'s atoms are
+ * Represents one deduction rule: when every premise holds, the `conclusion`'s atoms are
  * asserted as derived facts.
  *
  * @remarks
@@ -726,7 +726,14 @@ export interface InferentialReasonerOptions {
  */
 export interface EvaluatorInterface {
 	readonly id: string
+	/**
+	 * Resolves `check.field` from the subject and compares it; an unknown operator becomes an
+	 * in-result `error`.
+	 */
 	evaluate(check: Check, subject: Subject): CheckResult
+	/**
+	 * Evaluates many checks positionally against one subject.
+	 */
 	batch(checks: readonly Check[], subject: Subject): readonly CheckResult[]
 }
 
@@ -740,7 +747,14 @@ export interface EvaluatorInterface {
  */
 export interface TransformerInterface {
 	readonly id: string
+	/**
+	 * Applies one math step — an absent operand defaults to `1` for `multiply` / `divide` /
+	 * `power`, and to `0` otherwise.
+	 */
 	apply(value: number, transform: Transform): number
+	/**
+	 * Left-folds a transform list over the value; `NaN` flows through and no step is skipped.
+	 */
 	chain(value: number, transforms: readonly Transform[]): number
 }
 
@@ -754,6 +768,10 @@ export interface TransformerInterface {
  */
 export interface AggregatorInterface {
 	readonly id: string
+	/**
+	 * Reduces the values per aggregation; `weights` are honored only on an exact length match,
+	 * and `minimum` / `maximum` ignore them.
+	 */
 	aggregate(
 		values: readonly number[],
 		aggregation: Aggregation,
@@ -775,8 +793,18 @@ export interface AggregatorInterface {
 export interface ReasonerInterface {
 	readonly id: string
 	readonly reasoning: Reasoning
+	/**
+	 * Reports whether the definition's `reasoning` equals this adapter's own.
+	 */
 	supports(definition: Definition): boolean
+	/**
+	 * Reports a definition's structural errors and soft warnings, evaluating nothing.
+	 */
 	validate(definition: Definition): ReasonValidationResult
+	/**
+	 * Evaluates one subject against a definition, throwing only `MISMATCH` for a wrong
+	 * reasoning — a malformed definition yields a failure result.
+	 */
 	reason(subject: Subject, definition: Definition): ReasonResult
 }
 
@@ -865,13 +893,40 @@ export interface ReasonOptions {
 export interface ReasonInterface {
 	readonly emitter: EmitterInterface<ReasonEventMap>
 	// Array overload first so a list resolves to the batch form.
+	/**
+	 * Dispatches one subject — or maps a subject array in order — to the registered reasoner.
+	 *
+	 * @remarks
+	 * A reasoning with no registered reasoner throws `MISSING`.
+	 */
 	reason(subjects: readonly Subject[], definition: Definition): readonly ReasonResult[]
 	reason(subject: Subject, definition: Definition): ReasonResult
+	/**
+	 * Registers a reasoner, replacing one already registered for the same reasoning, and emits
+	 * the `register` event.
+	 */
 	register(reasoner: ReasonerInterface): void
+	/**
+	 * Returns the one reasoner registered for a reasoning, or `undefined` when none is.
+	 */
 	reasoner(reasoning: Reasoning): ReasonerInterface | undefined
+	/**
+	 * Lists every registered reasoner as a fresh array.
+	 */
 	reasoners(): readonly ReasonerInterface[]
+	/**
+	 * Reports whether a reasoner is registered for a reasoning.
+	 */
 	supports(reasoning: Reasoning): boolean
+	/**
+	 * Delegates validation to the registered reasoner — a missing reasoner is an invalid result
+	 * here rather than a throw.
+	 */
 	validate(definition: Definition): ReasonValidationResult
+	/**
+	 * Clears the registry, emits the `destroy` event, and destroys the emitter last; the call
+	 * is idempotent.
+	 */
 	destroy(): void
 }
 
@@ -907,16 +962,45 @@ export interface ReasonInterface {
  */
 export interface GroupManagerInterface {
 	readonly emitter: EmitterInterface<GroupManagerEventMap>
+	/**
+	 * Returns the one group carrying an id, or `undefined` when none does.
+	 */
 	group(id: string): FactorGroup | undefined
+	/**
+	 * Lists every group in order.
+	 */
 	groups(): readonly FactorGroup[]
+	/**
+	 * Inserts a group at the end, or after `target`, removing a same-id group first; a `target`
+	 * naming no group throws `TARGET`.
+	 */
 	append(group: FactorGroup, target?: string): void
+	/**
+	 * Inserts a group at the start, or before `target`, removing a same-id group first; a
+	 * `target` naming no group throws `TARGET`.
+	 */
 	prepend(group: FactorGroup, target?: string): void
+	/**
+	 * Swaps a same-id group in place, appending it when the collection carries none.
+	 */
 	replace(group: FactorGroup): void
 	// Array overload first so a list resolves to the batch form.
+	/**
+	 * Removes groups — no argument every one, one id that one, an id list those; the id forms
+	 * report whether every named id existed, and each removal emits one `remove` event.
+	 */
 	remove(ids: readonly string[]): boolean
 	remove(id: string): boolean
 	remove(): void
+	/**
+	 * Replaces the whole collection in one silent call — the owning builder's bulk re-seat
+	 * channel.
+	 */
 	seat(groups: readonly FactorGroup[]): void
+	/**
+	 * Tears the manager down idempotently — emits the `destroy` event, then destroys the
+	 * emitter last.
+	 */
 	destroy(): void
 }
 
@@ -969,15 +1053,41 @@ export interface GroupManagerOptions {
  */
 export interface FactorManagerInterface {
 	readonly emitter: EmitterInterface<FactorManagerEventMap>
+	/**
+	 * Returns the one factor of a named group carrying an id, or `undefined` when none does.
+	 */
 	factor(groupId: string, id: string): Factor | undefined
+	/**
+	 * Lists every factor of one named group in order.
+	 */
 	factors(groupId: string): readonly Factor[]
+	/**
+	 * Inserts a factor into the named group at the end, or after `target`, removing a same-id
+	 * factor first.
+	 */
 	append(groupId: string, factor: Factor, target?: string): void
+	/**
+	 * Inserts a factor into the named group at the start, or before `target`, removing a
+	 * same-id factor first.
+	 */
 	prepend(groupId: string, factor: Factor, target?: string): void
+	/**
+	 * Swaps a same-id factor in place within the named group, appending it when the group
+	 * carries none.
+	 */
 	replace(groupId: string, factor: Factor): void
 	// Array overload first so a list resolves to the batch form.
+	/**
+	 * Removes factors of the named group — the locator alone every one, a further id that one,
+	 * a further id list those; the id forms report whether every named id existed.
+	 */
 	remove(groupId: string, ids: readonly string[]): boolean
 	remove(groupId: string, id: string): boolean
 	remove(groupId: string): void
+	/**
+	 * Tears the manager down idempotently — emits the `destroy` event, then destroys the
+	 * emitter last.
+	 */
 	destroy(): void
 }
 
@@ -1022,16 +1132,44 @@ export interface FactorManagerOptions {
  */
 export interface RuleManagerInterface {
 	readonly emitter: EmitterInterface<RuleManagerEventMap>
+	/**
+	 * Returns the one rule carrying an id, or `undefined` when none does.
+	 */
 	rule(id: string): Rule | undefined
+	/**
+	 * Lists every rule in order.
+	 */
 	rules(): readonly Rule[]
+	/**
+	 * Inserts a rule at the end, or after `target`, removing a same-id rule first — an absent
+	 * `target` makes it the new forward conclusion.
+	 */
 	append(rule: Rule, target?: string): void
+	/**
+	 * Inserts a rule at the start, or before `target`, removing a same-id rule first.
+	 */
 	prepend(rule: Rule, target?: string): void
+	/**
+	 * Swaps a same-id rule in place, appending it when the collection carries none.
+	 */
 	replace(rule: Rule): void
 	// Array overload first so a list resolves to the batch form.
+	/**
+	 * Removes rules — no argument every one, one id that one, an id list those; the id forms
+	 * report whether every named id existed.
+	 */
 	remove(ids: readonly string[]): boolean
 	remove(id: string): boolean
 	remove(): void
+	/**
+	 * Replaces the whole collection in one silent call — the owning builder's bulk re-seat
+	 * channel.
+	 */
 	seat(rules: readonly Rule[]): void
+	/**
+	 * Tears the manager down idempotently — emits the `destroy` event, then destroys the
+	 * emitter last.
+	 */
 	destroy(): void
 }
 
@@ -1076,16 +1214,43 @@ export interface RuleManagerOptions {
  */
 export interface EquationManagerInterface {
 	readonly emitter: EmitterInterface<EquationManagerEventMap>
+	/**
+	 * Returns the one equation carrying an id, or `undefined` when none does.
+	 */
 	equation(id: string): Equation | undefined
+	/**
+	 * Lists every equation in solve order.
+	 */
 	equations(): readonly Equation[]
+	/**
+	 * Inserts an equation at the end, or after `target`, removing a same-id equation first.
+	 */
 	append(equation: Equation, target?: string): void
+	/**
+	 * Inserts an equation at the start, or before `target`, removing a same-id equation first.
+	 */
 	prepend(equation: Equation, target?: string): void
+	/**
+	 * Swaps a same-id equation in place, appending it when the collection carries none.
+	 */
 	replace(equation: Equation): void
 	// Array overload first so a list resolves to the batch form.
+	/**
+	 * Removes equations — no argument every one, one id that one, an id list those; the id
+	 * forms report whether every named id existed.
+	 */
 	remove(ids: readonly string[]): boolean
 	remove(id: string): boolean
 	remove(): void
+	/**
+	 * Replaces the whole collection in one silent call — the owning builder's bulk re-seat
+	 * channel.
+	 */
 	seat(equations: readonly Equation[]): void
+	/**
+	 * Tears the manager down idempotently — emits the `destroy` event, then destroys the
+	 * emitter last.
+	 */
 	destroy(): void
 }
 
@@ -1128,16 +1293,43 @@ export interface EquationManagerOptions {
  */
 export interface FactManagerInterface {
 	readonly emitter: EmitterInterface<FactManagerEventMap>
+	/**
+	 * Returns the one fact carrying an id, or `undefined` when none does.
+	 */
 	fact(id: string): Fact | undefined
+	/**
+	 * Lists every fact in order.
+	 */
 	facts(): readonly Fact[]
+	/**
+	 * Inserts a fact at the end, or after `target`, removing a same-id fact first.
+	 */
 	append(fact: Fact, target?: string): void
+	/**
+	 * Inserts a fact at the start, or before `target`, removing a same-id fact first.
+	 */
 	prepend(fact: Fact, target?: string): void
+	/**
+	 * Swaps a same-id fact in place, appending it when the collection carries none.
+	 */
 	replace(fact: Fact): void
 	// Array overload first so a list resolves to the batch form.
+	/**
+	 * Removes facts — no argument every one, one id that one, an id list those; the id forms
+	 * report whether every named id existed.
+	 */
 	remove(ids: readonly string[]): boolean
 	remove(id: string): boolean
 	remove(): void
+	/**
+	 * Replaces the whole collection in one silent call — the owning builder's bulk re-seat
+	 * channel.
+	 */
 	seat(facts: readonly Fact[]): void
+	/**
+	 * Tears the manager down idempotently — emits the `destroy` event, then destroys the
+	 * emitter last.
+	 */
 	destroy(): void
 }
 
@@ -1182,16 +1374,44 @@ export interface FactManagerOptions {
  */
 export interface InferenceManagerInterface {
 	readonly emitter: EmitterInterface<InferenceManagerEventMap>
+	/**
+	 * Returns the one inference carrying an id, or `undefined` when none does.
+	 */
 	inference(id: string): Inference | undefined
+	/**
+	 * Lists every inference in order.
+	 */
 	inferences(): readonly Inference[]
+	/**
+	 * Inserts an inference at the end, or after `target`, removing a same-id inference first.
+	 */
 	append(inference: Inference, target?: string): void
+	/**
+	 * Inserts an inference at the start, or before `target`, removing a same-id inference
+	 * first.
+	 */
 	prepend(inference: Inference, target?: string): void
+	/**
+	 * Swaps a same-id inference in place, appending it when the collection carries none.
+	 */
 	replace(inference: Inference): void
 	// Array overload first so a list resolves to the batch form.
+	/**
+	 * Removes inferences — no argument every one, one id that one, an id list those; the id
+	 * forms report whether every named id existed.
+	 */
 	remove(ids: readonly string[]): boolean
 	remove(id: string): boolean
 	remove(): void
+	/**
+	 * Replaces the whole collection in one silent call — the owning builder's bulk re-seat
+	 * channel.
+	 */
 	seat(inferences: readonly Inference[]): void
+	/**
+	 * Tears the manager down idempotently — emits the `destroy` event, then destroys the
+	 * emitter last.
+	 */
 	destroy(): void
 }
 
@@ -1236,14 +1456,35 @@ export interface InferenceManagerOptions {
  */
 export interface VariableManagerInterface {
 	readonly emitter: EmitterInterface<VariableManagerEventMap>
+	/**
+	 * Returns the one variable's value carrying a name, or `undefined` when none does.
+	 */
 	variable(name: string): number | undefined
+	/**
+	 * Returns the whole name-keyed record.
+	 */
 	variables(): Readonly<Record<string, number>>
+	/**
+	 * Upserts one entry and emits the `add` event with the variable name.
+	 */
 	add(name: string, value: number): void
 	// Array overload first so a list resolves to the batch form.
+	/**
+	 * Removes variables by name — no argument every one, one name that one, a name list those;
+	 * each removal omits the key rather than setting `undefined`, and emits the `remove` event
+	 * with the name.
+	 */
 	remove(names: readonly string[]): boolean
 	remove(name: string): boolean
 	remove(): void
+	/**
+	 * Replaces the whole record in one silent call — the owning builder's bulk re-seat channel.
+	 */
 	seat(variables: Readonly<Record<string, number>>): void
+	/**
+	 * Tears the manager down idempotently — emits the `destroy` event, then destroys the
+	 * emitter last.
+	 */
 	destroy(): void
 }
 
@@ -1392,9 +1633,25 @@ export interface DefinitionBuilderInterface {
 	readonly variables: VariableManagerInterface
 	readonly facts: FactManagerInterface
 	readonly inferences: InferenceManagerInterface
+	/**
+	 * Returns a fresh plain `Definition` snapshot — the envelope plus the kind's managers —
+	 * total and deterministic on every call.
+	 */
 	build(): Definition
+	/**
+	 * Reconciles with an incoming plain `Definition` of the same `reasoning`, distributing
+	 * scalars into the envelope and collections into the managers.
+	 */
 	merge(incoming: Definition): void
+	/**
+	 * Deletes one optional envelope field for the instance's `reasoning`; a key the reasoning
+	 * cannot clear throws `MISMATCH`.
+	 */
 	clear(key: string): void
+	/**
+	 * Tears the builder down idempotently — cascades `destroy` to every manager, then destroys
+	 * the builder emitter last.
+	 */
 	destroy(): void
 }
 
@@ -1468,17 +1725,54 @@ export interface SubjectBuilderInterface {
 	readonly [SUBJECT_BUILDER_BRAND]: true
 	readonly id: string | undefined
 	readonly emitter: EmitterInterface<SubjectBuilderEventMap>
+	/**
+	 * Reads one top-level field by key.
+	 */
 	field(key: string): unknown
+	/**
+	 * Reads the whole current record live.
+	 */
 	fields(): Subject
+	/**
+	 * Upserts one field; `set('id', …)` throws, because the id is immutable for an id-ful and
+	 * an anonymous builder alike.
+	 *
+	 * @remarks
+	 * The write goes through the exported `assignField` helper, so the builder and the pure
+	 * helper family agree on what a field write is.
+	 */
 	set(key: string, value: unknown): void
 	// Array overload first so a list resolves to the batch form.
+	/**
+	 * Removes non-id fields — no argument every one, one key that one, a key list those; the
+	 * keyed forms report whether every named key existed, and the no-argument form emits one
+	 * `remove` event per key in key order.
+	 */
 	remove(keys: readonly string[]): boolean
 	remove(key: string): boolean
 	remove(): void
+	/**
+	 * Reconciles with an incoming plain `Subject`; the incoming record wins and the base `id`
+	 * is kept.
+	 */
 	merge(incoming: Subject): void
+	/**
+	 * Removes every non-id field.
+	 */
 	clear(): void
+	/**
+	 * Produces `count` deterministic minted-id clones as plain payloads — a pure read that
+	 * emits nothing.
+	 */
 	repeat(count: number): readonly Subject[]
+	/**
+	 * Returns a fresh durable payload snapshot of the current state — total and deterministic
+	 * on every call.
+	 */
 	build(): Subject
+	/**
+	 * Tears the builder down idempotently — destroys the emitter last.
+	 */
 	destroy(): void
 }
 

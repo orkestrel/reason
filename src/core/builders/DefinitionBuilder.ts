@@ -44,8 +44,8 @@ import { VariableManager } from './managers/VariableManager.js'
 
 /**
  * Implements a stateful workspace builder accumulating a {@link Definition}
- * through always-present self-owning manager properties: a private SCALAR
- * ENVELOPE (reasoning / id / name plus the kind's scalars) composed with each
+ * through always-present self-owning manager properties: a private scalar
+ * envelope (reasoning / id / name plus the kind's scalars) composed with each
  * collection read from its manager.
  *
  * @remarks

@@ -325,7 +325,7 @@ export function sortByPriority<T extends { readonly priority?: number }>(
 }
 
 /**
- * Collects the ids that appear MORE THAN ONCE in an id-carrying list — each
+ * Collects the ids that appear more than once in an id-carrying list — each
  * duplicated id reported once, in first-occurrence order.
  *
  * @remarks
@@ -456,7 +456,7 @@ export function termToKey(term: unknown, identities: Map<object, number>): strin
 
 /**
  * Derives a fact's canonical dedup key — predicate + arity + per-term
- * SameValueZero identity (confidence is NOT part of it).
+ * SameValueZero identity, with confidence excluded from it.
  *
  * @remarks
  * The dedup key of the inferential reasoner's forward fixpoint: two facts with
@@ -581,7 +581,7 @@ export function instantiateFact(fact: Fact, bindings: Record<string, unknown>): 
 
 /**
  * Computes the confidence a set of matched premises contributes to a derived
- * fact — the product of each premise's FIRST matching fact's confidence.
+ * fact — the product of each premise's first matching fact's confidence.
  *
  * @remarks
  * The confidence half of the inferential reasoner's forward derivation: each
@@ -722,7 +722,7 @@ export function findUnboundVariables(inference: Inference): readonly string[] {
 // === Symbolic algebra machinery
 
 /**
- * Determines whether a symbolic expression contains an UNBOUND occurrence of a
+ * Determines whether a symbolic expression contains an unbound occurrence of a
  * target variable.
  *
  * @remarks
@@ -769,7 +769,7 @@ export function containsVariable(
 }
 
 /**
- * Inverts a `x op right = value` step, solving for the LEFT operand `x`.
+ * Inverts a `x op right = value` step, solving for the left operand `x`.
  *
  * @remarks
  * The left-operand inverse of the symbolic reasoner's isolation: `add` inverts
@@ -815,7 +815,7 @@ export function invertLeft(operator: MathOperation, value: number, rightValue: n
 }
 
 /**
- * Inverts a `left op x = value` step, solving for the RIGHT operand `x`.
+ * Inverts a `left op x = value` step, solving for the right operand `x`.
  *
  * @remarks
  * The right-operand inverse of the symbolic reasoner's isolation: `add` inverts
@@ -992,7 +992,7 @@ export function extractAtoms(expression: Expression): readonly Atom[] {
 
 /**
  * Flattens a logical conclusion expression into its asserted `field = value`
- * pairs — connectives IGNORED.
+ * pairs, ignoring the connectives.
  *
  * @remarks
  * The conclusion-extraction step of the logical reasoner's chaining: every
@@ -1202,7 +1202,7 @@ export function definitionToEnvelope(definition: Definition): DefinitionEnvelope
 
 /**
  * Inserts `item` into an id-keyed collection, deduping any existing element
- * sharing its id, then placing it at the END (or immediately AFTER `target`).
+ * sharing its id, then placing it at the end, or immediately after `target`.
  *
  * @remarks
  * Insertion DEDUPES on the id first: `filtered` is `items` with every `item.id`
@@ -1247,7 +1247,7 @@ export function appendById<T extends { readonly id: string }>(
 
 /**
  * Inserts `item` into an id-keyed collection, deduping any existing element
- * sharing its id, then placing it at the START (or immediately BEFORE `target`).
+ * sharing its id, then placing it at the start, or immediately before `target`.
  *
  * @remarks
  * Mirrors {@link appendById}'s dedup-then-insert semantics exactly, only the
@@ -1289,7 +1289,7 @@ export function prependById<T extends { readonly id: string }>(
 }
 
 /**
- * Swaps the element sharing `item.id` IN PLACE, preserving its position.
+ * Swaps the element sharing `item.id` in place, preserving its position.
  *
  * @remarks
  * The position-preserving update primitive — unlike {@link appendById}, which
@@ -1452,8 +1452,8 @@ export function prependGroup(
 }
 
 /**
- * Swaps the group sharing `group.id` in a {@link QuantitativeDefinition} IN
- * PLACE, preserving its position (appends when absent).
+ * Swaps the group sharing `group.id` in a {@link QuantitativeDefinition} in
+ * place, preserving its position (appended when absent).
  *
  * @param definition - The definition to update
  * @param group - The replacement group
@@ -1546,8 +1546,8 @@ export function prependFactor(group: FactorGroup, factor: Factor, target?: strin
 }
 
 /**
- * Swaps the factor sharing `factor.id` in a {@link FactorGroup} IN PLACE,
- * preserving its position (appends when absent).
+ * Swaps the factor sharing `factor.id` in a {@link FactorGroup} in place,
+ * preserving its position (appended when absent).
  *
  * @param group - The group to update
  * @param factor - The replacement factor
@@ -1642,8 +1642,8 @@ export function prependRule(
 }
 
 /**
- * Swaps the rule sharing `rule.id` in a {@link LogicalDefinition} IN PLACE,
- * preserving its position (appends when absent).
+ * Swaps the rule sharing `rule.id` in a {@link LogicalDefinition} in place,
+ * preserving its position (appended when absent).
  *
  * @param definition - The definition to update
  * @param rule - The replacement rule
@@ -1738,8 +1738,8 @@ export function prependEquation(
 }
 
 /**
- * Swaps the equation sharing `equation.id` in a {@link SymbolicDefinition} IN
- * PLACE, preserving its position (appends when absent).
+ * Swaps the equation sharing `equation.id` in a {@link SymbolicDefinition} in
+ * place, preserving its position (appended when absent).
  *
  * @param definition - The definition to update
  * @param equation - The replacement equation
@@ -1889,8 +1889,8 @@ export function prependFact(
 }
 
 /**
- * Swaps the fact sharing `fact.id` in an {@link InferentialDefinition} IN
- * PLACE, preserving its position (appends when absent).
+ * Swaps the fact sharing `fact.id` in an {@link InferentialDefinition} in
+ * place, preserving its position (appended when absent).
  *
  * @param definition - The definition to update
  * @param fact - The replacement fact
@@ -1990,7 +1990,7 @@ export function prependInference(
 
 /**
  * Swaps the inference sharing `inference.id` in an {@link InferentialDefinition}
- * IN PLACE, preserving its position (appends when absent).
+ * in place, preserving its position (appended when absent).
  *
  * @param definition - The definition to update
  * @param inference - The replacement inference

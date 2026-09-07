@@ -258,16 +258,32 @@ export function createInferentialReasoner(options?: InferentialReasonerOptions):
  * @param options - Optional registry, policies, and emitter hooks
  * @returns A {@link ReasonInterface}
  *
- * @example
+ * @example Create an orchestrator and score a subject
  * ```ts
- * import { createLogicalReasoner, createQuantitativeReasoner, createReason } from '@src/core'
+ * import {
+ * 	createFactorGroup,
+ * 	createFieldFactor,
+ * 	createQuantitativeDefinition,
+ * 	createQuantitativeReasoner,
+ * 	createReason,
+ * 	createStaticFactor,
+ * } from '@orkestrel/reason'
  *
- * const reason = createReason({
- * 	reasoners: [createQuantitativeReasoner(), createLogicalReasoner()],
- * 	on: { reason: (result) => console.log(result.success) },
- * })
- * const result = reason.reason({ age: 25 }, definition)
- * reason.destroy()
+ * const reason = createReason({ reasoners: [createQuantitativeReasoner()] })
+ *
+ * const definition = createQuantitativeDefinition('risk', 'Risk score', [
+ * 	createFactorGroup('drivers', 'sum', [
+ * 		createFieldFactor('age', 'age'), // reads subject.age, parseNumber-coerced
+ * 		createStaticFactor('floor', 10), // a fixed contribution
+ * 	]),
+ * ])
+ *
+ * const result = reason.reason({ age: 25 }, definition) // one subject → one result
+ * if (result.reasoning === 'quantitative') result.value // 35 — narrow by the discriminant
+ * result.trace // the step-by-step account of how the value came to be
+ *
+ * reason.supports('quantitative') // true — a reasoner IS registered for this reasoning
+ * reason.reasoner('quantitative')?.supports(definition) // the reasoner's own guard, same check
  * ```
  */
 export function createReason(options?: ReasonOptions): ReasonInterface {

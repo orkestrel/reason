@@ -13,8 +13,8 @@ import { appendFactor, prependFactor, removeFactor, replaceFactor } from '../../
 import { ReasonError } from '../../errors.js'
 
 /**
- * Implements the {@link FactorManagerInterface} — the sole DIVERGENT
- * manager: factors nest inside groups, so it holds NO collection state of its
+ * Implements the {@link FactorManagerInterface} — the one divergent
+ * manager: factors nest inside groups, so it holds no collection state of its
  * own and threads a required `groupId` locator.
  *
  * @remarks

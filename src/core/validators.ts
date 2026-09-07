@@ -882,6 +882,12 @@ export function isResultFact(value: unknown): value is Fact {
 /**
  * Determines whether a value is a {@link CheckResult}.
  *
+ * @remarks
+ * `actual` must be PRESENT and may hold anything, including `undefined` — the
+ * guard reads its presence, never its value. A result whose `actual` is
+ * `undefined` therefore does not survive a JSON round trip: `JSON.stringify`
+ * drops the key, and the parsed record is refused here.
+ *
  * @param value - The value to test
  * @returns True if every published check-result member is valid; false otherwise
  *
@@ -908,6 +914,10 @@ export function isCheckResult(value: unknown): value is CheckResult {
 
 /**
  * Determines whether a value is a {@link FactorResult}.
+ *
+ * @remarks
+ * The optional `raw` and `checks` members are absent-or-valid: an absent key
+ * passes, a present key is checked in full.
  *
  * @param value - The value to test
  * @returns True if every published factor-result member is valid; false otherwise
@@ -1228,7 +1238,7 @@ export function isReasonValidationResult(value: unknown): value is ReasonValidat
 }
 
 /**
- * Determines whether a value is a `DefinitionBuilder` ENTITY — the brand-guarded
+ * Determines whether a value is a `DefinitionBuilder` entity — the brand-guarded
  * stateful workspace, not the plain {@link Definition} data union.
  *
  * @remarks
@@ -1259,7 +1269,7 @@ export function isDefinitionBuilder(value: unknown): value is DefinitionBuilderI
 }
 
 /**
- * Determines whether a value is a `SubjectBuilder` ENTITY — the brand-guarded
+ * Determines whether a value is a `SubjectBuilder` entity — the brand-guarded
  * stateful workspace, not the plain {@link Subject} data record.
  *
  * @remarks
