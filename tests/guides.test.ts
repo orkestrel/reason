@@ -1,5 +1,5 @@
 // The consumer-side guides-parity drop-in: runs `@orkestrel/guide`'s checks against
-// this repo's own `guides/README.md` manifest. The four constants below are this
+// this repo's own `guides/README.md` manifest. The constants below are this
 // package's own, and are the only part a sibling package changes.
 
 import { describe, expect, it } from 'vitest'
@@ -74,7 +74,7 @@ const MODULES = Object.freeze({ '@orkestrel/reason': 'src/core', '@src/core': 's
  *
  * A class that one-class-per-file evicted from its single consumer cannot become a
  * local, so it stays exported without being public. Naming it here is what makes that
- * intentional rather than forgotten — and the second assertion below fails when a name
+ * intentional rather than forgotten — and the assertion that follows it fails when a name
  * here stops being stranded, so the list cannot rot.
  */
 const INTERNAL: readonly string[] = Object.freeze(['class Collection'])
@@ -151,10 +151,10 @@ for (const entry of manifest) {
 	const guide = createGuide(requireValue(files[entry.spec], `Missing file: ${entry.spec}`))
 	const source = createSource({ files, module: entry.source })
 	// `findDrift` walks every documented row against every source declaration, which on a
-	// guide this size costs seconds rather than milliseconds (5192 ms measured over this
-	// guide's 371 compared rows). Computing it here rather than inside the case keeps that
-	// cost out of the per-test budget, the way the readers above already sit here.
-	const drift = findDrift(guide, source)
+	// guide this size costs seconds rather than milliseconds (5192 ms measured on this
+	// guide, 2026-09-07). Computing it here rather than inside the case keeps that cost
+	// out of the per-test budget, the way the preceding readers already sit here.
+	const drifts = findDrift(guide, source)
 
 	describe(`${entry.concept}`, () => {
 		it('uses only listed fence languages', () => {
@@ -223,10 +223,10 @@ for (const entry of manifest) {
 		// output is.
 		it('keeps every compared summary and example equal to its source', () => {
 			const disagreeing: string[] = []
-			for (const one of drift) {
-				const left = one.guide === undefined ? 'absent' : JSON.stringify(one.guide)
-				const right = one.source === undefined ? 'absent' : JSON.stringify(one.source)
-				disagreeing.push(`${entry.spec} ${one.key}: guide ${left} source ${right}`)
+			for (const drift of drifts) {
+				const left = drift.guide === undefined ? 'absent' : JSON.stringify(drift.guide)
+				const right = drift.source === undefined ? 'absent' : JSON.stringify(drift.source)
+				disagreeing.push(`${entry.spec} ${drift.key}: guide ${left} source ${right}`)
 			}
 			expect(disagreeing).toEqual([])
 		})
@@ -352,7 +352,7 @@ describe('flagship fences', () => {
 		reason.destroy()
 	})
 
-	it('§ Quantitative scoring — the three operators driven directly', () => {
+	it('§ Quantitative scoring — the operators driven directly', () => {
 		const evaluator = createEvaluator()
 		expect(evaluator.evaluate(createCheck('age', 'above', 18), { age: 25 })).toEqual({
 			field: 'age',

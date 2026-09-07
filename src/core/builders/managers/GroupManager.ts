@@ -14,16 +14,16 @@ import { Collection } from './Collection.js'
  * manager over a quantitative definition's `groups`.
  *
  * @remarks
- * OWNS its `groups` as a private {@link Collection} — copy-on-write state
+ * Owns its `groups` as a private {@link Collection} — copy-on-write state
  * shared by composition with the other list managers — plus its own
  * {@link Emitter} over {@link GroupManagerEventMap}. Every write verb delegates
- * to the collection, then emits (the affected group id) AFTER the mutation.
- * `remove` is the batch family (array form declared FIRST): no argument removes
+ * to the collection, then emits (the affected group id) after the mutation.
+ * `remove` is the batch family (array form declared first): no argument removes
  * every group, one id removes that group, an id list removes those groups and
  * returns true only when every named id existed. It emits one `remove` per
  * group actually removed.
  * `seat` is the owning builder's silent bulk re-seat channel (used by `merge`).
- * `destroy()` is idempotent and tears the emitter down LAST; any other call
+ * `destroy()` is idempotent and tears the emitter down last; any other call
  * after it throws `ReasonError('DESTROYED', …)`.
  *
  * @example

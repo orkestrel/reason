@@ -14,17 +14,17 @@ import { ReasonError } from '../../errors.js'
  * unordered record.
  *
  * @remarks
- * OWNS its `#variables` record as private copy-on-write state and its own
+ * Owns its `#variables` record as private copy-on-write state and its own
  * {@link Emitter} over {@link VariableManagerEventMap}. The record has no
  * placement, so only `add` / `remove` exist (no `append` / `prepend`): `add`
  * upserts and emits `add(name)`, `remove` omits the key entirely (never sets
  * `undefined`) and emits `remove(name)`. `remove` is the batch family over
- * NAMES (array form declared FIRST): no argument removes every variable, one
+ * names (array form declared first): no argument removes every variable, one
  * name removes that variable, a name list removes those variables and returns
  * true only when every named variable existed. It emits one `remove` per
  * variable actually removed. `seat` is the owning builder's silent
  * bulk re-seat channel (used by `merge`). `destroy()` is idempotent and tears
- * the emitter down LAST; any other call after it throws
+ * the emitter down last; any other call after it throws
  * `ReasonError('DESTROYED', …)`.
  *
  * @example
@@ -116,7 +116,7 @@ export class VariableManager implements VariableManagerInterface {
 	// nor announced, so each batch form emits exactly what it changed.
 	#removeOne(name: string): boolean {
 		if (!Object.hasOwn(this.#variables, name)) return false
-		// Destructure-rest OMITS the key entirely, keeping the record exact.
+		// Destructure-rest omits the key entirely, keeping the record exact.
 		const { [name]: _drop, ...rest } = this.#variables
 		this.#variables = rest
 		this.#emitter.emit('remove', name)

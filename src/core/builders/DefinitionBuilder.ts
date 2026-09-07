@@ -49,17 +49,17 @@ import { VariableManager } from './managers/VariableManager.js'
  * collection read from its manager.
  *
  * @remarks
- * Each manager is BRING-YOUR-OWN (a supplied one is reused) or a fresh one
- * seeded from the seed's matching collection (empty for off-kind collections).
- * Managers are KIND-FREE — an off-kind manager is ignored by `build()`,
- * never a `MISMATCH`. `build()` is TOTAL, deterministic, and returns a FRESH
- * plain {@link Definition} each call. `merge(incoming)` requires the SAME
+ * Each manager is the one the caller supplies, or a fresh one seeded from the
+ * seed's matching collection (empty for off-kind collections). Managers are
+ * kind-free — `build()` ignores an off-kind manager, never a `MISMATCH`.
+ * `build()` is total, deterministic, and returns a fresh plain
+ * {@link Definition} each call. `merge(incoming)` requires the same
  * `reasoning` (else `MISMATCH`) and distributes incoming scalars into the
  * envelope and collections into the managers through the matching `merge*`
  * helper. `clear(key)` deletes one optional field of the envelope for the
  * instance's `reasoning` (a non-clearable key throws `MISMATCH`). `destroy()`
  * cascades to every manager, emits `destroy`, then tears the builder emitter
- * down LAST; it is idempotent, and post-destroy mutation / build throws
+ * down last; it is idempotent, and post-destroy mutation / build throws
  * `ReasonError('DESTROYED', …)`.
  *
  * @example
@@ -221,8 +221,8 @@ export class DefinitionBuilder implements DefinitionBuilderInterface {
 	}
 
 	destroy(): void {
-		// Cascade to every manager first (each idempotent, emitter LAST), then the
-		// builder's own destroy emit, then its emitter LAST — idempotent overall.
+		// Cascade to every manager first (each idempotent, emitter last), then the
+		// builder's own destroy emit, then its emitter last — idempotent overall.
 		this.#groups.destroy()
 		this.#factors.destroy()
 		this.#rules.destroy()

@@ -248,7 +248,7 @@ export function createInferentialReasoner(options?: InferentialReasonerOptions):
  *
  * @remarks
  * `reasoners` — the initial registry (a later entry of the same reasoning
- * replaces an earlier one; the orchestrator ships with NO defaults). `bail` —
+ * replaces an earlier one; the orchestrator ships with no defaults). `bail` —
  * `true` (the default) rethrows a reasoner throw after the `error` emit;
  * `false` converts it to a failure result. `validate` — validate every
  * definition before running it, throwing `INVALID` on failure (default
@@ -282,7 +282,7 @@ export function createInferentialReasoner(options?: InferentialReasonerOptions):
  * if (result.reasoning === 'quantitative') result.value // 35 — narrow by the discriminant
  * result.trace // the step-by-step account of how the value came to be
  *
- * reason.supports('quantitative') // true — a reasoner IS registered for this reasoning
+ * reason.supports('quantitative') // true — a reasoner is registered for this reasoning
  * reason.reasoner('quantitative')?.supports(definition) // the reasoner's own guard, same check
  * ```
  */
@@ -296,15 +296,14 @@ export function createReason(options?: ReasonOptions): ReasonInterface {
  * `variables`, `facts`, and `inferences` self-owning manager properties.
  *
  * @remarks
- * `id`. Default: `seed.id`. Each manager slot is BRING-YOUR-OWN (a supplied
- * one is reused, else a fresh one is seeded from the seed's matching
- * collection). `on` — initial event listeners. `error` — the emitter's
- * listener-error handler. Mutate through the manager
- * properties (`groups` / `factors` / `rules` / `equations` / `variables` /
- * `facts` / `inferences`) and `merge` / `clear`, then call `build()` to produce
- * a fresh, plain {@link Definition} snapshot.
+ * `id`. Default: `seed.id`. Each manager slot takes the manager the caller
+ * supplies, or a fresh one seeded from the seed's matching collection. `on` —
+ * initial event listeners. `error` — the emitter's listener-error handler.
+ * Mutate through the manager properties (`groups` / `factors` / `rules` /
+ * `equations` / `variables` / `facts` / `inferences`) and `merge` / `clear`,
+ * then call `build()` to produce a fresh, plain {@link Definition} snapshot.
  *
- * @param seed - The starting definition (any of the four reasoning kinds)
+ * @param seed - The starting definition, of any reasoning
  * @param options - Optional `id` override, manager injections, and emitter hooks
  * @returns A {@link DefinitionBuilderInterface}
  *
@@ -330,8 +329,8 @@ export function createDefinitionBuilder(
  * {@link Subject}.
  *
  * @remarks
- * `id`. Default: `seed.id`; OPTIONAL — when neither `options.id` nor
- * a string `seed.id` is present the builder is ANONYMOUS (`.id` is
+ * `id`. Default: `seed.id`; it is optional — when neither `options.id` nor
+ * a string `seed.id` is present the builder is anonymous (`.id` is
  * `undefined`, `build()` emits no `id` key). `on` — initial event listeners.
  * `error` — the emitter's listener-error handler.
  * Mutate through `set` / `remove` / `merge` / `clear`, then call `build()` to
@@ -529,10 +528,10 @@ export function createInferenceManager(
 }
 
 // The value factories that follow assemble the declarative definition vocabulary.
-// Each returns a fresh, JSON-serializable value and OMITS absent optional keys
+// Each returns a fresh, JSON-serializable value and omits absent optional keys
 // entirely (never sets them to `undefined`), so the output round-trips through
 // the exact-record validators. A factory with an `overrides` bag spreads it
-// LAST — an override always wins over a default (a `name` defaults to the `id`
+// last — an override always wins over a default (a `name` defaults to the `id`
 // wherever a display name is required).
 
 // === Checks & expressions
@@ -540,7 +539,7 @@ export function createInferenceManager(
 /**
  * Creates a {@link Check} — one field predicate.
  *
- * @param field - The subject field to resolve (a string is ONE key; an array descends)
+ * @param field - The subject field to resolve (a string is a single key; an array descends)
  * @param operator - The comparison to apply
  * @param value - The expected value (any type — the operator decides what is meaningful)
  * @returns A fresh check
@@ -605,7 +604,7 @@ export function createCompound(
  * `enabled` through `overrides`.
  *
  * @param id - The rule id
- * @param premises - The expressions that must ALL hold
+ * @param premises - The expressions that must all hold
  * @param conclusion - The expression whose atoms are asserted when they do
  * @param overrides - Optional {@link Rule} fields merged over the defaults
  * @returns A fresh rule
@@ -632,7 +631,7 @@ export function createRule(
  * Creates a {@link Transform} — one math step.
  *
  * @remarks
- * The `operand` key is OMITTED when absent (never set to `undefined`), so the
+ * The `operand` key is omitted when absent (never set to `undefined`), so the
  * transform stays exact-record valid; the transformer then applies its
  * per-operation default (`1` for `multiply` / `divide` / `power`, `0` otherwise).
  *
@@ -656,7 +655,7 @@ export function createTransform(operator: MathOperation, operand?: number): Tran
  * Creates a {@link Bounds} — an inclusive numeric clamp.
  *
  * @remarks
- * Absent sides are OMITTED (never set to `undefined`) — an absent bound is
+ * Absent sides are omitted (never set to `undefined`) — an absent bound is
  * unbounded on that side.
  *
  * @param minimum - The inclusive lower bound
@@ -718,7 +717,7 @@ export function createConstant(value: number): SymbolicExpression {
  * Creates an operation {@link SymbolicExpression} node.
  *
  * @remarks
- * The `right` key is OMITTED when absent — correct for the unary operations
+ * The `right` key is omitted when absent — correct for the unary operations
  * (`round` / `ceil` / `floor` / `abs`); a binary operation with no `right`
  * treats it as the constant `0`.
  *
@@ -816,7 +815,7 @@ export function createFact(
  * `enabled` through `overrides`.
  *
  * @param id - The inference id
- * @param premises - The fact patterns that must ALL unify
+ * @param premises - The fact patterns that must all unify
  * @param conclusion - The fact pattern derived when they do
  * @param overrides - Optional {@link Inference} fields merged over the defaults
  * @returns A fresh inference

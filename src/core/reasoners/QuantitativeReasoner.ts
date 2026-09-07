@@ -25,21 +25,21 @@ import { Aggregator } from '../operators/Aggregator.js'
  * Performs factor-based numeric scoring.
  *
  * @remarks
- * Each factor runs a fixed pipeline: checks gate (ALL met) → source resolve
- * (`fallback` when unresolvable) → finite check → transforms chain → bounds
- * clamp → finite recheck. Factors evaluate in stable ascending `priority`
+ * Each factor runs a fixed pipeline: checks gate (every check met) → source
+ * resolve (`fallback` when unresolvable) → finite check → transforms chain →
+ * bounds clamp → finite recheck. Factors evaluate in stable ascending `priority`
  * order; a `strict` group is all-or-nothing; a group's value is its `base` plus
- * the weighted aggregation of its APPLIED factors, clamped (never rounded); the
+ * the weighted aggregation of its applied factors, clamped (never rounded); the
  * definition's value is its `base` plus the unweighted aggregation of the
- * APPLIED groups' values, clamped, then rounded to `precision`. A
+ * applied groups' values, clamped, then rounded to `precision`. A
  * required-factor failure or non-finite value appends an error (`success:
  * false`) without aborting — the numeric `value` is always computed. The
- * definition-level value is finite-checked AFTER rounding: a non-finite
+ * definition-level value is finite-checked after rounding: a non-finite
  * aggregate (a `minimum` / `maximum` over zero applied groups) appends an error
  * while the `NaN` stays visible in `value`. Field sources coerce through the
  * contracts `parseNumberField`: a non-finite subject number or a non-numeric
  * string is unresolvable and takes the fallback path. Lookup sources read only
- * OWN table keys, and a missing / `null` field falls back directly. Nothing
+ * the table's own keys, and a missing / `null` field falls back directly. Nothing
  * mutates its inputs; fully deterministic.
  *
  * @example
@@ -101,8 +101,8 @@ export class QuantitativeReasoner implements ReasonerInterface {
 			errors.push('Definition must have at least one group')
 		}
 
-		// Duplicate ids are WARNINGS (runtime stays permissive: a weight lookup
-		// takes the FIRST same-id twin) — once per duplicated id.
+		// Duplicate ids are warnings (runtime stays permissive: a weight lookup
+		// takes the first same-id twin) — one warning per duplicated id.
 		for (const id of findDuplicates(definition.groups ?? [])) {
 			warnings.push(`Duplicate group id "${id}"`)
 		}
@@ -230,9 +230,10 @@ export class QuantitativeReasoner implements ReasonerInterface {
 		}
 
 		const factorValues = appliedFactors.map((factor) => factor.value)
-		// Weights come from the ORIGINAL factor list by id, not the priority-sorted
-		// copy — hoisted to one id→weight Map (FIRST same-id twin wins, matching the
-		// old `.find`) so the per-applied-factor lookup is O(1) instead of O(factors).
+		// Weights come from the original factor list by id, not the priority-sorted
+		// copy — hoisted to one id→weight Map (the first same-id twin wins, matching
+		// the old `.find`) so the per-applied-factor lookup is O(1) instead of
+		// O(factors).
 		const weightById = new Map<string, number>()
 		for (const original of group.factors) {
 			if (typeof original !== 'object' || original === null) continue
@@ -253,7 +254,7 @@ export class QuantitativeReasoner implements ReasonerInterface {
 	}
 
 	// Factor pipeline: checks gate → source resolve → finite check → transforms
-	// → bounds clamp → finite recheck. Weight is NOT applied here — it feeds the
+	// → bounds clamp → finite recheck. Weight is not applied here — it feeds the
 	// group aggregation.
 	#evaluateFactor(
 		factor: Factor,
@@ -279,7 +280,7 @@ export class QuantitativeReasoner implements ReasonerInterface {
 			if (factor.required) {
 				errors.push(`Required factor "${factor.id}" could not resolve source`)
 			}
-			// `raw` is documented as ABSENT when the source never resolved.
+			// `raw` is documented as absent when the source never resolved.
 			return { id: factor.id, applied: false, value: 0 }
 		}
 

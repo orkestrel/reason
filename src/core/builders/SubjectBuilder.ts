@@ -16,27 +16,26 @@ import { ReasonError } from '../errors.js'
  * flat key-value collection, no managers.
  *
  * @remarks
- * `id` is OPTIONAL (`options?.id ?? seed.id`). When present, the builder is
+ * `id` is optional (`options?.id ?? seed.id`). When present, the builder is
  * id-ful: `build()` carries that `id` and `clear()` restores it. When absent,
- * the builder is ANONYMOUS —
- * `.id` is `undefined` and the accumulated subject carries no `id` key.
- * `field(key)` / `fields()` are the singular / plural accessor pair over
- * TOP-LEVEL keys only. `set(key, value)` delegates to `assignField`;
- * `set('id', …)` throws `ReasonError('MISMATCH', …)` — id is immutable through the entity,
- * id-ful or anonymous alike. `remove` is the batch family (array form
- * declared first): no argument removes every non-id field and emits one
- * `remove` per key in key order, one key removes that field, and a key list
- * removes those fields. Removing `'id'` through a keyed form throws the same
- * `MISMATCH` for the same reason. `merge(incoming)` delegates to `mergeSubjects`
- * (incoming-wins, base `id` preserved — plain {@link Subject} data only).
- * `clear()` removes every non-id field, restoring `{ id }` when id-ful or
- * an empty record when anonymous. `repeat(count)` returns `count`
- * deterministic minted-id clones as PLAIN payloads — a pure read that does
- * NOT emit. `build(): Subject` is total, deterministic, and returns a fresh
- * durable payload each call. Post-destroy mutation throws
+ * the builder is anonymous — `.id` is `undefined` and the accumulated subject
+ * carries no `id` key. `field(key)` / `fields()` are the singular / plural
+ * accessor pair over top-level keys only. `set(key, value)` delegates to
+ * `assignField`; setting `id` throws `ReasonError('MISMATCH', …)`, because the
+ * id is immutable through the entity, id-ful or anonymous alike. `remove` is
+ * the batch family (array form declared first): no argument removes every
+ * non-id field and emits one `remove` per key in key order, one key removes
+ * that field, and a key list removes those fields. Removing `'id'` through a
+ * keyed form throws the same `MISMATCH` for the same reason. `merge(incoming)`
+ * delegates to `mergeSubjects` (incoming-wins, base `id` preserved — plain
+ * {@link Subject} data only). `clear()` removes every non-id field, restoring
+ * `{ id }` when id-ful or an empty record when anonymous. `repeat(count)`
+ * returns `count` deterministic minted-id clones as plain payloads — a pure
+ * read that emits nothing. `build(): Subject` is total, deterministic, and
+ * returns a fresh durable payload each call. Post-destroy mutation throws
  * `ReasonError('DESTROYED', …)` — only the `emitter` getter and `destroy`
  * itself keep working, mirroring `Reason`. `destroy()` is idempotent and
- * tears the emitter down LAST.
+ * tears the emitter down last.
  *
  * @example
  * ```ts
@@ -45,7 +44,7 @@ import { ReasonError } from '../errors.js'
  * const applicant = createSubjectBuilder({ id: 'alice', age: 25 })
  * applicant.set('region', 'CA')
  * applicant.merge({ licensed: true, accidents: 0 }) // incoming wins, id kept
- * applicant.remove(['accidents']) // batch form first — true when ALL existed
+ * applicant.remove(['accidents']) // batch form first — true when every key existed
  * applicant.field('region') // 'CA'
  * applicant.fields() // the live record
  * applicant.repeat(2) // ids 'alice-0', 'alice-1'
@@ -125,7 +124,7 @@ export class SubjectBuilder implements SubjectBuilderInterface {
 	merge(incoming: Subject): void {
 		this.#ensureAlive()
 		const merged = mergeSubjects(this.#subject, incoming)
-		// `mergeSubjects` only preserves a BASE id — an anonymous base has none,
+		// `mergeSubjects` only preserves a base id — an anonymous base has none,
 		// so an incoming subject's own `id` key would otherwise survive into the
 		// merged result. Strip it here so an anonymous builder never carries an
 		// `id` key through this path either.

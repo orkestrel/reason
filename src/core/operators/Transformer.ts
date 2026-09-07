@@ -8,7 +8,7 @@ import { TRANSFORMER_ID } from '../constants.js'
  * per-factor pipeline stage.
  *
  * @remarks
- * TOTAL: never throws. Absent-`operand` defaults are operation-specific —
+ * Total: never throws. Absent-`operand` defaults are operation-specific —
  * identity-preserving `1` for `multiply` / `divide` / `power`, `0` for every
  * other binary operation; `round` / `ceil` / `floor` / `abs` are unary and
  * ignore the operand. `divide` by zero yields `NaN` (deliberately not JS's

@@ -14,17 +14,17 @@ import { Collection } from './Collection.js'
  * manager over an inferential definition's `facts`.
  *
  * @remarks
- * OWNS its `facts` as a private {@link Collection} — copy-on-write state shared
+ * Owns its `facts` as a private {@link Collection} — copy-on-write state shared
  * by composition with the other list managers — plus its own {@link Emitter}
- * over {@link FactManagerEventMap}. `Fact.id` is an AUTHORING label — the
+ * over {@link FactManagerEventMap}. `Fact.id` is an authoring label — the
  * runtime content-dedups facts by predicate+arity+terms, independently of this
  * manager's id-keyed dedup. `remove` is the batch family (array form declared
- * FIRST): no argument removes every fact, one id removes that fact, an id list
+ * first): no argument removes every fact, one id removes that fact, an id list
  * removes those facts and returns true only when every named id existed. It
  * emits one `remove` per fact actually removed.
  * `seat` is the owning builder's silent bulk re-seat
  * channel (used by `merge`). `destroy()` is idempotent and tears the emitter
- * down LAST; any other call after it throws `ReasonError('DESTROYED', …)`.
+ * down last; any other call after it throws `ReasonError('DESTROYED', …)`.
  *
  * @example
  * ```ts

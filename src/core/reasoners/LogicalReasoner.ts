@@ -31,18 +31,18 @@ import { Evaluator } from '../operators/Evaluator.js'
  * @remarks
  * Forward chaining is a naive fixpoint capped at `depth` iterations: rules run
  * in ascending `priority` order each pass, and a firing rule's conclusion atoms
- * become a derived overlay that SHADOWS same-named subject fields on later
+ * become a derived overlay that shadows same-named subject fields on later
  * passes (derived keys are `formatField(check.field)` strings). Convergence —
  * one full pass with no new derivation — appends a trace containing
  * `converged`. Final rule results re-evaluate against the settled overlay in
- * ORIGINAL rule order (forward) / priority-sorted order (backward), and the
- * overall `conclusion` is whether the LAST result applied. Backward chaining
- * proves EVERY rule goal-first: an unmet premise triggers sub-goal search
+ * original rule order (forward) / priority-sorted order (backward), and the
+ * overall `conclusion` is whether the last result applied. Backward chaining
+ * proves every rule goal-first: an unmet premise triggers sub-goal search
  * through rules whose conclusion atoms assert the needed `field = value` pair,
  * guarded by a visited-rule set (cycle-safe) plus the depth cap; `not` succeeds
  * when its operand cannot be established (negation-as-failure) and `implies` is
- * vacuously true on an unprovable antecedent. Expression evaluation is EAGER
- * (no short-circuit); conclusion extraction IGNORES connectives — every atom
+ * vacuously true on an unprovable antecedent. Expression evaluation is eager
+ * (no short-circuit); conclusion extraction ignores connectives — every atom
  * inside a conclusion is asserted, even under `not` / `or`. Overlay bookkeeping
  * compares with SameValueZero (`equalValues`), so a NaN-valued conclusion
  * derives once and the fixpoint converges. Nothing mutates its inputs; fully
@@ -103,7 +103,7 @@ export class LogicalReasoner implements ReasonerInterface {
 			errors.push('Definition must have at least one rule')
 		}
 
-		// Duplicate ids are WARNINGS (runtime stays permissive: a degenerate rule
+		// Duplicate ids are warnings (runtime stays permissive: a degenerate rule
 		// id-poisons its same-id twin in the forward exclusion set).
 		for (const id of findDuplicates(definition.rules ?? [])) {
 			warnings.push(`Duplicate rule id "${id}"`)
@@ -173,7 +173,7 @@ export class LogicalReasoner implements ReasonerInterface {
 	}
 
 	// Data-driven fixpoint: derive until a pass adds nothing new (or depth caps),
-	// then re-evaluate every runnable rule in ORIGINAL order for the results.
+	// then re-evaluate every runnable rule in original order for the results.
 	#forward(
 		definition: LogicalDefinition,
 		subject: Subject,
@@ -187,7 +187,7 @@ export class LogicalReasoner implements ReasonerInterface {
 
 		const sortedRules = sortByPriority(definition.rules)
 
-		// Pre-pass: a premise-less or conclusion-less rule errors ONCE and is
+		// Pre-pass: a premise-less or conclusion-less rule errors once and is
 		// excluded from every later pass.
 		const reportedErrors = new Set<string>()
 		for (const rule of sortedRules) {
@@ -251,7 +251,7 @@ export class LogicalReasoner implements ReasonerInterface {
 		return { conclusion, rules: finalResults }
 	}
 
-	// Goal-driven proving over EVERY rule in priority order, sharing a growing
+	// Goal-driven proving over every rule in priority order, sharing a growing
 	// derived overlay; the visited-rule set plus the depth cap keep cycles safe.
 	#backward(
 		definition: LogicalDefinition,
@@ -270,8 +270,8 @@ export class LogicalReasoner implements ReasonerInterface {
 				if (typeof rule !== 'object' || rule === null) return false
 				if (rule.enabled === false) return false
 				// A missing / non-array premises cannot be walked — errored and
-				// excluded. An EMPTY premises array is kept: backward applies it
-				// VACUOUSLY (forward reports it instead).
+				// excluded. An empty premises array is kept: backward applies it
+				// vacuously (forward reports it instead).
 				if (!rule.premises || !Array.isArray(rule.premises)) {
 					errors.push(`Rule "${rule.id}" has no premises — skipped`)
 					return false
@@ -601,7 +601,7 @@ export class LogicalReasoner implements ReasonerInterface {
 		return false
 	}
 
-	// A rule applies exactly when ALL premises hold; a premise-less or
+	// A rule applies exactly when every premise holds; a premise-less or
 	// conclusion-less rule never applies.
 	#evaluateRule(rule: Rule, subject: Subject): RuleResult {
 		if (!rule.premises || rule.premises.length === 0) {
@@ -618,7 +618,7 @@ export class LogicalReasoner implements ReasonerInterface {
 		return { id: rule.id, applied: premiseResults.every(Boolean), premises: premiseResults }
 	}
 
-	// EAGER evaluation (no short-circuit): `not` reads only its first operand
+	// Eager evaluation (no short-circuit): `not` reads only its first operand
 	// (empty → vacuously true); `implies` / `xor` read their first two.
 	#evaluateExpression(expression: Expression, subject: Subject): boolean {
 		if (expression.form === 'atom') {

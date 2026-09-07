@@ -14,17 +14,17 @@ import { Collection } from './Collection.js'
  * manager over a logical definition's `rules`.
  *
  * @remarks
- * OWNS its `rules` as a private {@link Collection} — copy-on-write state shared
+ * Owns its `rules` as a private {@link Collection} — copy-on-write state shared
  * by composition with the other list managers — plus its own {@link Emitter}
- * over {@link RuleManagerEventMap}. Rule order is LOAD-BEARING — the forward
- * conclusion is the LAST declared non-disabled rule, so `append` without a
+ * over {@link RuleManagerEventMap}. Rule order is load-bearing — the forward
+ * conclusion is the last declared non-disabled rule, so `append` without a
  * `target` makes the new rule the conclusion. `remove` is the batch family
- * (array form declared FIRST): no argument removes every rule, one id removes
+ * (array form declared first): no argument removes every rule, one id removes
  * that rule, an id list removes those rules and returns true only when every
  * named id existed. It emits one `remove` per rule actually removed. `seat` is
  * the owning builder's
  * silent bulk re-seat channel (used by `merge`). `destroy()` is idempotent and
- * tears the emitter down LAST; any other call after it throws
+ * tears the emitter down last; any other call after it throws
  * `ReasonError('DESTROYED', …)`.
  *
  * @example

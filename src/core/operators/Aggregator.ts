@@ -7,11 +7,11 @@ import { AGGREGATOR_ID, DEFAULT_WEIGHT } from '../constants.js'
  * reasoner's group and definition combiner.
  *
  * @remarks
- * TOTAL: never throws. Empty-input identities: `sum` / `average` → `0`,
+ * Total: never throws. Empty-input identities: `sum` / `average` → `0`,
  * `product` → `1`, `minimum` / `maximum` → `NaN` (the deliberate "no data"
- * signal). Weights are honored ONLY when their length matches `values` exactly
+ * signal). Weights are honored only when their length matches `values` exactly
  * (otherwise silently unweighted): a weight multiplies into a `sum`, acts as an
- * EXPONENT for a `product`, is the weight of a weighted mean for `average`
+ * exponent for a `product`, is the weight of a weighted mean for `average`
  * (a zero total weight yields `0`, never a division blow-up), and is ignored by
  * `minimum` / `maximum`. An unknown aggregation yields `0`. Stateless and
  * deterministic.

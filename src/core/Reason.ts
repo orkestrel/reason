@@ -21,16 +21,16 @@ import { ReasonError } from './errors.js'
  * {@link ReasonerInterface}s.
  *
  * @remarks
- * Holds NO strategy-specific logic: dispatch is purely a registry lookup by
+ * Holds no strategy-specific logic: dispatch is purely a registry lookup by
  * `definition.reasoning` (one reasoner per reasoning; re-registration
  * replaces). A missing reasoner throws `MISSING` and a pre-run validation
- * failure (when the `validate` option is on) throws `INVALID` — both BYPASS
- * `bail` and emit nothing. A reasoner throw emits `error` with the raw thrown
+ * failure (when the `validate` option is on) throws `INVALID` — each bypasses
+ * `bail` and emits nothing. A reasoner throw emits `error` with the raw thrown
  * value, then rethrows under `bail: true` (the default) or converts to a
- * type-shaped failure result under `bail: false`; only SUCCESSFUL results emit
+ * type-shaped failure result under `bail: false`; only a successful result emits
  * `reason` (synchronously, before returning). The batch overload maps subjects
  * in order (validation, when on, repeats per subject). `destroy()` clears the
- * registry, emits `destroy`, then destroys the emitter LAST and is
+ * registry, emits `destroy`, then destroys the emitter last and is
  * idempotent; every other method afterwards throws `DESTROYED` — only the
  * {@link emitter} getter keeps working.
  *
@@ -121,7 +121,7 @@ export class Reason implements ReasonInterface {
 	validate(definition: Definition): ReasonValidationResult {
 		this.#ensureAlive()
 		const reasoner = this.#reasoners.get(definition.reasoning)
-		// A missing reasoner is an invalid RESULT here (reason() is where it throws).
+		// A missing reasoner is an invalid result here (reason() is where it throws).
 		if (!reasoner) {
 			return {
 				valid: false,
@@ -173,7 +173,7 @@ export class Reason implements ReasonInterface {
 			this.#emitter.emit('error', error)
 			if (this.#bail) throw error
 			// bail: false converts the throw into a type-shaped failure result —
-			// which does NOT emit 'reason'.
+			// which emits no 'reason'.
 			const message = error instanceof Error ? error.message : String(error)
 			return buildErrorResult(definition, message)
 		}

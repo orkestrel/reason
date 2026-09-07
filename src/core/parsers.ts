@@ -10,8 +10,8 @@ import { isDefinition } from './validators.js'
  *
  * @remarks
  * The safe inverse of the builders: `parseJSONAs` composed with the data guard
- * {@link isDefinition}. A built definition body IS the durable JSON payload —
- * `JSON.stringify(definition)` round-trips through `parseDefinition`. Two
+ * {@link isDefinition}. A built definition body is the durable JSON payload —
+ * `JSON.stringify(definition)` round-trips through `parseDefinition`. The
  * authoring hazards: a required `Check.value: undefined` drops its key on
  * `JSON.stringify` (author `null` instead), and a `Fact.terms` element of
  * `undefined` serializes to `null` (terms must be JSON-safe scalars/strings).

@@ -8,14 +8,14 @@ import { EVALUATOR_ID } from '../constants.js'
  * quantitative and logical reasoners.
  *
  * @remarks
- * TOTAL and strict: `evaluate` never throws (an unknown operator is caught and
+ * Total and strict: `evaluate` never throws (an unknown operator is caught and
  * surfaced as `CheckResult.error` with `met: false`) and never coerces —
  * `equals` / `not` are raw `===` / `!==`, the ordering operators demand numbers
- * on BOTH sides, `any` / `none` demand an array expected value (a non-array is
- * not met for either — `none` is NOT the raw complement of `any` on malformed
- * input), while `outside` IS the pure negation of `between` (so a malformed
+ * on each side, `any` / `none` demand an array expected value (a non-array is
+ * not met for either — `none` is not the raw complement of `any` on malformed
+ * input), while `outside` is the pure negation of `between` (so a malformed
  * range is `outside`). Fields resolve through the core `resolveField` — a string
- * is ONE key, an array descends. Stateless and deterministic.
+ * is a single key, an array descends. Stateless and deterministic.
  *
  * @example
  * ```ts

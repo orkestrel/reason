@@ -58,7 +58,7 @@ export const DEFAULT_PRIORITY = 0
  * inferential chaining.
  *
  * @remarks
- * Fixed — unlike {@link DEFAULT_PRECISION} it is NOT overridable per
+ * Fixed — unlike {@link DEFAULT_PRECISION} it is not overridable per
  * definition, so confidence products stay comparable across derivations.
  */
 export const CONFIDENCE_PRECISION = 4
@@ -111,7 +111,7 @@ export const DEFINITION_BUILDER_BRAND: unique symbol = Symbol('reasons.definitio
  *
  * @remarks
  * Only `isSubjectBuilder` (`validators.ts`) reads this key, through `Reflect.get`.
- * Distinct from {@link DEFINITION_BUILDER_BRAND}, so the two entities can never
- * match each other's guard.
+ * Distinct from {@link DEFINITION_BUILDER_BRAND}, so neither entity can ever
+ * match the other's guard.
  */
 export const SUBJECT_BUILDER_BRAND: unique symbol = Symbol('reasons.subjectBuilder')

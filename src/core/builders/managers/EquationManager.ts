@@ -14,17 +14,17 @@ import { Collection } from './Collection.js'
  * kind-free manager over a symbolic definition's `equations`.
  *
  * @remarks
- * OWNS its `equations` as a private {@link Collection} — copy-on-write state
+ * Owns its `equations` as a private {@link Collection} — copy-on-write state
  * shared by composition with the other list managers — plus its own
  * {@link Emitter} over {@link EquationManagerEventMap}. Equation order is
- * STRONGLY load-bearing — equations solve strictly in order and each rounded
- * solution feeds forward. `remove` is the batch family (array form declared
- * FIRST): no argument removes every equation, one id removes that equation, an
+ * load-bearing — equations solve strictly in order and each rounded solution
+ * feeds forward. `remove` is the batch family (array form declared
+ * first): no argument removes every equation, one id removes that equation, an
  * id list removes those equations and returns true only when every named id
  * existed. It emits one `remove` per equation actually removed.
  * `seat` is the owning builder's silent bulk re-seat
  * channel (used by `merge`). `destroy()` is idempotent and tears the emitter
- * down LAST; any other call after it throws `ReasonError('DESTROYED', …)`.
+ * down last; any other call after it throws `ReasonError('DESTROYED', …)`.
  *
  * @example
  * ```ts

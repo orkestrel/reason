@@ -36,7 +36,7 @@ import { ReasonError } from './errors.js'
 // / clear family over definitions and subjects. Every function here is
 // referentially transparent — it returns a fresh, JSON-serializable value and
 // touches no input — with one deliberate exception: `termToKey` and `factToKey`
-// thread a caller-created `identities` ledger and REGISTER each newly seen
+// thread a caller-created `identities` ledger and register each newly seen
 // object term in it, because reference identity has to survive across every
 // call of one dedupe pass. The value constructors that assemble that vocabulary
 // live in `factories.ts` under the `create*` form.
@@ -49,7 +49,7 @@ import { ReasonError } from './errors.js'
  *
  * @remarks
  * Display-only: the joined form is how a field appears in traces and derived
- * overlays; it is NOT re-parsed into a path (a string stays ONE key).
+ * overlays; it is never re-parsed into a path (a string stays a single key).
  *
  * @param field - The field path to format
  * @returns The display string
@@ -98,7 +98,7 @@ export function clamp(value: number, limit?: Bounds): number {
  *
  * @remarks
  * The range test behind the `between` and `outside` `Comparison` operators: only
- * the FIRST TWO elements of `range` are read, both ends are inclusive, and a
+ * the first two elements of `range` are read, each end is inclusive, and a
  * non-numeric `value`, a non-array `range`, a `range` shorter than two
  * elements, or a non-numeric bound all report `false`. `outside` is the pure
  * negation of this predicate, so a malformed range reads as outside.
@@ -168,9 +168,9 @@ export function emptyAggregate(aggregation: Aggregation): number {
  * source passes its value through; `field` and `range` coerce through the
  * contracts `parseNumberField`, so a non-finite subject number or a
  * non-numeric string is unresolvable and takes `fallback`; `lookup` reads only
- * OWN table keys, and a missing or `null` field takes `fallback` directly
+ * the table's own keys, and a missing or `null` field takes `fallback` directly
  * rather than letting a `''` key intercept absent data. A `range` scans its
- * bands in order and the FIRST match wins — a band without `bounds` is a
+ * bands in order and the first match wins — a band without `bounds` is a
  * catch-all and an absent bound side is open. A malformed factor carrying no
  * source at all takes `fallback` rather than crashing.
  *
@@ -202,7 +202,7 @@ export function resolveSource(
 		case 'lookup': {
 			const resolved = resolveField(subject, source.field)
 			// A missing / null field never reaches the table (a '' key must not
-			// intercept absent data); a PRESENT value still stringifies, so a
+			// intercept absent data); a present value still stringifies, so a
 			// real '' value may hit a '' key.
 			if (resolved === undefined || resolved === null) return fallback
 			const key = String(resolved)
@@ -233,9 +233,9 @@ export function resolveSource(
  * @remarks
  * `Math.round` semantics — halves round toward `+∞` (`2.5` → `3`, `-2.5` → `-2`).
  * A negative precision rounds at whole-number scales (`-1` → tens, `-2` →
- * hundreds). An EXTREME precision whose scale factor overflows the double range
+ * hundreds). A precision whose scale factor overflows the double range
  * (`10^p` → `Infinity` at roughly `p > 308`, `0` at roughly `p < -323`) returns
- * the value UNCHANGED — passthrough, never `NaN`.
+ * the value unchanged — passthrough, never `NaN`.
  *
  * @param value - The number to round
  * @param precision - Decimal places to keep (defaults to `0`)
@@ -268,7 +268,7 @@ export function roundTo(value: number, precision = 0): number {
  * @remarks
  * This is the derivation-bookkeeping equality of the chaining reasoners: the
  * logical overlay and the inferential fact-dedupe compare with it so a
- * NaN-valued conclusion or fact term derives exactly ONCE and the fixpoint
+ * NaN-valued conclusion or fact term derives exactly once and the fixpoint
  * converges (raw `===` would re-derive it every iteration, never converging).
  * It matches `Array.prototype.includes` semantics — the same membership test
  * the `any` / `none` comparisons use.
@@ -296,7 +296,7 @@ export function equalValues(left: unknown, right: unknown): boolean {
  * @remarks
  * The shared evaluation-order helper of the quantitative (factors) and logical
  * (rules) reasoners: lower priorities run first, an absent `priority` defaults
- * to `0`, equal priorities keep DECLARATION order (stable), and the input array
+ * to `0`, equal priorities keep declaration order (stable), and the input array
  * is never mutated. An array hole, `null`, or other non-record entry is dropped
  * rather than sorted — the output may be shorter than the input.
  *
@@ -330,7 +330,7 @@ export function sortByPriority<T extends { readonly priority?: number }>(
  *
  * @remarks
  * The shared uniqueness scan behind every reasoner's `validate()` duplicate-id
- * WARNINGS (rules, groups, factors, equations, inferences). Runtime stays
+ * warnings (rules, groups, factors, equations, inferences). Runtime stays
  * permissive about duplicates (first/last-wins artifacts) — this helper only
  * surfaces them.
  *
@@ -359,7 +359,7 @@ export function findDuplicates(items: ReadonlyArray<{ readonly id: string }>): r
  * @remarks
  * Keys both stored facts and premise patterns (both are `Fact`-shaped) for
  * {@link indexByArity}: `matchFacts` already rejects an arity mismatch, so
- * narrowing a same-predicate bucket to same-predicate-AND-same-arity only
+ * narrowing a same-predicate bucket to one of the same predicate and arity only
  * excludes candidates that could never unify anyway. Only `predicate` — the
  * one free-form, adversary-controlled part — is length-prefixed
  * (`length + ':' + predicate`), mirroring {@link factToKey}'s framing so a
@@ -389,7 +389,7 @@ export function factToArityKey(fact: Fact): string {
  * @remarks
  * The index behind the inferential reasoner's same-predicate-and-arity join
  * scans (`#findAllBindings` / `#calculatePremiseConfidence`): `matchFacts`
- * already rejects a predicate OR arity mismatch, so restricting a premise's
+ * already rejects a predicate or an arity mismatch, so restricting a premise's
  * search to its own predicate+arity bucket changes nothing but the cost — the
  * surviving matches and their append order are identical to a predicate-only
  * index. Append order within a bucket is preserved, so a "first match wins"
@@ -426,9 +426,9 @@ export function indexByArity(facts: readonly Fact[]): ReadonlyMap<string, readon
  * forward-chaining dedupe. Primitives (and `null`) key by value, typeof-prefixed
  * so `1` (`number:1`) never collides with `'1'` (`string:1`); `-0` folds to `+0`
  * (both `number:0`) and `NaN` is self-consistent (`number:NaN`), matching
- * SameValueZero. Objects and functions key by REFERENCE through `identities` — a
+ * SameValueZero. Objects and functions key by reference through `identities` — a
  * first sighting is assigned the map's current size as its id, so distinct
- * objects never collide and the SAME reference always reproduces its key.
+ * objects never collide and the same reference always reproduces its key.
  *
  * @param term - The term to key
  * @param identities - The caller-created reference-identity ledger, threaded across a dedupe pass (a newly seen object/function is registered in it)
@@ -463,7 +463,7 @@ export function termToKey(term: unknown, identities: Map<object, number>): strin
  * the same predicate, arity, and SameValueZero-equal terms share a key (so a
  * NaN-term fact derives once and ±0 collapse keeping the first), while
  * confidence never enters the key. Each part — the predicate, the stringified
- * arity, and every {@link termToKey} — is LENGTH-PREFIXED (`length + ':' + part`)
+ * arity, and every {@link termToKey} — is length-prefixed (`length + ':' + part`)
  * before joining, so the delimiter can never be forged by an adversarial string
  * term embedding it: two distinct facts always produce distinct keys, even when
  * a term string contains the delimiter (an injective framing raw joining lacked).
@@ -498,10 +498,10 @@ export function factToKey(fact: Fact, identities: Map<object, number>): string {
  *
  * @remarks
  * The bidirectional unification of the inferential reasoner: a `'?'`-prefixed
- * string term on EITHER side (pattern or candidate) is a variable that binds to
+ * string term on either side (pattern or candidate) is a variable that binds to
  * the opposite term (the `'?'` prefix is kept in the binding key), while
  * consistency is enforced within the match — a variable seen twice must bind the
- * SAME value (raw `!==`) or the whole match fails. A predicate mismatch or an
+ * same value (raw `!==`) or the whole match fails. A predicate mismatch or an
  * arity (term-count) mismatch fails immediately; non-variable terms must be
  * strictly (`===`) equal.
  *
@@ -554,7 +554,7 @@ export function matchFacts(pattern: Fact, candidate: Fact): Record<string, unkno
  * @remarks
  * The pattern-instantiation step of the inferential reasoner: a `'?'`-prefixed
  * string term that is present in `bindings` is replaced by its bound value;
- * every other term (constants and UNBOUND variables alike) is kept verbatim. The
+ * every other term (constants and unbound variables alike) is kept verbatim. The
  * returned fact is a fresh copy (`{ ...fact, terms }`) — the input is never
  * mutated.
  *
@@ -631,7 +631,7 @@ export function computePremiseConfidence(
  * inferential reasoner's subject-injection step.
  *
  * @remarks
- * Every own subject field EXCEPT `id` becomes a `has(key, value)` fact at full
+ * Every own subject field except `id` becomes a `has(key, value)` fact at full
  * `DEFAULT_CONFIDENCE`; `null` / `undefined` and any `object` (including arrays)
  * value is skipped. The returned `trace` carries one line per injection plus a
  * final count when at least one fact was produced, so no caller-owned
@@ -727,16 +727,16 @@ export function findUnboundVariables(inference: Inference): readonly string[] {
  *
  * @remarks
  * The variable-presence probe of the symbolic reasoner's isolation: a `variable`
- * node matches only when its name is `target` AND `target` is not already in
+ * node matches only when its name is `target` and `target` is not already in
  * `bindings` (a pre-bound target is a known value, not an unknown to isolate); a
  * `constant` never matches; an `operation` recurses into both operands (the
- * `right` operand may be absent on a unary node). The walk is an ITERATIVE
+ * `right` operand may be absent on a unary node). The walk is an iterative
  * worklist (never recursive) with short-circuit `true` on the first hit, so it
  * stays total on pathologically deep expression trees.
  *
  * @param expression - The expression to probe
  * @param target - The variable name being sought
- * @param bindings - The known bindings (a bound target does NOT count as present)
+ * @param bindings - The known bindings (a bound target does not count as present)
  * @returns True if an unbound `target` occurs in the expression; false otherwise
  *
  * @example
@@ -803,7 +803,7 @@ export function invertLeft(operator: MathOperation, value: number, rightValue: n
 		case 'multiply':
 			return rightValue === 0 ? Number.NaN : value / rightValue
 		case 'divide':
-			// `x / 0 = value` has NO solution — NaN (uniform with the other
+			// `x / 0 = value` has no solution — NaN (uniform with the other
 			// zero guards), so the non-finite check reports it rather than
 			// a bogus `x = 0`.
 			return rightValue === 0 ? Number.NaN : value * rightValue
@@ -865,7 +865,7 @@ export function invertRight(operator: MathOperation, value: number, leftValue: n
  * by zero is `NaN` (never a throw), the unary operations (`round` / `ceil` /
  * `floor` / `abs`) ignore `right`, and `percentage` is `left * (right / 100)`.
  * `operator` is typed `string` because untrusted definitions reach here
- * unchecked; the ONE throwing path is the unknown-operator default, which
+ * unchecked; the only throwing path is the unknown-operator default, which
  * throws `ReasonError('OPERATOR', …, { operator })` and is caught per equation
  * upstream.
  *
@@ -954,7 +954,7 @@ export function resolveOperand(operation: MathOperation, operand?: number): numb
  * The shared atom-walk behind both {@link extractConclusions} and the raters'
  * conclusion merge: an `atom` yields itself; a compound flattens its operands in
  * authored order, so a later operand's atoms follow an earlier one's. The walk is
- * an ITERATIVE explicit-stack traversal (never recursive), so it stays total on
+ * an iterative explicit-stack traversal (never recursive), so it stays total on
  * pathologically deep expression trees; a hole in an `operands` array is skipped,
  * matching `flatMap`'s hole-skipping behavior.
  *
@@ -998,7 +998,7 @@ export function extractAtoms(expression: Expression): readonly Atom[] {
  * The conclusion-extraction step of the logical reasoner's chaining: every
  * `atom` inside the expression asserts its `formatField(check.field) =
  * check.value` pair, and compounds are walked without regard to the connective
- * (an atom under `not` / `or` is asserted the same way). Later operands WIN on
+ * (an atom under `not` / `or` is asserted the same way). A later operand wins on
  * a key clash (`Object.assign` order). Recursion runs through this exported
  * function itself; the derived-overlay keys are `formatField` strings (an array
  * field path flattens to its dot-joined form).
@@ -1027,13 +1027,13 @@ export function extractConclusions(expression: Expression): Record<string, unkno
  *
  * @remarks
  * The reported keys are the `formatField`-flattened overlay keys an array-path
- * conclusion atom writes ANYWHERE among `rules` that an array-path premise atom
- * also reads ANYWHERE among `rules`. The cross-rule authoring-time footgun
+ * conclusion atom writes anywhere among `rules` that an array-path premise atom
+ * also reads anywhere among `rules`. The cross-rule authoring-time footgun
  * probe behind `LogicalReasoner.validate`'s overlay-key-mismatch warning: a
- * logical conclusion's derived overlay is a FLAT record keyed by
+ * logical conclusion's derived overlay is a flat record keyed by
  * `formatField(check.field)` — an array `FieldPath` dot-joins into one string
- * key. A premise that reads the same field through a DOTTED-STRING path resolves
- * that flat key correctly, but a premise that reads it through an ARRAY path
+ * key. A premise that reads the same field through a dotted-string path resolves
+ * that flat key correctly, but a premise that reads it through an array path
  * calls `resolveField`, which descends key-by-key into nesting the flat
  * overlay never created, so the chain silently fails to connect. Collects the
  * flattened keys of every array-path conclusion atom across `rules` (once
@@ -1195,7 +1195,7 @@ export function definitionToEnvelope(definition: Definition): DefinitionEnvelope
 // The exported generic primitives every per-kind change/merge helper that follows
 // composes over. No parameter selects behavior (`.claude/rules/names.md`
 // § Split instead of compounding): `appendById` and `prependById` are
-// separately named functions, and the optional `target` each takes is DATA — an
+// separately named functions, and the optional `target` each takes is data — an
 // id to anchor on — never a behavior switch. Every primitive is copy-on-write
 // (`.claude/rules/typescript.md` § Immutability): the input array is never
 // mutated, and a fresh array is always returned.
@@ -1205,12 +1205,12 @@ export function definitionToEnvelope(definition: Definition): DefinitionEnvelope
  * sharing its id, then placing it at the end, or immediately after `target`.
  *
  * @remarks
- * Insertion DEDUPES on the id first: `filtered` is `items` with every `item.id`
+ * Insertion dedupes on the id first: `filtered` is `items` with every `item.id`
  * twin removed, because an input array may already carry same-id twins.
- * Re-appending an existing id therefore REPOSITIONS it rather than updating it
+ * Re-appending an existing id therefore repositions it rather than updating it
  * in place — {@link replaceById} is the position-preserving alternative. With
  * no `target`, `item` lands at the end; with a `target`, it lands immediately
- * after the element whose `id === target` (searched in the DEDUPED array). A
+ * after the element whose `id === target` (searched in the deduped array). A
  * `target` naming no element throws {@link ReasonError} (`'TARGET'`).
  *
  * @typeParam T - An id-carrying element type
@@ -1350,11 +1350,11 @@ export function removeById<T extends { readonly id: string }>(
  *
  * @remarks
  * A Strategic-Merge-Patch-style id-keyed upsert:
- * the result is ordered by `incoming`'s id order FIRST (each element resolved
+ * the result is ordered by `incoming`'s id order first (each element resolved
  * through `resolve` when its id also exists in `base`, defaulting to
- * incoming-wins-wholesale), THEN the `base`-only survivors in `base`'s own
+ * incoming-wins-wholesale), then the `base`-only survivors in `base`'s own
  * order (retained, never deleted — merge is additive). Same-id twins within
- * EITHER input are deduped to their first occurrence.
+ * either input are deduped to their first occurrence.
  *
  * @typeParam T - An id-carrying element type
  * @param base - The base collection
@@ -1401,7 +1401,7 @@ export function mergeById<T extends { readonly id: string }>(
  * insert at the end, or immediately after `target`.
  *
  * @remarks
- * Group order is COSMETIC (group aggregation is order-independent) but honored
+ * Group order is cosmetic (group aggregation is order-independent) but honored
  * uniformly, same as every `append*` helper. Composes with {@link appendFactor}:
  * `appendGroup(def, appendFactor(group, factor))`.
  *
@@ -1502,9 +1502,9 @@ export function removeGroup(
  * at the end, or immediately after `target`.
  *
  * @remarks
- * Factor order is LOAD-BEARING: the same-priority tiebreak is declaration
+ * Factor order is load-bearing: the same-priority tiebreak is declaration
  * order ({@link sortByPriority} is a stable ascending sort). Operates on the
- * factor's DIRECT container — compose into a definition through
+ * factor's direct container — compose into a definition through
  * `appendGroup(def, appendFactor(group, factor))`.
  *
  * @param group - The group to insert into
@@ -1591,7 +1591,7 @@ export function removeFactor(group: FactorGroup, id: string): FactorGroup {
  * at the end, or immediately after `target`.
  *
  * @remarks
- * Order is LOAD-BEARING: the forward conclusion is the LAST declared
+ * Order is load-bearing: the forward conclusion is the last declared
  * non-disabled rule, so `appendRule` without a `target` makes the new rule the
  * conclusion.
  *
@@ -1688,8 +1688,8 @@ export function removeRule(definition: LogicalDefinition, id: string): LogicalDe
  * then-insert at the end, or immediately after `target`.
  *
  * @remarks
- * Order is STRONGLY load-bearing: equations solve strictly in order and each
- * rounded solution feeds forward.
+ * Order is load-bearing: equations solve strictly in order and each rounded
+ * solution feeds forward.
  *
  * @param definition - The definition to insert into
  * @param equation - The equation to insert
@@ -1811,7 +1811,7 @@ export function addVariable(
  * Removes one entry of a {@link SymbolicDefinition}'s `variables`.
  *
  * @remarks
- * The destructure-rest form OMITS the key entirely (never sets it to
+ * The destructure-rest form omits the key entirely (never sets it to
  * `undefined`), keeping the result exact-record valid. A no-op (fresh copy)
  * when `name` is absent.
  *
@@ -1838,7 +1838,7 @@ export function removeVariable(definition: SymbolicDefinition, name: string): Sy
  * insert at the end, or immediately after `target`.
  *
  * @remarks
- * `Fact.id` is an AUTHORING label — the runtime content-dedups facts by
+ * `Fact.id` is an authoring label — the runtime content-dedups facts by
  * predicate+arity+terms ({@link factToKey}), independently of this helper's
  * id-keyed dedup.
  *
@@ -1933,7 +1933,7 @@ export function removeFact(definition: InferentialDefinition, id: string): Infer
  * dedup-then-insert at the end, or immediately after `target`.
  *
  * @remarks
- * Order is LOAD-BEARING: backward proving iterates in declaration order and
+ * Order is load-bearing: backward proving iterates in declaration order and
  * returns on first success.
  *
  * @param definition - The definition to insert into
@@ -2039,17 +2039,17 @@ export function removeInference(
 //
 // Model: id-keyed upsert, incoming order wins, base-only survivors retained
 // (never deleted — additive). `base.id` (and `reasoning`) are preserved.
-// Scalars / value-object fields are incoming-wins-WHEN-PRESENT, else base is
-// kept — merge NEVER clears, which is what the `clear*` helpers are for.
+// Scalars / value-object fields are incoming-wins-when-present, else base is
+// kept — merge never clears, which is what the `clear*` helpers are for.
 
 /**
  * Reconciles two {@link QuantitativeDefinition}s onto `base`'s id.
  *
  * @remarks
- * The merge is ADDITIVE: a base-only group survives into the result and is
+ * The merge is additive: a base-only group survives into the result and is
  * never deleted, and a scalar absent from `incoming` keeps its base value —
  * merge never clears a field, which is what {@link clearQuantitativeDefinition}
- * is for. `groups` merges through {@link mergeById}; a matched (same-id) PAIR of
+ * is for. `groups` merges through {@link mergeById}; a matched (same-id) pair of
  * groups recurses one level deeper — their `factors` also merge through
  * `mergeById` — the one exception to incoming-wins-wholesale. Every other
  * scalar / value-object field is incoming-wins-when-present, else base kept.
@@ -2091,7 +2091,7 @@ export function mergeQuantitativeDefinition(
  * Reconciles two {@link LogicalDefinition}s onto `base`'s id.
  *
  * @remarks
- * The merge is ADDITIVE: a base-only rule survives into the result and is never
+ * The merge is additive: a base-only rule survives into the result and is never
  * deleted, and a scalar absent from `incoming` keeps its base value — merge
  * never clears a field, which is what {@link clearLogicalDefinition} is for.
  * `rules` merges through {@link mergeById} (incoming-wins-wholesale on a matched
@@ -2128,7 +2128,7 @@ export function mergeLogicalDefinition(
  * Reconciles two {@link SymbolicDefinition}s onto `base`'s id.
  *
  * @remarks
- * The merge is ADDITIVE: a base-only equation or variable survives into the
+ * The merge is additive: a base-only equation or variable survives into the
  * result and is never deleted, and a scalar absent from `incoming` keeps its
  * base value — merge never clears a field, which is what
  * {@link clearSymbolicDefinition} is for. `equations` merges through
@@ -2169,7 +2169,7 @@ export function mergeSymbolicDefinition(
  * Reconciles two {@link InferentialDefinition}s onto `base`'s id.
  *
  * @remarks
- * The merge is ADDITIVE: a base-only inference or fact survives into the result
+ * The merge is additive: a base-only inference or fact survives into the result
  * and is never deleted, and a scalar absent from `incoming` keeps its base
  * value — merge never clears a field, which is what
  * {@link clearInferentialDefinition} is for. `inferences` and `facts` each
@@ -2208,7 +2208,7 @@ export function mergeInferentialDefinition(
 //
 // `const { [key]: _drop, ...rest } = definition; return rest` — the
 // destructure-rest form sidesteps oxlint `no-param-reassign` friction, and the
-// result OMITS the key entirely (never sets it to `undefined`), keeping the
+// result omits the key entirely (never sets it to `undefined`), keeping the
 // definition exact-record valid.
 
 /**
@@ -2305,7 +2305,8 @@ export function clearInferentialDefinition(
 
 // === Subject engine
 //
-// The subject counterpart of the preceding definition engine — four pure helpers.
+// The subject counterpart of the preceding definition engine — pure helpers over
+// a plain record.
 // Records are unordered, so there is no `append*`/`prepend*` on a subject
 // (mirrors the `addVariable`/`removeVariable` note).
 
@@ -2313,7 +2314,7 @@ export function clearInferentialDefinition(
  * Upserts one field of a {@link Subject} — copy-on-write spread.
  *
  * @remarks
- * Named `assignField` rather than `setField` because it RETURNS a fresh subject
+ * Named `assignField` rather than `setField` because it returns a fresh subject
  * instead of writing into the one it is given — `set*` reads as an in-place
  * write. Id-agnostic: overwrites an `id` key like any other field — id
  * protection is an entity's job, not this helper's.
@@ -2338,7 +2339,7 @@ export function assignField(subject: Subject, key: string, value: unknown): Subj
  * Deletes one field of a {@link Subject} — destructure-rest omit.
  *
  * @remarks
- * The key is DELETED entirely (never set to `undefined`), keeping the result
+ * The key is deleted entirely (never set to `undefined`), keeping the result
  * exact-record valid. A no-op (fresh copy) when `key` is absent.
  *
  * @param subject - The subject to update
@@ -2389,8 +2390,8 @@ export function mergeSubjects(base: Subject, incoming: Subject): Subject {
  * When `subject.id` is a string, each clone's id is minted
  * `` `${baseId}-${index}` `` (index from `0`); with no string `id`, the clones
  * pass through unchanged (still fresh copies). Pure and deterministic — the
- * same input always produces the same output (run-twice equality) — and does
- * NOT emit. `count <= 0` yields an empty array.
+ * same input always produces the same output (run-twice equality) — and emits
+ * nothing. `count <= 0` yields an empty array.
  *
  * @param subject - The subject to clone
  * @param count - How many clones to produce

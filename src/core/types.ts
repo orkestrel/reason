@@ -3,21 +3,21 @@ import type { EmitterErrorHandler, EmitterHooks, EmitterInterface } from '@orkes
 import type { DEFINITION_BUILDER_BRAND, SUBJECT_BUILDER_BRAND } from './constants.js'
 
 // A synchronous, deterministic reasoning engine.
-// Declarative, JSON-serializable DEFINITIONS are evaluated against SUBJECTS
-// (plain data records) to produce traceable RESULTS. Three layers: the `Reason`
-// orchestrator (registry + dispatch + events), four reasoners (quantitative /
-// logical / symbolic / inferential), and three injectable operators (Evaluator /
-// Transformer / Aggregator). Nothing mutates its inputs; every result is a fresh
-// object carrying `success`, a human-readable `trace`, and `errors`. Types are
-// the source of truth; every discriminant names its axis, never `kind` /
-// `type`: `reasoning` splits definitions and results, `form` splits expression
-// nodes, `origin` splits factor sources.
+// Declarative, JSON-serializable definitions are evaluated against subjects
+// (plain data records) to produce traceable results. The layers are the `Reason`
+// orchestrator (registry + dispatch + events), the quantitative, logical,
+// symbolic, and inferential reasoners, and the injectable Evaluator,
+// Transformer, and Aggregator operators. Nothing mutates its inputs; every
+// result is a fresh object carrying `success`, a human-readable `trace`, and
+// `errors`. Types are the source of truth; every discriminant names its axis,
+// never `kind` / `type`: `reasoning` splits definitions and results, `form`
+// splits expression nodes, `origin` splits factor sources.
 
 // === Vocabulary
 
 /**
- * Names the four reasoning strategies — the axis a {@link Definition} /
- * {@link ReasonResult} discriminates on.
+ * Names the reasoning strategies — the axis a {@link Definition} and a
+ * {@link ReasonResult} discriminate on.
  *
  * @remarks
  * `quantitative` — factor-based numeric scoring. `logical` — rule-based boolean
@@ -72,12 +72,12 @@ export type Aggregation = 'sum' | 'product' | 'average' | 'minimum' | 'maximum'
  *
  * @remarks
  * `equals` / `not` — strict `===` / `!==` (no coercion). `above` / `below` /
- * `from` / `to` — `>` / `<` / `>=` / `<=`, requiring numbers on BOTH sides
+ * `from` / `to` — `>` / `<` / `>=` / `<=`, requiring a number on each side
  * (anything else is not met). `any` / `none` — array membership / non-membership
- * (a non-array expected value is not met for BOTH — `none` is not the raw
+ * (a non-array expected value is met by neither — `none` is not the raw
  * complement of `any` on malformed input). `between` / `outside` — inclusive
  * range test on the first two numeric elements of the expected array; `outside`
- * IS the pure negation of `between`, so a malformed range is `outside`.
+ * is the pure negation of `between`, so a malformed range is `outside`.
  */
 export type Comparison =
 	| 'equals'
@@ -114,7 +114,7 @@ export type Subject = Readonly<Record<string, unknown>>
  * to `value` with `operator`.
  *
  * @remarks
- * `field` follows the {@link FieldPath} idiom — a string is ONE key (never
+ * `field` follows the {@link FieldPath} idiom — a string is a single key (never
  * dot-split), an array descends into nested objects. `value` is unconstrained
  * (`unknown`): the operator decides what shapes are meaningful.
  */
@@ -129,7 +129,7 @@ export interface Check {
  *
  * @remarks
  * `actual` is the resolved subject value (possibly `undefined`); `error` is set
- * ONLY when evaluation itself failed (an unknown operator) — a merely-unmet
+ * only when evaluation itself failed (an unknown operator) — a merely-unmet
  * check carries no `error`.
  */
 export interface CheckResult {
@@ -187,9 +187,9 @@ export interface FieldSource {
  *
  * @remarks
  * A missing or `null` field takes the factor's `fallback` directly (never the
- * `''` table key); a PRESENT value is stringified into a `table` key (a numeric
- * `42` finds the key `'42'`, a real `''` value may hit a `''` key). Only OWN
- * table keys hit — an absent or inherited key falls back.
+ * `''` table key); a present value is stringified into a `table` key (a numeric
+ * `42` finds the key `'42'`, a real `''` value may hit a `''` key). Only the
+ * table's own keys hit — an absent or inherited key falls back.
  */
 export interface LookupSource {
 	readonly origin: 'lookup'
@@ -201,7 +201,7 @@ export interface LookupSource {
  * Represents a factor source banding a numeric subject field through ordered ranges.
  *
  * @remarks
- * Ranges are scanned in order and the FIRST match wins. A range without
+ * Ranges are scanned in order and the first match wins. A range without
  * `bounds` matches anything (a catch-all); an absent bound side is open. No
  * match falls back to the factor's `fallback`.
  */
@@ -211,7 +211,7 @@ export interface RangeSource {
 	readonly ranges: readonly FactorRange[]
 }
 
-/** Represents the four factor sources, discriminated by `origin`. */
+/** Represents a static, field, lookup, or range factor source, discriminated by `origin`. */
 export type Source = StaticSource | FieldSource | LookupSource | RangeSource
 
 /** Represents one band of a {@link RangeSource} — an optional inclusive bounds test and the value it yields. */
@@ -224,13 +224,13 @@ export interface FactorRange {
  * Represents one scored input of a quantitative group.
  *
  * @remarks
- * Evaluated as a pipeline: `checks` gate (ALL must be met) → `source` resolve
- * (`fallback` when unresolvable) → finite check → `transforms` chain →
- * `bounds` clamp → finite recheck. `weight` participates only at group
- * aggregation. Default: `1`. `priority` orders evaluation ascending, stable.
- * Default: `0`. `enabled: false` skips the factor entirely (omitted from
- * results); `required: true` promotes a gate / resolution failure to a result
- * error (making `success` false) without aborting the run.
+ * Evaluated as a pipeline: `checks` gate (every check must be met) →
+ * `source` resolve (`fallback` when unresolvable) → finite check →
+ * `transforms` chain → `bounds` clamp → finite recheck. `weight` participates
+ * only at group aggregation. Default: `1`. `priority` orders evaluation
+ * ascending, stable. Default: `0`. `enabled: false` skips the factor entirely
+ * (omitted from results); `required: true` promotes a gate / resolution failure
+ * to a result error (making `success` false) without aborting the run.
  */
 export interface Factor {
 	readonly id: string
@@ -252,7 +252,7 @@ export interface Factor {
  *
  * @remarks
  * `base` is added before aggregation. Default: `0`.
- * The group value is `base` plus the aggregation of its APPLIED
+ * The group value is `base` plus the aggregation of its applied
  * factors' values (with per-factor weights), clamped to `bounds` — never
  * rounded. `strict: true` makes the group all-or-nothing: if any evaluated
  * factor did not apply, the group contributes only its `base` and reports
@@ -277,7 +277,7 @@ export interface FactorGroup {
  * @remarks
  * `base` is added before aggregation. Default: `0`.
  * The final value is `base` plus the aggregation of the applied
- * groups' values (NO weights at this level), clamped to `bounds`, then rounded
+ * groups' values (no weights at this level), clamped to `bounds`, then rounded
  * to `precision` decimal places. Default: `4`.
  */
 export interface QuantitativeDefinition {
@@ -317,7 +317,7 @@ export type Expression = Atom | Compound
  * @remarks
  * `priority` orders evaluation ascending, lower first. Default: `0`.
  * `enabled: false` skips the rule (omitted from results). Conclusion extraction
- * ignores connectives — EVERY atom inside the conclusion is asserted as a
+ * ignores connectives — every atom inside the conclusion is asserted as a
  * `field = value` fact, even under `not` / `or`.
  */
 export interface Rule {
@@ -399,9 +399,9 @@ export interface Equation {
  * Defines equation-solving.
  *
  * @remarks
- * `variables` seeds the bindings; numeric subject fields OVERRIDE same-named
+ * `variables` seeds the bindings; numeric subject fields override same-named
  * variables. Equations solve strictly in order, each solution rounded to
- * `precision` decimal places BEFORE feeding forward into later equations.
+ * `precision` decimal places before feeding forward into later equations.
  * Default: `4`.
  */
 export interface SymbolicDefinition {
@@ -502,9 +502,9 @@ export interface FactorResult {
  * results (disabled factors omitted entirely).
  *
  * @remarks
- * An UNAPPLIED group's `value` may be non-finite (a `minimum` / `maximum`
+ * An unapplied group's `value` may be non-finite (a `minimum` / `maximum`
  * aggregation over zero applied factors is `base + NaN`) — it is excluded from
- * the definition-level aggregation, so only an APPLIED non-finite value reaches
+ * the definition-level aggregation, so only an applied non-finite value reaches
  * the definition-level finite check.
  */
 export interface GroupResult {
@@ -549,7 +549,7 @@ export interface RuleResult {
  * Represents the outcome of logical reasoning.
  *
  * @remarks
- * `conclusion` is the LAST evaluated rule's `applied` (`false` when no rule
+ * `conclusion` is the last evaluated rule's `applied` (`false` when no rule
  * was evaluated); `count` tallies the applied rules; disabled rules are
  * omitted from `rules` entirely.
  */
@@ -763,7 +763,7 @@ export interface TransformerInterface {
  *
  * @remarks
  * Total: never throws. Empty-input identities: `sum` / `average` → `0`,
- * `product` → `1`, `minimum` / `maximum` → `NaN`. `weights` are honored ONLY
+ * `product` → `1`, `minimum` / `maximum` → `NaN`. `weights` are honored only
  * when their length matches `values` exactly (otherwise silently unweighted).
  */
 export interface AggregatorInterface {
@@ -784,7 +784,7 @@ export interface AggregatorInterface {
  *
  * @remarks
  * `reason` throws a `ReasonError` (`MISMATCH`) when handed a definition of a
- * different reasoning; every other malformation yields a failure RESULT, not a
+ * different reasoning; every other malformation yields a failure result, not a
  * throw — the runtime never assumes `validate` ran. `supports` / `validate` /
  * `reason` each take plain data only — a {@link DefinitionBuilderInterface} /
  * {@link SubjectBuilderInterface}'s `build()` output is passed instead, by the
@@ -839,11 +839,12 @@ export type ReasonErrorCode =
  *
  * @remarks
  * `register` fires when a reasoner is registered (carrying its reasoning);
- * `reason` fires once per SUCCESSFUL result, synchronously before it returns
+ * `reason` fires once per successful result, synchronously before it returns
  * (bail-suppressed failure results do not fire it); `error` fires with the raw
  * thrown value when a reasoner throws (regardless of `bail`); `destroy` fires
  * once on teardown. Listener isolation is the emitter's own — a throwing
- * listener routes to the `error` OPTION handler, never onto this map.
+ * listener routes to the handler passed as the `error` option, never onto
+ * this map.
  */
 export type ReasonEventMap = {
 	/** Fires when a reasoner is registered — carries its reasoning. */
@@ -932,17 +933,17 @@ export interface ReasonInterface {
 
 // === Definitions & subjects capability layer — entity managers
 //
-// The `DefinitionBuilder` manager contracts: each is a SELF-OWNING manager — it
-// OWNS its collection as private copy-on-write state, OWNS its own
+// The `DefinitionBuilder` manager contracts: each manager is self-owning — it
+// owns its collection as private copy-on-write state, owns its own
 // {@link EmitterInterface} over its own verb-named event map, and takes its own
-// options record (a seed collection + `on` / `error`). Managers are KIND-FREE:
+// options record (a seed collection + `on` / `error`). Managers are kind-free:
 // a `DefinitionBuilder` composes every one of them regardless of `reasoning`,
-// and an off-kind manager is IGNORED by `build()` (no `MISMATCH` gating —
+// and `build()` ignores an off-kind manager (no `MISMATCH` gating —
 // appending a rule to a quantitative builder is inert, never a throw). A write
-// verb copies-on-write into the manager's OWN state through the exported
-// collection-level pure helpers and emits through the manager's OWN emitter;
-// the accessors are pure reads and do NOT emit. `destroy()` is idempotent and
-// tears the emitter down LAST; any call after it throws
+// verb copies-on-write into the manager's own state through the exported
+// collection-level pure helpers and emits through the manager's own emitter;
+// the accessors are pure reads and emit nothing. `destroy()` is idempotent and
+// tears the emitter down last; any call after it throws
 // `ReasonError('DESTROYED', …)`. `seat` is the owning builder's bulk re-seat
 // channel (used by `merge`) — it replaces the whole collection in one silent
 // call (no per-element events).
@@ -986,8 +987,11 @@ export interface GroupManagerInterface {
 	replace(group: FactorGroup): void
 	// Array overload first so a list resolves to the batch form.
 	/**
-	 * Removes groups — no argument every one, one id that one, an id list those; the id forms
-	 * report whether every named id existed, and each removal emits one `remove` event.
+	 * Removes groups: every group with no argument, one group by id, or the groups an id list
+	 * names; the id forms report whether every named id existed.
+	 *
+	 * @remarks
+	 * Each removal emits one `remove` event carrying the group id.
 	 */
 	remove(ids: readonly string[]): boolean
 	remove(id: string): boolean
@@ -1038,12 +1042,12 @@ export interface GroupManagerOptions {
  *
  * @remarks
  * Divergent from the other managers: factors nest inside groups, so this
- * manager holds NO collection state of its own — it reads and writes through
+ * manager holds no collection state of its own — it reads and writes through
  * the sibling {@link GroupManagerInterface} (`groups.group(groupId)` then
  * `groups.replace(…)`). A `groupId` naming no existing group throws
  * `ReasonError('TARGET', …, { groupId })`. `append` / `prepend` additionally
  * take an optional `target` factor id (a naming miss throws
- * `ReasonError('TARGET', …)`). It still owns its OWN emitter (factor-id
+ * `ReasonError('TARGET', …)`). It still owns its own emitter (factor-id
  * payloads). `remove` is the batch family behind the leading `groupId`
  * locator: the locator alone removes every factor of that group, a further id
  * removes that factor, a further id list removes those factors and returns
@@ -1078,8 +1082,9 @@ export interface FactorManagerInterface {
 	replace(groupId: string, factor: Factor): void
 	// Array overload first so a list resolves to the batch form.
 	/**
-	 * Removes factors of the named group — the locator alone every one, a further id that one,
-	 * a further id list those; the id forms report whether every named id existed.
+	 * Removes factors of the named group: every factor with the locator alone, one factor by a
+	 * further id, or the factors a further id list names; the id forms report whether every
+	 * named id existed.
 	 */
 	remove(groupId: string, ids: readonly string[]): boolean
 	remove(groupId: string, id: string): boolean
@@ -1123,7 +1128,7 @@ export interface FactorManagerOptions {
  * `rules` — a self-owning, kind-free collection manager.
  *
  * @remarks
- * Rule order is load-bearing — the forward conclusion is the LAST declared
+ * Rule order is load-bearing — the forward conclusion is the last declared
  * non-disabled rule, so `append` without a `target` makes a new rule the
  * conclusion. `remove` is the batch family: no argument removes every rule,
  * one id removes that rule, an id list removes those rules and returns true
@@ -1155,8 +1160,8 @@ export interface RuleManagerInterface {
 	replace(rule: Rule): void
 	// Array overload first so a list resolves to the batch form.
 	/**
-	 * Removes rules — no argument every one, one id that one, an id list those; the id forms
-	 * report whether every named id existed.
+	 * Removes rules: every rule with no argument, one rule by id, or the rules an id list
+	 * names; the id forms report whether every named id existed.
 	 */
 	remove(ids: readonly string[]): boolean
 	remove(id: string): boolean
@@ -1236,8 +1241,8 @@ export interface EquationManagerInterface {
 	replace(equation: Equation): void
 	// Array overload first so a list resolves to the batch form.
 	/**
-	 * Removes equations — no argument every one, one id that one, an id list those; the id
-	 * forms report whether every named id existed.
+	 * Removes equations: every equation with no argument, one equation by id, or the equations
+	 * an id list names; the id forms report whether every named id existed.
 	 */
 	remove(ids: readonly string[]): boolean
 	remove(id: string): boolean
@@ -1315,8 +1320,8 @@ export interface FactManagerInterface {
 	replace(fact: Fact): void
 	// Array overload first so a list resolves to the batch form.
 	/**
-	 * Removes facts — no argument every one, one id that one, an id list those; the id forms
-	 * report whether every named id existed.
+	 * Removes facts: every fact with no argument, one fact by id, or the facts an id list
+	 * names; the id forms report whether every named id existed.
 	 */
 	remove(ids: readonly string[]): boolean
 	remove(id: string): boolean
@@ -1397,8 +1402,8 @@ export interface InferenceManagerInterface {
 	replace(inference: Inference): void
 	// Array overload first so a list resolves to the batch form.
 	/**
-	 * Removes inferences — no argument every one, one id that one, an id list those; the id
-	 * forms report whether every named id existed.
+	 * Removes inferences: every inference with no argument, one inference by id, or the
+	 * inferences an id list names; the id forms report whether every named id existed.
 	 */
 	remove(ids: readonly string[]): boolean
 	remove(id: string): boolean
@@ -1448,7 +1453,7 @@ export interface InferenceManagerOptions {
  * only write verbs (no placement). A self-owning, kind-free manager.
  *
  * @remarks
- * The record is keyed by NAME, so `remove`'s batch family is over names: no
+ * The record is keyed by name, so `remove`'s batch family is over names: no
  * argument removes every variable, one name removes that variable, a name list
  * removes those variables and returns true only when every named variable
  * existed. It emits one `remove` per variable actually removed — a name
@@ -1470,9 +1475,12 @@ export interface VariableManagerInterface {
 	add(name: string, value: number): void
 	// Array overload first so a list resolves to the batch form.
 	/**
-	 * Removes variables by name — no argument every one, one name that one, a name list those;
-	 * each removal omits the key rather than setting `undefined`, and emits the `remove` event
-	 * with the name.
+	 * Removes variables: every variable with no argument, one variable by name, or the
+	 * variables a name list names; the name forms report whether every named variable existed.
+	 *
+	 * @remarks
+	 * Each removal omits the key rather than setting it to `undefined`, and emits the `remove`
+	 * event carrying the variable name.
 	 */
 	remove(names: readonly string[]): boolean
 	remove(name: string): boolean
@@ -1493,7 +1501,7 @@ export interface VariableManagerInterface {
  *
  * @remarks
  * `variables` is a name-keyed record with no placement, so the honest verbs
- * are `add` / `remove` — each carries the variable NAME.
+ * are `add` / `remove` — each carries the variable name.
  */
 export type VariableManagerEventMap = {
 	/** Fires when a variable is upserted — carries its name. */
@@ -1606,17 +1614,17 @@ export type DefinitionBuilderEventMap = {
  * envelope plus one manager per collection.
  *
  * @remarks
- * `build()` is TOTAL, deterministic, and returns a FRESH plain
+ * `build()` is total, deterministic, and returns a fresh plain
  * {@link Definition} each call (the scalar envelope composed with the kind's
  * collections, read from the relevant managers' plural accessors — off-kind
- * managers are ignored). `merge(incoming)` requires the SAME `reasoning`,
+ * managers are ignored). `merge(incoming)` requires the same `reasoning`,
  * distributes incoming scalars into the envelope and collections into the
  * managers through the matching `merge*` helper (a cross-reasoning `incoming`
  * throws `ReasonError('MISMATCH', …)`). `clear(key)` is the uniform
  * optional-key selector over the scalar envelope; a `key` that
  * is not a clearable optional field for the current kind throws
  * `ReasonError('MISMATCH', …, { key, reasoning })`. `destroy()` cascades to
- * every manager, emits `destroy`, then tears the builder emitter down LAST;
+ * every manager, emits `destroy`, then tears the builder emitter down last;
  * it is idempotent, and post-destroy mutation / build throws
  * `ReasonError('DESTROYED', …)` — only the `emitter` / manager getters and
  * `destroy` keep working.
@@ -1660,10 +1668,9 @@ export interface DefinitionBuilderInterface {
  *
  * @remarks
  * `id` — overrides the seed definition's `id`. Default: `seed.id`. Every
- * manager slot is BRING-YOUR-OWN — a supplied manager is reused,
- * else one is constructed and seeded from the seed's matching collection. `on`
- * — initial event listeners. `error` — the emitter's
- * listener-error handler.
+ * manager slot takes the manager the caller supplies, or one constructed and
+ * seeded from the seed's matching collection. `on` — initial event listeners.
+ * `error` — the emitter's listener-error handler.
  */
 export interface DefinitionBuilderOptions {
 	readonly id?: string
@@ -1679,8 +1686,9 @@ export interface DefinitionBuilderOptions {
 }
 
 /**
- * Represents the push observation surface of a {@link SubjectBuilderInterface} — five
- * verb-named events, no generic `change` / `status`.
+ * Represents the push observation surface of a {@link SubjectBuilderInterface} — the
+ * verb-named `set`, `remove`, `merge`, `clear`, and `destroy` events, no generic
+ * `change` / `status`.
  */
 export type SubjectBuilderEventMap = {
 	/** Fires when a field is upserted — carries its key and new value. */
@@ -1700,26 +1708,26 @@ export type SubjectBuilderEventMap = {
  * flat key-value collection, no managers.
  *
  * @remarks
- * `id` is OPTIONAL on the entity (`options?.id ?? seed.id`). When present,
+ * `id` is optional on the entity (`options?.id ?? seed.id`). When present,
  * the builder is id-ful — `build()`'s output carries that `id` and `clear()`
- * restores it. When absent, the builder is ANONYMOUS — `.id` is `undefined`,
- * `build()`'s output carries NO `id` key, and `clear()` empties the record
+ * restores it. When absent, the builder is anonymous — `.id` is `undefined`,
+ * `build()`'s output carries no `id` key, and `clear()` empties the record
  * entirely. `field` / `fields` are the singular / plural accessor pair over
- * TOP-LEVEL keys only. `set(key, value)` delegates to `assignField`;
- * `set('id', …)` throws — id is immutable through the entity, id-ful or
+ * top-level keys only. `set(key, value)` delegates to `assignField`; setting
+ * `id` throws, because the id is immutable through the entity, id-ful or
  * anonymous alike. `remove` is the batch family: no argument removes every
  * non-id field and emits one `remove` per key in the builder's key order, one
  * key removes that field, and a key list removes those fields and returns true
- * only when every named key existed. The array form is declared FIRST.
+ * only when every named key existed. The array form is declared first.
  * `merge(incoming)` delegates to `mergeSubjects` (incoming-wins, base `id`
  * preserved — plain {@link Subject} data only). `clear()` removes every
  * non-id field. `repeat(count)` returns `count`
- * deterministic minted-id clones as PLAIN payloads — a pure read that does
- * NOT emit. `build(): Subject` is total, deterministic, and returns a fresh
+ * deterministic minted-id clones as plain payloads — a pure read that emits
+ * nothing. `build(): Subject` is total, deterministic, and returns a fresh
  * durable payload each call — `fields()` returns the live record and `build()`
  * returns a fresh copy of it. Post-destroy
  * mutation throws `ReasonError('DESTROYED', …)`; `destroy()` is idempotent
- * and tears the emitter down LAST.
+ * and tears the emitter down last.
  */
 export interface SubjectBuilderInterface {
 	readonly [SUBJECT_BUILDER_BRAND]: true
@@ -1734,7 +1742,7 @@ export interface SubjectBuilderInterface {
 	 */
 	fields(): Subject
 	/**
-	 * Upserts one field; `set('id', …)` throws, because the id is immutable for an id-ful and
+	 * Upserts one field; setting `id` throws, because the id is immutable for an id-ful and
 	 * an anonymous builder alike.
 	 *
 	 * @remarks
@@ -1744,9 +1752,11 @@ export interface SubjectBuilderInterface {
 	set(key: string, value: unknown): void
 	// Array overload first so a list resolves to the batch form.
 	/**
-	 * Removes non-id fields — no argument every one, one key that one, a key list those; the
-	 * keyed forms report whether every named key existed, and the no-argument form emits one
-	 * `remove` event per key in key order.
+	 * Removes non-id fields: every field with no argument, one field by key, or the fields a
+	 * key list names; the keyed forms report whether every named key existed.
+	 *
+	 * @remarks
+	 * The no-argument form emits one `remove` event per key, in the builder's key order.
 	 */
 	remove(keys: readonly string[]): boolean
 	remove(key: string): boolean
@@ -1780,9 +1790,9 @@ export interface SubjectBuilderInterface {
  * Configures `createSubjectBuilder` / the `SubjectBuilder` constructor.
  *
  * @remarks
- * `id` — overrides the seed subject's `id`. Default: `seed.id`. OPTIONAL
+ * `id` — overrides the seed subject's `id`. Default: `seed.id`. It is optional
  * — when neither `options.id` nor a string `seed.id` is present the builder
- * is ANONYMOUS (`.id` is `undefined`, `build()` emits no `id` key). `on` —
+ * is anonymous (`.id` is `undefined`, `build()` emits no `id` key). `on` —
  * initial event listeners. `error` — the emitter's listener-error handler.
  */
 export interface SubjectBuilderOptions {

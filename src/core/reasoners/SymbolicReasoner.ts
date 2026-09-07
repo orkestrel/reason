@@ -27,16 +27,16 @@ import { ReasonError } from '../errors.js'
  * @remarks
  * Bindings seed from `definition.variables`, then numeric subject fields (a
  * finite number or a numeric string, coerced through the contracts
- * `parseNumber`) OVERRIDE same-named variables — the `id` field is skipped.
+ * `parseNumber`) override same-named variables — the `id` field is skipped.
  * Equations solve strictly in order: when the `target` is unbound and appears
- * on exactly ONE side, it is isolated by peeling invertible operations (`add` /
+ * on exactly one side, it is isolated by peeling invertible operations (`add` /
  * `subtract` / `multiply` / `divide`); a non-invertible operation, a target on
  * both sides of an operation, or an unbound variable throws internally — the
- * throw is caught PER EQUATION and surfaced as a result error (`Equation
+ * throw is caught per equation and surfaced as a result error (`Equation
  * "<id>": <message>` plus a `FAILED` trace) while later equations still run.
  * Inversion or division by zero yields `NaN`, caught by the non-finite check.
- * A solved value is rounded to `precision` BEFORE binding, so later equations
- * see the rounded value; `solutions` reads FINAL bindings keyed by each
+ * A solved value is rounded to `precision` before binding, so later equations
+ * see the rounded value; `solutions` reads the settled bindings keyed by each
  * equation's target (a failed equation's target still appears when bound
  * elsewhere). Nothing mutates its inputs; fully deterministic.
  *
@@ -94,7 +94,7 @@ export class SymbolicReasoner implements ReasonerInterface {
 			errors.push('Definition must have at least one equation')
 		}
 
-		// Duplicate ids are WARNINGS — the runtime stays permissive about them.
+		// Duplicate ids are warnings — the runtime stays permissive about them.
 		for (const id of findDuplicates(definition.equations ?? [])) {
 			warnings.push(`Duplicate equation id "${id}"`)
 		}
@@ -134,7 +134,7 @@ export class SymbolicReasoner implements ReasonerInterface {
 
 		const bindings: Record<string, number> = { ...definition.variables }
 
-		// Numeric subject fields bind as variables, OVERRIDING definition
+		// Numeric subject fields bind as variables, overriding definition
 		// variables of the same name; the `id` field is traceability, not data.
 		let bound = 0
 		for (const key of Object.keys(subject)) {
@@ -158,8 +158,8 @@ export class SymbolicReasoner implements ReasonerInterface {
 			try {
 				const value = this.#solve(equation, bindings)
 				const rounded = roundTo(value, precision)
-				// The finite gate now covers BOTH a non-finite solved value AND a finite
-				// value that OVERFLOWS during rounding (a huge constant scaled past the
+				// The finite gate covers a non-finite solved value as well as a finite
+				// value that overflows during rounding (a huge constant scaled past the
 				// double range → ±Infinity) — the latter previously slipped past the
 				// pre-round check and bound Infinity with success:true. Describe whichever
 				// is non-finite: the pre-round value keeps its exact rendering (for example
@@ -173,7 +173,7 @@ export class SymbolicReasoner implements ReasonerInterface {
 					)
 					continue
 				}
-				// Rounded BEFORE binding — later equations see the rounded value.
+				// Rounded before binding — later equations see the rounded value.
 				bindings[equation.target] = rounded
 				trace.push(`Equation "${equation.id}": ${equation.target} = ${rounded}`)
 			} catch (error) {

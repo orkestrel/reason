@@ -64,22 +64,22 @@ import {
 } from '@orkestrel/contract'
 import { DEFINITION_BUILDER_BRAND, SUBJECT_BUILDER_BRAND } from './constants.js'
 
-// Every guard here is a TOTAL function — adversarial input (junk,
+// Every guard here is a total function — adversarial input (junk,
 // hostile prototypes, deep nesting) returns `false`, never throws. Input
 // guards compose the contracts combinators; result guards use bespoke open
-// member checks, with the combinators retained for nested values. Of the
-// three recursive shapes, `isExpression` and `isSymbolicExpression` recurse
+// member checks, with the combinators retained for nested values. Among the
+// recursive shapes, `isExpression` and `isSymbolicExpression` recurse
 // through `lazyOf`, while `isProofNode` uses a depth-bounded iterative
-// worklist. Both sanctioned mechanisms contain pathologically deep or cyclic
+// worklist. Each sanctioned mechanism contains pathologically deep or cyclic
 // input as a non-match.
-// Input record guards are EXACT (`recordOf`): an extra key fails, so a
+// Input record guards are exact (`recordOf`): an extra key fails, so a
 // definition that drifted from its declared shape is rejected loudly. Result
-// guards are OPEN: exactness follows who produces the value, not who declares
+// guards are open: exactness follows who produces the value, not who declares
 // the type — caller-supplied inputs are exact, while package or
 // foreign-interface outputs may carry extra members. Numeric definition
 // fields guard with `isFiniteNumber` — JSON cannot carry `NaN` /
 // `±Infinity`, so a non-finite number marks a corrupted definition. The one
-// unconstrained field (`Check.value`, legitimately ANY value including `null`)
+// unconstrained field (`Check.value`, legitimately any value including `null`)
 // uses the trivially-true guard `notOf(unionOf())` — `unionOf()` of zero guards
 // is always-false, its negation always-true. Record-shape guards take the
 // declared-predicate function form, with the `recordOf` shape inlined per
@@ -89,7 +89,7 @@ import { DEFINITION_BUILDER_BRAND, SUBJECT_BUILDER_BRAND } from './constants.js'
  * Determines whether a value is a {@link Reasoning} literal.
  *
  * @param value - The value to test
- * @returns True if `value` is one of the four reasoning strategies; false otherwise
+ * @returns True if `value` names a reasoning strategy; false otherwise
  *
  * @example
  * ```ts
@@ -156,7 +156,7 @@ export const isMathOperation: Guard<MathOperation> = literalOf(
  * Determines whether a value is an {@link Aggregation} literal.
  *
  * @param value - The value to test
- * @returns True if `value` is one of the five aggregations; false otherwise
+ * @returns True if `value` names an aggregation; false otherwise
  *
  * @example
  * ```ts
@@ -178,7 +178,7 @@ export const isAggregation: Guard<Aggregation> = literalOf(
  * Determines whether a value is a {@link Comparison} literal.
  *
  * @param value - The value to test
- * @returns True if `value` is one of the ten comparison operators; false otherwise
+ * @returns True if `value` names a comparison operator; false otherwise
  *
  * @example
  * ```ts
@@ -205,7 +205,7 @@ export const isComparison: Guard<Comparison> = literalOf(
  * Determines whether a value is a {@link LogicalOperator} literal.
  *
  * @param value - The value to test
- * @returns True if `value` is one of the five logical connectives; false otherwise
+ * @returns True if `value` names a logical connective; false otherwise
  *
  * @example
  * ```ts
@@ -234,7 +234,7 @@ export const isLogicalOperator: Guard<LogicalOperator> = literalOf(
  * ```ts
  * import { isFieldPath } from '@src/core'
  *
- * isFieldPath('age')               // true — ONE key (never dot-split)
+ * isFieldPath('age')               // true — a single key (never dot-split)
  * isFieldPath(['address', 'city']) // true — descends
  * isFieldPath(42)                  // false
  * ```
@@ -266,8 +266,8 @@ export const isNumberRecord: Guard<Readonly<Record<string, number>>> = whereOf(
  * predicate.
  *
  * @remarks
- * `value` may be ANYTHING (including `null` / `undefined`) but the key must be
- * PRESENT — exact-record semantics reject a check that lost its `value` key.
+ * `value` may be anything (including `null` / `undefined`) but the key must be
+ * present — exact-record semantics reject a check that lost its `value` key.
  *
  * @param value - The value to test
  * @returns True if `value` is a well-formed check; false otherwise
@@ -346,8 +346,8 @@ export function isFactorRange(value: unknown): value is FactorRange {
 }
 
 /**
- * Determines whether a value is a {@link Source} — any of the four factor
- * sources, discriminated by `origin`.
+ * Determines whether a value is a {@link Source} — a static, field, lookup, or
+ * range factor source, discriminated by `origin`.
  *
  * @param value - The value to test
  * @returns True if `value` is a well-formed static / field / lookup / range source; false otherwise
@@ -452,9 +452,9 @@ export function isFactorGroup(value: unknown): value is FactorGroup {
  * tree of atoms and compounds, discriminated by `form`.
  *
  * @remarks
- * Recursive through `lazyOf` — recursion is STACK-BOUNDED, not
+ * Recursive through `lazyOf` — recursion is bounded by the stack, not
  * unbounded: nesting beyond the engine's stack budget (roughly 1000 levels)
- * and cyclic input are CONTAINED as `false`, never a throw. Input past that
+ * and cyclic input are contained as `false`, never a throw. Input past that
  * bound is rejected, not validated.
  *
  * @param value - The value to test
@@ -515,9 +515,9 @@ export function isRule(value: unknown): value is Rule {
  * `form`.
  *
  * @remarks
- * Recursive through `lazyOf` — recursion is STACK-BOUNDED, not
+ * Recursive through `lazyOf` — recursion is bounded by the stack, not
  * unbounded: nesting beyond the engine's stack budget (roughly 1000 levels)
- * and cyclic input are CONTAINED as `false`, never a throw. Input past that
+ * and cyclic input are contained as `false`, never a throw. Input past that
  * bound is rejected, not validated.
  *
  * @param value - The value to test
@@ -752,8 +752,8 @@ export function isInferentialDefinition(value: unknown): value is InferentialDef
 }
 
 /**
- * Determines whether a value is a {@link Definition} — any of the four
- * definition shapes, discriminated by `reasoning`.
+ * Determines whether a value is a {@link Definition} — a quantitative, logical,
+ * symbolic, or inferential definition shape, discriminated by `reasoning`.
  *
  * @param value - The value to test
  * @returns True if `value` is a well-formed definition of any reasoning; false otherwise
@@ -883,7 +883,7 @@ export function isResultFact(value: unknown): value is Fact {
  * Determines whether a value is a {@link CheckResult}.
  *
  * @remarks
- * `actual` must be PRESENT and may hold anything, including `undefined` — the
+ * `actual` must be present and may hold anything, including `undefined` — the
  * guard reads its presence, never its value. A result whose `actual` is
  * `undefined` therefore does not survive a JSON round trip: `JSON.stringify`
  * drops the key, and the parsed record is refused here.
@@ -1125,7 +1125,7 @@ export function isLogicalResult(value: unknown): value is LogicalResult {
  * Determines whether a value is a {@link SymbolicResult}.
  *
  * @remarks
- * `solutions` is checked across its OWN string-named members, enumerable or
+ * `solutions` is checked across its own string-named members, enumerable or
  * not. Inherited members are deliberately unread: they belong to the
  * accepted-prototype property, not to the record this guard certifies.
  *
@@ -1244,7 +1244,7 @@ export function isReasonValidationResult(value: unknown): value is ReasonValidat
  * @remarks
  * A `unique symbol` brand check (`Reflect.get`): a plain subject
  * is an open record whose values may legally be functions, so a
- * method-presence check (`typeof value.build === 'function'`) is FORGEABLE —
+ * method-presence check (`typeof value.build === 'function'`) is forgeable —
  * this guard is not. A module-owned `unique symbol` cannot be produced by
  * `JSON.parse` or written by any consumer that does not import
  * `DEFINITION_BUILDER_BRAND`, so plain data can never forge it. Total: a
@@ -1274,7 +1274,7 @@ export function isDefinitionBuilder(value: unknown): value is DefinitionBuilderI
  *
  * @remarks
  * A `unique symbol` brand check (`Reflect.get`), distinct from
- * {@link isDefinitionBuilder} — the two entities can never match each other's
+ * {@link isDefinitionBuilder} — neither entity can ever match the other's
  * guard. Total: a non-object, a missing brand, or a hostile prototype all
  * return `false`, never throw.
  *

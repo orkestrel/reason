@@ -23,15 +23,15 @@ import { ReasonError } from '../../errors.js'
  * factor-level pure helper ({@link appendFactor}, {@link prependFactor},
  * {@link replaceFactor}, or {@link removeFactor}), and writes the updated
  * group back through `groups.replace(…)`. A `groupId` naming no existing group
- * throws `ReasonError('TARGET', …, { groupId })`. It still owns its OWN
+ * throws `ReasonError('TARGET', …, { groupId })`. It still owns its own
  * {@link Emitter} over {@link FactorManagerEventMap} (factor-id payloads).
  * `remove` is the batch family behind the leading `groupId` locator (array form
- * declared FIRST): the locator alone removes every factor of that group, a
+ * declared first): the locator alone removes every factor of that group, a
  * further id removes that factor, a further id list removes those factors and
  * returns true only when every named id existed. It emits one `remove` per
  * factor actually removed, each paired with a `replace` on the sibling
  * `GroupManagerInterface` for the containing group.
- * `destroy()` is idempotent and tears the emitter down LAST; any other call
+ * `destroy()` is idempotent and tears the emitter down last; any other call
  * after it throws `ReasonError('DESTROYED', …)`.
  *
  * @example

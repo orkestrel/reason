@@ -14,16 +14,16 @@ import { Collection } from './Collection.js'
  * kind-free manager over an inferential definition's `inferences`.
  *
  * @remarks
- * OWNS its `inferences` as a private {@link Collection} — copy-on-write state
+ * Owns its `inferences` as a private {@link Collection} — copy-on-write state
  * shared by composition with the other list managers — plus its own
  * {@link Emitter} over {@link InferenceManagerEventMap}. Inference order is
- * LOAD-BEARING — backward proving iterates in declaration order and returns on
- * first success. `remove` is the batch family (array form declared FIRST): no
+ * load-bearing — backward proving iterates in declaration order and returns on
+ * first success. `remove` is the batch family (array form declared first): no
  * argument removes every inference, one id removes that inference, an id list
  * removes those inferences and returns true only when every named id existed.
  * It emits one `remove` per inference actually removed.
  * `seat` is the owning builder's silent bulk re-seat channel
- * (used by `merge`). `destroy()` is idempotent and tears the emitter down LAST;
+ * (used by `merge`). `destroy()` is idempotent and tears the emitter down last;
  * any other call after it throws `ReasonError('DESTROYED', …)`.
  *
  * @example

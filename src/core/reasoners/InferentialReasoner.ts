@@ -37,7 +37,7 @@ import { ReasonError } from '../errors.js'
  *
  * @remarks
  * A string term starting with `?` is a unification variable — matching is
- * positional and BIDIRECTIONAL (variables may sit in facts as well as
+ * positional and bidirectional (variables may sit in facts as well as
  * patterns), with binding consistency enforced within one match and across
  * premises through pre-instantiation. Scalar subject fields (except `id`;
  * `null` / `undefined` / objects / arrays skipped) inject as
@@ -48,8 +48,8 @@ import { ReasonError } from '../errors.js'
  * duplicate facts (same predicate, arity, and SameValueZero-equal terms — a
  * NaN term derives once and converges) are never re-derived. Backward chaining
  * proves each inference's conclusion in
- * declaration order and RETURNS ON THE FIRST SUCCESS with one derived fact
- * (confidence = the inference's own — premise confidences are NOT propagated)
+ * declaration order and returns on the first success with one derived fact
+ * (confidence = the inference's own — premise confidences are not propagated)
  * plus its {@link ProofNode} tree; recursion is guarded only by the depth cap.
  * Deriving nothing is still success. Nothing mutates its inputs; fully
  * deterministic.
@@ -113,19 +113,19 @@ export class InferentialReasoner implements ReasonerInterface {
 		if (!definition.id) errors.push('Definition must have an id')
 		if (!definition.name) errors.push('Definition must have a name')
 
-		// An empty inference set is suspicious but runnable — a WARNING, not an
+		// An empty inference set is suspicious but runnable — a warning, not an
 		// error (unlike the other reasoners' empty collections).
 		if (!definition.inferences || definition.inferences.length === 0) {
 			warnings.push('Definition has no inference rules')
 		}
 
-		// Duplicate ids are WARNINGS — the runtime stays permissive about them.
+		// Duplicate ids are warnings — the runtime stays permissive about them.
 		for (const id of findDuplicates(definition.inferences ?? [])) {
 			warnings.push(`Duplicate inference id "${id}"`)
 		}
 
 		// Confidence is a 0–1 multiplicative weight; anything outside is
-		// suspicious but runnable — a WARNING, never an error.
+		// suspicious but runnable — a warning, never an error.
 		for (const fact of definition.facts ?? []) {
 			if (typeof fact !== 'object' || fact === null) continue
 			if (fact.confidence !== undefined && !(fact.confidence >= 0 && fact.confidence <= 1)) {
@@ -223,22 +223,23 @@ export class InferentialReasoner implements ReasonerInterface {
 			knownFacts.push(known)
 		}
 		const derived: Fact[] = []
-		// Dedup through a Set of canonical fact keys maintained ALONGSIDE knownFacts, so
-		// membership is O(1) instead of a full linear rescan per candidate. `identities`
-		// keys object/function terms by REFERENCE (mirroring equalValues' `===`) so
-		// distinct objects never collide; primitives collapse under SameValueZero.
+		// Dedup through a Set of canonical fact keys maintained alongside
+		// knownFacts, so membership is O(1) instead of a full linear rescan per
+		// candidate. `identities` keys object/function terms by reference (mirroring
+		// equalValues' `===`) so distinct objects never collide; primitives collapse
+		// under SameValueZero.
 		const identities = new Map<object, number>()
 		const seen = new Set<string>()
 		for (const known of knownFacts) seen.add(factToKey(known, identities))
-		// A predicate+arity index maintained INCREMENTALLY alongside `seen` (seeded
+		// A predicate+arity index maintained incrementally alongside `seen` (seeded
 		// from the base facts, appended at every derivation) so the same-predicate
-		// join scans never rebuild it per premise. It reflects EVERY fact known so
-		// far — including ones derived earlier in THIS pass — preserving the live
+		// join scans never rebuild it per premise. It reflects every fact known so
+		// far — including ones derived earlier in this pass — preserving the live
 		// intra-iteration growth (an early derivation feeds a later inference in the
-		// same pass). Arity-refinement only NARROWS each bucket to facts matchFacts
+		// same pass). Arity-refinement only narrows each bucket to facts matchFacts
 		// would have accepted anyway, so the surviving matches and their append
 		// order are identical to a predicate-only index. `indexByArity` publishes a
-		// READONLY index, so the pass copies each bucket into state it owns before
+		// readonly index, so the pass copies each bucket into state it owns before
 		// appending to it.
 		const byArity = new Map<string, Fact[]>()
 		for (const [key, bucket] of indexByArity(knownFacts)) byArity.set(key, [...bucket])
@@ -312,7 +313,7 @@ export class InferentialReasoner implements ReasonerInterface {
 	}
 
 	// Goal-driven: prove each inference's conclusion in declaration order and
-	// return on the FIRST success with its proof tree.
+	// return on the first success with its proof tree.
 	#backward(
 		definition: InferentialDefinition,
 		subjectFacts: readonly Fact[],
@@ -351,7 +352,7 @@ export class InferentialReasoner implements ReasonerInterface {
 
 			if (proof) {
 				// Backward confidence is the inference's own — premise confidences
-				// are NOT propagated here.
+				// are not propagated here.
 				const derivedFact: Fact = {
 					...inference.conclusion,
 					confidence: inference.confidence ?? DEFAULT_CONFIDENCE,
@@ -389,7 +390,7 @@ export class InferentialReasoner implements ReasonerInterface {
 			if (typeof inference !== 'object' || inference === null) continue
 			if (inference.enabled === false) continue
 			// A candidate whose premises are missing / not an array cannot be
-			// walked — skipped SILENTLY (backward's error posture reports only
+			// walked — skipped silently (backward's error posture reports only
 			// missing conclusions; the forward pre-filter is where premises error).
 			if (!inference.premises || !Array.isArray(inference.premises)) continue
 			// A conclusion-less candidate has nothing to unify the goal against.
@@ -422,10 +423,10 @@ export class InferentialReasoner implements ReasonerInterface {
 
 	// Relational join: thread accumulated bindings through each premise in turn,
 	// branching per matching fact; any empty stage short-circuits to none. Reads the
-	// LIVE predicate+arity index (maintained by #forward), so each premise scans only
-	// its own predicate+arity bucket (append order kept) rather than the whole fact
-	// base — matchFacts already rejects a predicate OR arity mismatch, so the matches
-	// are identical.
+	// live predicate+arity index (maintained by #forward), so each premise scans
+	// only its own predicate+arity bucket (append order kept) rather than the whole
+	// fact base — matchFacts already rejects a predicate or an arity mismatch, so
+	// the matches are identical.
 	#findAllBindings(
 		premises: readonly Fact[],
 		byArity: ReadonlyMap<string, Fact[]>,
