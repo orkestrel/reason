@@ -1,6 +1,6 @@
 // The consumer-side guides-parity drop-in: runs `@orkestrel/guide`'s checks against
-// this repo's own `guides/README.md` manifest. The constants below are this
-// package's own, and are the only part a sibling package changes.
+// this repo's own `guides/README.md` manifest. The constants that follow are this
+// package's own, as is the executed section that closes the file.
 
 import { describe, expect, it } from 'vitest'
 import {
@@ -150,11 +150,6 @@ it('opens the README with the guide tagline', () => {
 for (const entry of manifest) {
 	const guide = createGuide(requireValue(files[entry.spec], `Missing file: ${entry.spec}`))
 	const source = createSource({ files, module: entry.source })
-	// `findDrift` walks every documented row against every source declaration, which on a
-	// guide this size costs seconds rather than milliseconds (5192 ms measured on this
-	// guide, 2026-09-07). Computing it here rather than inside the case keeps that cost
-	// out of the per-test budget, the way the preceding readers already sit here.
-	const drifts = findDrift(guide, source)
 
 	describe(`${entry.concept}`, () => {
 		it('uses only listed fence languages', () => {
@@ -223,7 +218,7 @@ for (const entry of manifest) {
 		// output is.
 		it('keeps every compared summary and example equal to its source', () => {
 			const disagreeing: string[] = []
-			for (const drift of drifts) {
+			for (const drift of findDrift(guide, source)) {
 				const left = drift.guide === undefined ? 'absent' : JSON.stringify(drift.guide)
 				const right = drift.source === undefined ? 'absent' : JSON.stringify(drift.source)
 				disagreeing.push(`${entry.spec} ${drift.key}: guide ${left} source ${right}`)

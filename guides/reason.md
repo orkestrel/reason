@@ -278,27 +278,29 @@ Total guards return `false`, never throw, for adversarial input such as junk, cy
 
 ### Constants
 
-| API                        | Kind  | Summary                                                                                                                                                                            |
-| -------------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DEFAULT_REASON_BAIL`      | const | Holds the default `bail` for the `Reason` orchestrator — a reasoner throw is rethrown after the `error` emit. Default: `true`.                                                     |
-| `DEFAULT_VALIDATE`         | const | Holds the default `validate` for the `Reason` orchestrator — per-call validation is skipped. Default: `false`.                                                                     |
-| `DEFAULT_DEPTH`            | const | Holds the default `depth` for chaining definitions — the forward-iteration / backward-recursion cap of the logical and inferential reasoners. Default: `10`.                       |
-| `DEFAULT_BASE`             | const | Holds the default `base` added before aggregation, at both group and definition level. Default: `0`.                                                                               |
-| `DEFAULT_PRECISION`        | const | Holds the default `precision` (decimal places) for quantitative values and symbolic solutions. Default: `4`.                                                                       |
-| `DEFAULT_CONFIDENCE`       | const | Holds the default `confidence` for facts, inferences, and injected subject facts. Default: `1`.                                                                                    |
-| `DEFAULT_WEIGHT`           | const | Holds the default factor `weight` at group aggregation. Default: `1`.                                                                                                              |
-| `DEFAULT_PRIORITY`         | const | Holds the default factor / rule `priority` — evaluation order is ascending and stable. Default: `0`.                                                                               |
-| `CONFIDENCE_PRECISION`     | const | Holds the decimal places a derived fact's confidence is rounded to during forward inferential chaining.                                                                            |
-| `INVERTIBLE_OPERATIONS`    | const | Lists the math operations the symbolic reasoner can invert while isolating a target variable — anything else (a `power`, an `abs`) fails the equation with a non-invertible error. |
-| `EVALUATOR_ID`             | const | Names the default `id` for an `Evaluator`.                                                                                                                                         |
-| `TRANSFORMER_ID`           | const | Names the default `id` for a `Transformer`.                                                                                                                                        |
-| `AGGREGATOR_ID`            | const | Names the default `id` for an `Aggregator`.                                                                                                                                        |
-| `QUANTITATIVE_ID`          | const | Names the default `id` for a `QuantitativeReasoner`.                                                                                                                               |
-| `LOGICAL_ID`               | const | Names the default `id` for a `LogicalReasoner`.                                                                                                                                    |
-| `SYMBOLIC_ID`              | const | Names the default `id` for a `SymbolicReasoner`.                                                                                                                                   |
-| `INFERENTIAL_ID`           | const | Names the default `id` for an `InferentialReasoner`.                                                                                                                               |
-| `DEFINITION_BUILDER_BRAND` | const | Holds the `DefinitionBuilder` entity brand — a `unique symbol` key carrying `readonly true` on every `DefinitionBuilderInterface` instance.                                        |
-| `SUBJECT_BUILDER_BRAND`    | const | Holds the `SubjectBuilder` entity brand — a `unique symbol` key carrying `readonly true` on every `SubjectBuilderInterface` instance.                                              |
+A `Shape` cell holds the constant's declared type.
+
+| API                        | Kind  | Shape                        | Summary                                                                                                                                                                            |
+| -------------------------- | ----- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DEFAULT_REASON_BAIL`      | const | `boolean`                    | Holds the default `bail` for the `Reason` orchestrator — a reasoner throw is rethrown after the `error` emit. Default: `true`.                                                     |
+| `DEFAULT_VALIDATE`         | const | `boolean`                    | Holds the default `validate` for the `Reason` orchestrator — per-call validation is skipped. Default: `false`.                                                                     |
+| `DEFAULT_DEPTH`            | const | `number`                     | Holds the default `depth` for chaining definitions — the forward-iteration / backward-recursion cap of the logical and inferential reasoners. Default: `10`.                       |
+| `DEFAULT_BASE`             | const | `number`                     | Holds the default `base` added before aggregation, at both group and definition level. Default: `0`.                                                                               |
+| `DEFAULT_PRECISION`        | const | `number`                     | Holds the default `precision` (decimal places) for quantitative values and symbolic solutions. Default: `4`.                                                                       |
+| `DEFAULT_CONFIDENCE`       | const | `number`                     | Holds the default `confidence` for facts, inferences, and injected subject facts. Default: `1`.                                                                                    |
+| `DEFAULT_WEIGHT`           | const | `number`                     | Holds the default factor `weight` at group aggregation. Default: `1`.                                                                                                              |
+| `DEFAULT_PRIORITY`         | const | `number`                     | Holds the default factor / rule `priority` — evaluation order is ascending and stable. Default: `0`.                                                                               |
+| `CONFIDENCE_PRECISION`     | const | `number`                     | Holds the decimal places a derived fact's confidence is rounded to during forward inferential chaining.                                                                            |
+| `INVERTIBLE_OPERATIONS`    | const | `ReadonlySet<MathOperation>` | Lists the math operations the symbolic reasoner can invert while isolating a target variable — anything else (a `power`, an `abs`) fails the equation with a non-invertible error. |
+| `EVALUATOR_ID`             | const | `string`                     | Names the default `id` for an `Evaluator`.                                                                                                                                         |
+| `TRANSFORMER_ID`           | const | `string`                     | Names the default `id` for a `Transformer`.                                                                                                                                        |
+| `AGGREGATOR_ID`            | const | `string`                     | Names the default `id` for an `Aggregator`.                                                                                                                                        |
+| `QUANTITATIVE_ID`          | const | `string`                     | Names the default `id` for a `QuantitativeReasoner`.                                                                                                                               |
+| `LOGICAL_ID`               | const | `string`                     | Names the default `id` for a `LogicalReasoner`.                                                                                                                                    |
+| `SYMBOLIC_ID`              | const | `string`                     | Names the default `id` for a `SymbolicReasoner`.                                                                                                                                   |
+| `INFERENTIAL_ID`           | const | `string`                     | Names the default `id` for an `InferentialReasoner`.                                                                                                                               |
+| `DEFINITION_BUILDER_BRAND` | const | `unique symbol`              | Holds the `DefinitionBuilder` entity brand — a `unique symbol` key carrying `readonly true` on every `DefinitionBuilderInterface` instance.                                        |
+| `SUBJECT_BUILDER_BRAND`    | const | `unique symbol`              | Holds the `SubjectBuilder` entity brand — a `unique symbol` key carrying `readonly true` on every `SubjectBuilderInterface` instance.                                              |
 
 ### Types
 
