@@ -12,6 +12,7 @@ import type {
 	ReasonerInterface,
 	Subject,
 } from '../types.js'
+import { isArray, isObject } from '@orkestrel/contract'
 import {
 	computePremiseConfidence,
 	factToArityKey,
@@ -127,14 +128,14 @@ export class InferentialReasoner implements ReasonerInterface {
 		// Confidence is a 0–1 multiplicative weight; anything outside is
 		// suspicious but runnable — a warning, never an error.
 		for (const fact of definition.facts ?? []) {
-			if (typeof fact !== 'object' || fact === null) continue
+			if (!isObject(fact)) continue
 			if (fact.confidence !== undefined && !(fact.confidence >= 0 && fact.confidence <= 1)) {
 				warnings.push(`Fact "${fact.id}" confidence outside [0, 1]`)
 			}
 		}
 
 		for (const inference of definition.inferences ?? []) {
-			if (typeof inference !== 'object' || inference === null) continue
+			if (!isObject(inference)) continue
 			if (!inference.id) errors.push('Inference must have an id')
 			if (!inference.premises || inference.premises.length === 0) {
 				warnings.push(`Inference "${inference.id}" has no premises`)
@@ -175,9 +176,9 @@ export class InferentialReasoner implements ReasonerInterface {
 		// result, not a throw.
 		if (
 			!definition.facts ||
-			!Array.isArray(definition.facts) ||
+			!isArray(definition.facts) ||
 			!definition.inferences ||
-			!Array.isArray(definition.inferences)
+			!isArray(definition.inferences)
 		) {
 			return {
 				reasoning: 'inferential',
@@ -219,7 +220,7 @@ export class InferentialReasoner implements ReasonerInterface {
 		const maxDepth = definition.depth ?? DEFAULT_DEPTH
 		const knownFacts: Fact[] = []
 		for (const known of [...definition.facts, ...subjectFacts]) {
-			if (typeof known !== 'object' || known === null) continue
+			if (!isObject(known)) continue
 			knownFacts.push(known)
 		}
 		const derived: Fact[] = []
@@ -253,7 +254,7 @@ export class InferentialReasoner implements ReasonerInterface {
 		// conclusion-less inference errors once and is excluded.
 		const validInferences: Inference[] = []
 		for (const inference of definition.inferences) {
-			if (typeof inference !== 'object' || inference === null) continue
+			if (!isObject(inference)) continue
 			if (inference.enabled === false) continue
 			if (!inference.premises || inference.premises.length === 0) {
 				errors.push(`Inference "${inference.id}" has no premises — skipped`)
@@ -324,7 +325,7 @@ export class InferentialReasoner implements ReasonerInterface {
 		const derived: Fact[] = []
 		const allBaseFacts: Fact[] = []
 		for (const known of [...definition.facts, ...subjectFacts]) {
-			if (typeof known !== 'object' || known === null) continue
+			if (!isObject(known)) continue
 			allBaseFacts.push(known)
 		}
 
@@ -334,7 +335,7 @@ export class InferentialReasoner implements ReasonerInterface {
 		}
 
 		for (const inference of definition.inferences) {
-			if (typeof inference !== 'object' || inference === null) continue
+			if (!isObject(inference)) continue
 			if (inference.enabled === false) continue
 
 			if (!inference.conclusion) {
@@ -387,12 +388,12 @@ export class InferentialReasoner implements ReasonerInterface {
 		}
 
 		for (const inference of inferences) {
-			if (typeof inference !== 'object' || inference === null) continue
+			if (!isObject(inference)) continue
 			if (inference.enabled === false) continue
 			// A candidate whose premises are missing / not an array cannot be
 			// walked — skipped silently (backward's error posture reports only
 			// missing conclusions; the forward pre-filter is where premises error).
-			if (!inference.premises || !Array.isArray(inference.premises)) continue
+			if (!isArray(inference.premises)) continue
 			// A conclusion-less candidate has nothing to unify the goal against.
 			if (!inference.conclusion) continue
 

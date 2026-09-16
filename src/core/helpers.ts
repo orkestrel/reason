@@ -26,7 +26,16 @@ import type {
 	SymbolicExpression,
 } from './types.js'
 import type { FieldPath } from '@orkestrel/contract'
-import { isArray, isNumber, isString, parseNumberField, resolveField } from '@orkestrel/contract'
+import {
+	isArray,
+	isFiniteNumber,
+	isFunction,
+	isNumber,
+	isObject,
+	isString,
+	parseNumberField,
+	resolveField,
+} from '@orkestrel/contract'
 import { DEFAULT_CONFIDENCE, DEFAULT_PRIORITY } from './constants.js'
 import { ReasonError } from './errors.js'
 
@@ -212,7 +221,7 @@ export function resolveSource(
 			const value = parseNumberField(subject, source.field)
 			if (value === undefined) return fallback
 			for (const range of source.ranges) {
-				if (typeof range !== 'object' || range === null) continue
+				if (!isObject(range)) continue
 				const limit = range.bounds
 				// A band without bounds is a catch-all; an absent side is open.
 				if (!limit) return range.value
@@ -255,7 +264,7 @@ export function roundTo(value: number, precision = 0): number {
 	const factor = Math.pow(10, precision)
 	// An overflowed scale factor (Infinity / 0) would turn every value into NaN —
 	// rounding is meaningless there, so the value passes through unchanged.
-	if (!Number.isFinite(factor) || factor === 0) return value
+	if (!isFiniteNumber(factor) || factor === 0) return value
 	return Math.round(value * factor) / factor
 }
 
@@ -316,7 +325,7 @@ export function sortByPriority<T extends { readonly priority?: number }>(
 ): readonly T[] {
 	const usable: T[] = []
 	for (const item of items) {
-		if (typeof item !== 'object' || item === null) continue
+		if (!isObject(item)) continue
 		usable.push(item)
 	}
 	return usable.sort(
@@ -444,7 +453,7 @@ export function indexByArity(facts: readonly Fact[]): ReadonlyMap<string, readon
  * ```
  */
 export function termToKey(term: unknown, identities: Map<object, number>): string {
-	if ((typeof term === 'object' && term !== null) || typeof term === 'function') {
+	if (isObject(term) || isFunction(term)) {
 		const existing = identities.get(term)
 		if (existing !== undefined) return `${typeof term}:#${existing}`
 		const id = identities.size
@@ -527,13 +536,13 @@ export function matchFacts(pattern: Fact, candidate: Fact): Record<string, unkno
 		const patternTerm = pattern.terms[index]
 		const factTerm = candidate.terms[index]
 
-		if (typeof patternTerm === 'string' && patternTerm.startsWith('?')) {
+		if (isString(patternTerm) && patternTerm.startsWith('?')) {
 			if (patternTerm in bindings) {
 				if (bindings[patternTerm] !== factTerm) return undefined
 			} else {
 				bindings[patternTerm] = factTerm
 			}
-		} else if (typeof factTerm === 'string' && factTerm.startsWith('?')) {
+		} else if (isString(factTerm) && factTerm.startsWith('?')) {
 			if (factTerm in bindings) {
 				if (bindings[factTerm] !== patternTerm) return undefined
 			} else {
@@ -571,7 +580,7 @@ export function matchFacts(pattern: Fact, candidate: Fact): Record<string, unkno
  */
 export function instantiateFact(fact: Fact, bindings: Record<string, unknown>): Fact {
 	const terms = fact.terms.map((term) => {
-		if (typeof term === 'string' && term.startsWith('?') && term in bindings) {
+		if (isString(term) && term.startsWith('?') && term in bindings) {
 			return bindings[term]
 		}
 		return term
@@ -658,7 +667,7 @@ export function subjectToFacts(subject: Subject): {
 		if (key === 'id') continue
 		const value = subject[key]
 		if (value === undefined || value === null) continue
-		if (typeof value === 'object') continue
+		if (isObject(value)) continue
 
 		facts.push({
 			id: `subject:${key}`,
@@ -1060,7 +1069,7 @@ export function findOverlayMismatches(rules: readonly Rule[]): readonly string[]
 	const seenWrites = new Set<string>()
 	for (const candidate of rules) {
 		for (const atomLeaf of extractAtoms(candidate.conclusion)) {
-			if (!Array.isArray(atomLeaf.check.field)) continue
+			if (!isArray(atomLeaf.check.field)) continue
 			const key = formatField(atomLeaf.check.field)
 			if (seenWrites.has(key)) continue
 			seenWrites.add(key)
@@ -1072,7 +1081,7 @@ export function findOverlayMismatches(rules: readonly Rule[]): readonly string[]
 	for (const candidate of rules) {
 		for (const premise of candidate.premises) {
 			for (const atomLeaf of extractAtoms(premise)) {
-				if (!Array.isArray(atomLeaf.check.field)) continue
+				if (!isArray(atomLeaf.check.field)) continue
 				readKeys.add(formatField(atomLeaf.check.field))
 			}
 		}
@@ -2409,9 +2418,7 @@ export function repeatSubject(subject: Subject, count: number): readonly Subject
 	const baseId = subject.id
 	const clones: Subject[] = []
 	for (let index = 0; index < count; index += 1) {
-		clones.push(
-			typeof baseId === 'string' ? { ...subject, id: `${baseId}-${index}` } : { ...subject },
-		)
+		clones.push(isString(baseId) ? { ...subject, id: `${baseId}-${index}` } : { ...subject })
 	}
 	return clones
 }

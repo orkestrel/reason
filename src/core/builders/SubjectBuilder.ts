@@ -6,7 +6,7 @@ import type {
 	SubjectBuilderOptions,
 } from '../types.js'
 import { Emitter } from '@orkestrel/emitter'
-import { isArray } from '@orkestrel/contract'
+import { isArray, isString } from '@orkestrel/contract'
 import { assignField, mergeSubjects, removeField, repeatSubject } from '../helpers.js'
 import { SUBJECT_BUILDER_BRAND } from '../constants.js'
 import { ReasonError } from '../errors.js'
@@ -62,8 +62,8 @@ export class SubjectBuilder implements SubjectBuilderInterface {
 
 	constructor(seed: Subject, options?: SubjectBuilderOptions) {
 		const id = options?.id ?? seed.id
-		this.#id = typeof id === 'string' ? id : undefined
-		if (typeof this.#id === 'string') {
+		this.#id = isString(id) ? id : undefined
+		if (isString(this.#id)) {
 			this.#subject = { ...seed, id: this.#id }
 		} else {
 			// Anonymous: strip any non-string `seed.id` through a rest-omit so
@@ -128,7 +128,7 @@ export class SubjectBuilder implements SubjectBuilderInterface {
 		// so an incoming subject's own `id` key would otherwise survive into the
 		// merged result. Strip it here so an anonymous builder never carries an
 		// `id` key through this path either.
-		if (typeof this.#id !== 'string' && Object.hasOwn(merged, 'id')) {
+		if (!isString(this.#id) && Object.hasOwn(merged, 'id')) {
 			const { id: _id, ...rest } = merged
 			this.#subject = rest
 		} else {
@@ -139,7 +139,7 @@ export class SubjectBuilder implements SubjectBuilderInterface {
 
 	clear(): void {
 		this.#ensureAlive()
-		this.#subject = typeof this.#id === 'string' ? { id: this.#id } : {}
+		this.#subject = isString(this.#id) ? { id: this.#id } : {}
 		this.#emitter.emit('clear')
 	}
 

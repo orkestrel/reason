@@ -14,6 +14,7 @@ import type {
 	Subject,
 	TransformerInterface,
 } from '../types.js'
+import { isArray, isFiniteNumber, isObject } from '@orkestrel/contract'
 import { clamp, findDuplicates, resolveSource, roundTo, sortByPriority } from '../helpers.js'
 import { DEFAULT_BASE, DEFAULT_PRECISION, DEFAULT_WEIGHT, QUANTITATIVE_ID } from '../constants.js'
 import { ReasonError } from '../errors.js'
@@ -135,7 +136,7 @@ export class QuantitativeReasoner implements ReasonerInterface {
 
 		// Runtime never assumes validate() ran — a malformed shape is a failure
 		// result, not a throw.
-		if (!definition.groups || !Array.isArray(definition.groups)) {
+		if (!isArray(definition.groups)) {
 			return {
 				reasoning: 'quantitative',
 				value: 0,
@@ -153,7 +154,7 @@ export class QuantitativeReasoner implements ReasonerInterface {
 
 		const groupResults: GroupResult[] = []
 		for (const group of definition.groups) {
-			if (typeof group !== 'object' || group === null) continue
+			if (!isObject(group)) continue
 			if (group.enabled === false) {
 				trace.push(`Skipped group "${group.id}" (disabled)`)
 				continue
@@ -178,7 +179,7 @@ export class QuantitativeReasoner implements ReasonerInterface {
 		// minimum / maximum over zero applied groups aggregates to NaN — that is
 		// the aggregator's deliberate "no data" signal, surfaced here as an error
 		// while the non-finite value stays visible.
-		if (!Number.isFinite(value)) {
+		if (!isFiniteNumber(value)) {
 			const description = Number.isNaN(value) ? 'NaN' : String(value)
 			trace.push(`Definition "${definition.id}": produced non-finite value (${description})`)
 			errors.push(`Definition "${definition.id}" produced non-finite value: ${description}`)
@@ -236,7 +237,7 @@ export class QuantitativeReasoner implements ReasonerInterface {
 		// O(factors).
 		const weightById = new Map<string, number>()
 		for (const original of group.factors) {
-			if (typeof original !== 'object' || original === null) continue
+			if (!isObject(original)) continue
 			if (!weightById.has(original.id))
 				weightById.set(original.id, original.weight ?? DEFAULT_WEIGHT)
 		}
@@ -284,7 +285,7 @@ export class QuantitativeReasoner implements ReasonerInterface {
 			return { id: factor.id, applied: false, value: 0 }
 		}
 
-		if (!Number.isFinite(raw)) {
+		if (!isFiniteNumber(raw)) {
 			const description = Number.isNaN(raw) ? 'NaN' : String(raw)
 			trace.push(`Factor "${factor.id}": source produced non-finite value (${description})`)
 			errors.push(`Factor "${factor.id}" produced non-finite value: ${description}`)
@@ -298,7 +299,7 @@ export class QuantitativeReasoner implements ReasonerInterface {
 
 		value = clamp(value, factor.bounds)
 
-		if (!Number.isFinite(value)) {
+		if (!isFiniteNumber(value)) {
 			const description = Number.isNaN(value) ? 'NaN' : String(value)
 			trace.push(`Factor "${factor.id}": produced non-finite value (${description})`)
 			errors.push(`Factor "${factor.id}" produced non-finite value: ${description}`)

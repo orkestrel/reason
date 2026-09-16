@@ -13,6 +13,7 @@ import type {
 	RuleResult,
 	Subject,
 } from '../types.js'
+import { isArray, isObject } from '@orkestrel/contract'
 import {
 	equalValues,
 	extractConclusions,
@@ -141,7 +142,7 @@ export class LogicalReasoner implements ReasonerInterface {
 
 		// Runtime never assumes validate() ran — a malformed shape is a failure
 		// result, not a throw.
-		if (!definition.rules || !Array.isArray(definition.rules)) {
+		if (!isArray(definition.rules)) {
 			return {
 				reasoning: 'logical',
 				conclusion: false,
@@ -191,7 +192,7 @@ export class LogicalReasoner implements ReasonerInterface {
 		// excluded from every later pass.
 		const reportedErrors = new Set<string>()
 		for (const rule of sortedRules) {
-			if (typeof rule !== 'object' || rule === null) continue
+			if (!isObject(rule)) continue
 			if (rule.enabled === false) continue
 			if (!rule.premises || rule.premises.length === 0) {
 				errors.push(`Rule "${rule.id}" has no premises — skipped`)
@@ -239,7 +240,7 @@ export class LogicalReasoner implements ReasonerInterface {
 		const finalSubject: Subject = { ...subject, ...derived }
 		const finalResults: RuleResult[] = []
 		for (const rule of definition.rules) {
-			if (typeof rule !== 'object' || rule === null) continue
+			if (!isObject(rule)) continue
 			if (rule.enabled === false) continue
 			if (reportedErrors.has(rule.id)) continue
 			finalResults.push(this.#evaluateRule(rule, finalSubject))
@@ -267,12 +268,12 @@ export class LogicalReasoner implements ReasonerInterface {
 
 		const sortedRules = sortByPriority(
 			definition.rules.filter((rule) => {
-				if (typeof rule !== 'object' || rule === null) return false
+				if (!isObject(rule)) return false
 				if (rule.enabled === false) return false
 				// A missing / non-array premises cannot be walked — errored and
 				// excluded. An empty premises array is kept: backward applies it
 				// vacuously (forward reports it instead).
-				if (!rule.premises || !Array.isArray(rule.premises)) {
+				if (!isArray(rule.premises)) {
 					errors.push(`Rule "${rule.id}" has no premises — skipped`)
 					return false
 				}
@@ -285,7 +286,7 @@ export class LogicalReasoner implements ReasonerInterface {
 		)
 
 		for (const rule of definition.rules) {
-			if (typeof rule !== 'object' || rule === null) continue
+			if (!isObject(rule)) continue
 			if (rule.enabled === false) trace.push(`Skipped rule "${rule.id}" (disabled)`)
 		}
 
@@ -426,7 +427,7 @@ export class LogicalReasoner implements ReasonerInterface {
 
 		if (expression.form === 'atom') {
 			for (const rule of rules) {
-				if (typeof rule !== 'object' || rule === null) continue
+				if (!isObject(rule)) continue
 				if (visited.has(rule.id)) continue
 				const conclusionFacts = extractConclusions(rule.conclusion)
 				const field = formatField(expression.check.field)

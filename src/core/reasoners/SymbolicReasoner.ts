@@ -9,7 +9,7 @@ import type {
 	SymbolicExpression,
 	SymbolicReasonerOptions,
 } from '../types.js'
-import { parseNumber } from '@orkestrel/contract'
+import { isArray, isError, isFiniteNumber, isObject, parseNumber } from '@orkestrel/contract'
 import {
 	applyOperation,
 	containsVariable,
@@ -118,7 +118,7 @@ export class SymbolicReasoner implements ReasonerInterface {
 
 		// Runtime never assumes validate() ran — a malformed shape is a failure
 		// result, not a throw.
-		if (!definition.equations || !Array.isArray(definition.equations)) {
+		if (!isArray(definition.equations)) {
 			return {
 				reasoning: 'symbolic',
 				solutions: {},
@@ -154,7 +154,7 @@ export class SymbolicReasoner implements ReasonerInterface {
 		}
 
 		for (const equation of definition.equations) {
-			if (typeof equation !== 'object' || equation === null) continue
+			if (!isObject(equation)) continue
 			try {
 				const value = this.#solve(equation, bindings)
 				const rounded = roundTo(value, precision)
@@ -164,8 +164,8 @@ export class SymbolicReasoner implements ReasonerInterface {
 				// pre-round check and bound Infinity with success:true. Describe whichever
 				// is non-finite: the pre-round value keeps its exact rendering (for example
 				// a non-numeric "[object Object]"), a round-overflow renders the ±Infinity.
-				if (!Number.isFinite(value) || !Number.isFinite(rounded)) {
-					const offender = Number.isFinite(value) ? rounded : value
+				if (!isFiniteNumber(value) || !isFiniteNumber(rounded)) {
+					const offender = isFiniteNumber(value) ? rounded : value
 					const description = Number.isNaN(offender) ? 'NaN' : `${offender}`
 					errors.push(`Equation "${equation.id}": produced non-finite value (${description})`)
 					trace.push(
@@ -177,7 +177,7 @@ export class SymbolicReasoner implements ReasonerInterface {
 				bindings[equation.target] = rounded
 				trace.push(`Equation "${equation.id}": ${equation.target} = ${rounded}`)
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error)
+				const message = isError(error) ? error.message : String(error)
 				errors.push(`Equation "${equation.id}": ${message}`)
 				trace.push(`Equation "${equation.id}": FAILED — ${message}`)
 			}
@@ -185,7 +185,7 @@ export class SymbolicReasoner implements ReasonerInterface {
 
 		const solutions: Record<string, number> = {}
 		for (const equation of definition.equations) {
-			if (typeof equation !== 'object' || equation === null) continue
+			if (!isObject(equation)) continue
 			const value = bindings[equation.target]
 			if (value !== undefined) solutions[equation.target] = value
 		}

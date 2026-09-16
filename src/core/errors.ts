@@ -1,4 +1,5 @@
 import type { ReasonErrorCode } from './types.js'
+import { isInstance } from '@orkestrel/contract'
 
 // Misuse of the reasons layer `throw`s a `ReasonError` carrying a
 // machine-readable `code`, so a `catch` branches on `error.code`.
@@ -49,5 +50,5 @@ export class ReasonError extends Error {
  * ```
  */
 export function isReasonError(value: unknown): value is ReasonError {
-	return value instanceof ReasonError
+	return isInstance(value, ReasonError)
 }

@@ -11,7 +11,7 @@ import type {
 	Subject,
 } from './types.js'
 import { Emitter } from '@orkestrel/emitter'
-import { isArray } from '@orkestrel/contract'
+import { isArray, isError } from '@orkestrel/contract'
 import { buildErrorResult } from './helpers.js'
 import { DEFAULT_REASON_BAIL, DEFAULT_VALIDATE } from './constants.js'
 import { ReasonError } from './errors.js'
@@ -174,7 +174,7 @@ export class Reason implements ReasonInterface {
 			if (this.#bail) throw error
 			// bail: false converts the throw into a type-shaped failure result —
 			// which emits no 'reason'.
-			const message = error instanceof Error ? error.message : String(error)
+			const message = isError(error) ? error.message : String(error)
 			return buildErrorResult(definition, message)
 		}
 	}

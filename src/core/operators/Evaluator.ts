@@ -1,5 +1,5 @@
 import type { Check, CheckResult, EvaluatorInterface, EvaluatorOptions, Subject } from '../types.js'
-import { isArray, isNumber, resolveField } from '@orkestrel/contract'
+import { isArray, isError, isNumber, resolveField } from '@orkestrel/contract'
 import { matchesBounds } from '../helpers.js'
 import { EVALUATOR_ID } from '../constants.js'
 
@@ -43,7 +43,7 @@ export class Evaluator implements EvaluatorInterface {
 			const met = this.#compare(actual, check.operator, check.value)
 			return { field: check.field, met, actual }
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error)
+			const message = isError(error) ? error.message : String(error)
 			return { field: check.field, met: false, actual, error: message }
 		}
 	}
