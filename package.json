@@ -1,6 +1,6 @@
 {
 	"name": "@orkestrel/reason",
-	"version": "0.0.12",
+	"version": "0.0.13",
 	"description": "A typed reasoning engine: definitions, subjects, and quantitative/logical/symbolic/inferential reasoners. Part of the @orkestrel line.",
 	"keywords": [
 		"decision-engine",
