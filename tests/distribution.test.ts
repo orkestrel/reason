@@ -76,6 +76,7 @@ const imported = await import(process.argv[2])
 const required = createRequire(import.meta.url)(process.argv[2])
 const copied = await import(pathToFileURL(process.argv[3]).href)
 const copies = [imported, required, copied]
+assert.equal(new Set(copies.map((entry) => entry.ReasonError)).size, copies.length)
 const brand = Symbol.for('@orkestrel/reason.ReasonError')
 
 class ChildError extends imported.ReasonError {

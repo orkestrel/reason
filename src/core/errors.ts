@@ -1,5 +1,5 @@
 import type { ReasonErrorCode } from './types.js'
-import { holds, INTRINSICS, isInstance, isObject, isString } from '@orkestrel/contract'
+import { holds, INTRINSICS, isFunction, isInstance, isObject, isString } from '@orkestrel/contract'
 
 // Misuse of the reasons layer `throw`s a `ReasonError` carrying a
 // machine-readable `code`, so a `catch` branches on `error.code`.
@@ -72,7 +72,7 @@ export function isReasonError(value: unknown): value is ReasonError {
 				code === 'TARGET' ||
 				code === 'OPERATOR') &&
 			isString(INTRINSICS.reflect.read(value, 'message')) &&
-			(context === undefined || isObject(context))
+			(context === undefined || isObject(context) || isFunction(context))
 		)
 	})
 }
