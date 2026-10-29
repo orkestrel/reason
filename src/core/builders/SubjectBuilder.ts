@@ -112,11 +112,7 @@ export class SubjectBuilder implements SubjectBuilderInterface {
 			return
 		}
 		if (isArray<string>(keyOrKeys)) {
-			let all = true
-			for (const key of keyOrKeys) {
-				if (!this.#removeOne(key)) all = false
-			}
-			return all
+			return Iterator.from(keyOrKeys).reduce((all, key) => this.#removeOne(key) && all, true)
 		}
 		return this.#removeOne(keyOrKeys)
 	}

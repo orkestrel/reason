@@ -2,7 +2,7 @@ import type {
 	Definition,
 	EvaluatorInterface,
 	Expression,
-	LogicalChainingResult,
+	LogicalChainResult,
 	LogicalDefinition,
 	LogicalReasonerOptions,
 	Reasoning,
@@ -18,11 +18,13 @@ import {
 	equalValues,
 	extractConclusions,
 	findDuplicates,
+	iterateIndices,
 	findOverlayMismatches,
 	formatField,
 	sortByPriority,
 } from '../helpers.js'
 import { DEFAULT_DEPTH, LOGICAL_ID } from '../constants.js'
+import { LogicalState } from '../LogicalState.js'
 import { ReasonError } from '../errors.js'
 import { Evaluator } from '../operators/Evaluator.js'
 
@@ -180,9 +182,9 @@ export class LogicalReasoner implements ReasonerInterface {
 		subject: Subject,
 		trace: string[],
 		errors: string[],
-	): LogicalChainingResult {
+	): LogicalChainResult {
 		const maxDepth = definition.depth ?? DEFAULT_DEPTH
-		const derived: Record<string, unknown> = {}
+		const state = new LogicalState()
 
 		if (definition.rules.length === 0) trace.push('No rules defined')
 
@@ -190,61 +192,65 @@ export class LogicalReasoner implements ReasonerInterface {
 
 		// Pre-pass: a premise-less or conclusion-less rule errors once and is
 		// excluded from every later pass.
-		const reportedErrors = new Set<string>()
-		for (const rule of sortedRules) {
-			if (!isObject(rule)) continue
-			if (rule.enabled === false) continue
-			if (!rule.premises || rule.premises.length === 0) {
-				errors.push(`Rule "${rule.id}" has no premises — skipped`)
-				reportedErrors.add(rule.id)
-			} else if (!rule.conclusion) {
-				errors.push(`Rule "${rule.id}" has no conclusion — skipped`)
-				reportedErrors.add(rule.id)
-			}
-		}
+		const reportedErrors = new Set(
+			sortedRules.flatMap((rule) => {
+				if (!isObject(rule)) return []
+				if (rule.enabled === false) return []
+				if (!rule.premises || rule.premises.length === 0) {
+					errors.push(`Rule "${rule.id}" has no premises — skipped`)
+					return [rule.id]
+				} else if (!rule.conclusion) {
+					errors.push(`Rule "${rule.id}" has no conclusion — skipped`)
+					return [rule.id]
+				}
+				return []
+			}),
+		)
 
-		for (let iteration = 0; iteration < maxDepth; iteration++) {
-			let newDerivation = false
-			const currentSubject: Subject = { ...subject, ...derived }
+		for (const iteration of iterateIndices(maxDepth)) {
+			const currentSubject: Subject = { ...subject, ...state.fields }
 
-			for (const rule of sortedRules) {
+			const changed = sortedRules.reduce((previous, rule) => {
 				if (rule.enabled === false) {
 					trace.push(`Skipped rule "${rule.id}" (disabled)`)
-					continue
+					return previous
 				}
-				if (reportedErrors.has(rule.id)) continue
+				if (reportedErrors.has(rule.id)) return previous
 
 				const ruleResult = this.#evaluateRule(rule, currentSubject)
 
 				if (ruleResult.applied) {
 					const conclusions = extractConclusions(rule.conclusion)
-					for (const [key, value] of Object.entries(conclusions)) {
+					return Object.entries(conclusions).reduce((updated, [key, value]) => {
 						// SameValueZero — a NaN conclusion must not re-derive forever.
-						if (!equalValues(derived[key], value)) {
-							derived[key] = value
-							newDerivation = true
+						if (!equalValues(state.field(key), value)) {
+							state.set(key, value)
 							trace.push(
 								`Rule "${rule.id}" derived: ${key}=${String(value)} (iteration ${iteration + 1})`,
 							)
+							return true
 						}
-					}
+						return updated
+					}, previous)
 				}
-			}
+				return previous
+			}, false)
 
-			if (!newDerivation) {
+			if (!changed) {
 				trace.push(`Forward chaining converged at iteration ${iteration + 1}`)
 				break
 			}
 		}
 
-		const finalSubject: Subject = { ...subject, ...derived }
-		const finalResults: RuleResult[] = []
-		for (const rule of definition.rules) {
-			if (!isObject(rule)) continue
-			if (rule.enabled === false) continue
-			if (reportedErrors.has(rule.id)) continue
-			finalResults.push(this.#evaluateRule(rule, finalSubject))
-		}
+		const finalSubject: Subject = { ...subject, ...state.fields }
+		const finalResults = Iterator.from(definition.rules)
+			.flatMap((rule) => {
+				if (!isObject(rule)) return []
+				if (rule.enabled === false) return []
+				if (reportedErrors.has(rule.id)) return []
+				return [this.#evaluateRule(rule, finalSubject)]
+			})
+			.toArray()
 
 		const conclusion =
 			finalResults.length > 0 ? (finalResults[finalResults.length - 1]?.applied ?? false) : false
@@ -259,10 +265,9 @@ export class LogicalReasoner implements ReasonerInterface {
 		subject: Subject,
 		trace: string[],
 		errors: string[],
-	): LogicalChainingResult {
+	): LogicalChainResult {
 		const maxDepth = definition.depth ?? DEFAULT_DEPTH
-		const derived: Record<string, unknown> = {}
-		const ruleResults = new Map<string, RuleResult>()
+		const state = new LogicalState()
 
 		if (definition.rules.length === 0) trace.push('No rules defined')
 
@@ -291,28 +296,12 @@ export class LogicalReasoner implements ReasonerInterface {
 		}
 
 		for (const rule of sortedRules) {
-			this.#proveRule(
-				rule,
-				0,
-				new Set(),
-				sortedRules,
-				derived,
-				subject,
-				trace,
-				ruleResults,
-				maxDepth,
-			)
+			this.#proveRule(rule, 0, new Set(), sortedRules, state, subject, trace, maxDepth)
 		}
 
-		const finalResults: RuleResult[] = []
-		for (const rule of sortedRules) {
-			const existing = ruleResults.get(rule.id)
-			if (existing) {
-				finalResults.push(existing)
-			} else {
-				finalResults.push(this.#evaluateRule(rule, { ...subject, ...derived }))
-			}
-		}
+		const finalResults = sortedRules.map(
+			(rule) => state.rule(rule.id) ?? this.#evaluateRule(rule, { ...subject, ...state.fields }),
+		)
 
 		const conclusion =
 			finalResults.length > 0 ? (finalResults[finalResults.length - 1]?.applied ?? false) : false
@@ -326,48 +315,43 @@ export class LogicalReasoner implements ReasonerInterface {
 		depth: number,
 		visited: ReadonlySet<string>,
 		rules: readonly Rule[],
-		derived: Record<string, unknown>,
+		state: LogicalState,
 		subject: Subject,
 		trace: string[],
-		ruleResults: Map<string, RuleResult>,
 		maxDepth: number,
 	): boolean {
 		if (depth > maxDepth) return false
 		if (visited.has(rule.id)) return false
 
-		const nextVisited = new Set(visited)
-		nextVisited.add(rule.id)
+		const nextVisited = new Set([...visited, rule.id])
 
-		const currentSubject: Subject = { ...subject, ...derived }
-		const premiseResults: boolean[] = []
-
-		for (const premise of rule.premises) {
-			premiseResults.push(
+		const currentSubject: Subject = { ...subject, ...state.fields }
+		const premiseResults = Iterator.from(rule.premises)
+			.map((premise) =>
 				this.#establish(
 					premise,
 					currentSubject,
 					rules,
 					depth + 1,
 					nextVisited,
-					derived,
+					state,
 					subject,
 					trace,
-					ruleResults,
 					maxDepth,
 				),
 			)
-		}
+			.toArray()
 
 		const allMet = premiseResults.every(Boolean)
 
-		ruleResults.set(rule.id, { id: rule.id, applied: allMet, premises: premiseResults })
+		state.record({ id: rule.id, applied: allMet, premises: premiseResults })
 
 		if (allMet) {
 			const conclusions = extractConclusions(rule.conclusion)
 			for (const [key, value] of Object.entries(conclusions)) {
 				// SameValueZero — a NaN conclusion derives (and traces) once.
-				if (!equalValues(derived[key], value)) {
-					derived[key] = value
+				if (!equalValues(state.field(key), value)) {
+					state.set(key, value)
 					trace.push(
 						`Rule "${rule.id}" derived: ${key}=${String(value)} (backward, depth ${depth})`,
 					)
@@ -388,24 +372,13 @@ export class LogicalReasoner implements ReasonerInterface {
 		rules: readonly Rule[],
 		depth: number,
 		visited: ReadonlySet<string>,
-		derived: Record<string, unknown>,
+		state: LogicalState,
 		subject: Subject,
 		trace: string[],
-		ruleResults: Map<string, RuleResult>,
 		maxDepth: number,
 	): boolean {
 		if (this.#evaluateExpression(expression, currentSubject)) return true
-		return this.#proveExpression(
-			expression,
-			rules,
-			depth,
-			visited,
-			derived,
-			subject,
-			trace,
-			ruleResults,
-			maxDepth,
-		)
+		return this.#proveExpression(expression, rules, depth, visited, state, subject, trace, maxDepth)
 	}
 
 	// Sub-goal search: establish an atom by firing rules whose conclusion atoms
@@ -417,10 +390,9 @@ export class LogicalReasoner implements ReasonerInterface {
 		rules: readonly Rule[],
 		depth: number,
 		visited: ReadonlySet<string>,
-		derived: Record<string, unknown>,
+		state: LogicalState,
 		subject: Subject,
 		trace: string[],
-		ruleResults: Map<string, RuleResult>,
 		maxDepth: number,
 	): boolean {
 		if (depth > maxDepth) return false
@@ -434,40 +406,33 @@ export class LogicalReasoner implements ReasonerInterface {
 				const value = expression.check.value
 
 				if (field in conclusionFacts && conclusionFacts[field] === value) {
-					const nextVisited = new Set(visited)
-					nextVisited.add(rule.id)
+					const nextVisited = new Set([...visited, rule.id])
 
-					const currentSubject: Subject = { ...subject, ...derived }
+					const currentSubject: Subject = { ...subject, ...state.fields }
 					const premiseResults: boolean[] = []
-					let allMet = true
-
-					for (const premise of rule.premises) {
+					const allMet = Iterator.from(rule.premises).every((premise) => {
 						const met = this.#establish(
 							premise,
 							currentSubject,
 							rules,
 							depth + 1,
 							nextVisited,
-							derived,
+							state,
 							subject,
 							trace,
-							ruleResults,
 							maxDepth,
 						)
 						premiseResults.push(met)
-						if (!met) {
-							allMet = false
-							break
-						}
-					}
+						return met
+					})
 
-					ruleResults.set(rule.id, { id: rule.id, applied: allMet, premises: premiseResults })
+					state.record({ id: rule.id, applied: allMet, premises: premiseResults })
 
 					if (allMet) {
 						for (const [key, entry] of Object.entries(conclusionFacts)) {
 							// SameValueZero — a NaN conclusion derives (and traces) once.
-							if (!equalValues(derived[key], entry)) {
-								derived[key] = entry
+							if (!equalValues(state.field(key), entry)) {
+								state.set(key, entry)
 								trace.push(
 									`Rule "${rule.id}" derived: ${key}=${String(entry)} (backward, depth ${depth})`,
 								)
@@ -480,7 +445,7 @@ export class LogicalReasoner implements ReasonerInterface {
 		}
 
 		if (expression.form === 'compound') {
-			const currentSubject: Subject = { ...subject, ...derived }
+			const currentSubject: Subject = { ...subject, ...state.fields }
 
 			switch (expression.operator) {
 				case 'and':
@@ -491,10 +456,9 @@ export class LogicalReasoner implements ReasonerInterface {
 							rules,
 							depth,
 							visited,
-							derived,
+							state,
 							subject,
 							trace,
-							ruleResults,
 							maxDepth,
 						),
 					)
@@ -506,10 +470,9 @@ export class LogicalReasoner implements ReasonerInterface {
 							rules,
 							depth,
 							visited,
-							derived,
+							state,
 							subject,
 							trace,
-							ruleResults,
 							maxDepth,
 						),
 					)
@@ -524,10 +487,9 @@ export class LogicalReasoner implements ReasonerInterface {
 						rules,
 						depth,
 						visited,
-						derived,
+						state,
 						subject,
 						trace,
-						ruleResults,
 						maxDepth,
 					)
 				}
@@ -543,10 +505,9 @@ export class LogicalReasoner implements ReasonerInterface {
 						rules,
 						depth,
 						visited,
-						derived,
+						state,
 						subject,
 						trace,
-						ruleResults,
 						maxDepth,
 					)
 					if (!antecedentMet) return true
@@ -556,10 +517,9 @@ export class LogicalReasoner implements ReasonerInterface {
 						rules,
 						depth,
 						visited,
-						derived,
+						state,
 						subject,
 						trace,
-						ruleResults,
 						maxDepth,
 					)
 				}
@@ -574,10 +534,9 @@ export class LogicalReasoner implements ReasonerInterface {
 						rules,
 						depth,
 						visited,
-						derived,
+						state,
 						subject,
 						trace,
-						ruleResults,
 						maxDepth,
 					)
 					const rightMet = this.#establish(
@@ -586,10 +545,9 @@ export class LogicalReasoner implements ReasonerInterface {
 						rules,
 						depth,
 						visited,
-						derived,
+						state,
 						subject,
 						trace,
-						ruleResults,
 						maxDepth,
 					)
 					return leftMet !== rightMet

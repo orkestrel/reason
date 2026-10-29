@@ -1,5 +1,5 @@
 import type { ReasonErrorCode } from './types.js'
-import { isInstance } from '@orkestrel/contract'
+import { holds, INTRINSICS, isInstance, isObject, isString } from '@orkestrel/contract'
 
 // Misuse of the reasons layer `throw`s a `ReasonError` carrying a
 // machine-readable `code`, so a `catch` branches on `error.code`.
@@ -28,6 +28,7 @@ export class ReasonError extends Error {
 
 	constructor(code: ReasonErrorCode, message: string, context?: Readonly<Record<string, unknown>>) {
 		super(message)
+		Object.defineProperty(this, Symbol.for('@orkestrel/reason.ReasonError'), { value: this })
 		this.name = 'ReasonError'
 		this.code = code
 		if (context !== undefined) this.context = context
@@ -36,6 +37,13 @@ export class ReasonError extends Error {
 
 /**
  * Narrows an unknown caught value to a {@link ReasonError}.
+ *
+ * @remarks
+ * Accepts errors from another installed copy and subclasses regardless of `name`.
+ * Requires the own self-valued `Symbol.for('@orkestrel/reason.ReasonError')`
+ * brand, a non-base global `Error` prototype, and valid declared members.
+ * Plain objects, unbranded look-alikes, and transparent proxies are rejected.
+ * Hostile reads return false through the contract intrinsics inside `holds`.
  *
  * @param value - The value to test (typically a `catch` binding)
  * @returns True if `value` is a {@link ReasonError}; false otherwise
@@ -50,5 +58,21 @@ export class ReasonError extends Error {
  * ```
  */
 export function isReasonError(value: unknown): value is ReasonError {
-	return isInstance(value, ReasonError)
+	return holds(() => {
+		if (!isInstance(value, Error) || INTRINSICS.prototype(value) === Error.prototype) return false
+		const brand = INTRINSICS.describe(value, Symbol.for('@orkestrel/reason.ReasonError'))
+		if (brand?.value !== value) return false
+		const code: unknown = INTRINSICS.reflect.read(value, 'code')
+		const context: unknown = INTRINSICS.reflect.read(value, 'context')
+		return (
+			(code === 'MISSING' ||
+				code === 'INVALID' ||
+				code === 'MISMATCH' ||
+				code === 'DESTROYED' ||
+				code === 'TARGET' ||
+				code === 'OPERATOR') &&
+			isString(INTRINSICS.reflect.read(value, 'message')) &&
+			(context === undefined || isObject(context))
+		)
+	})
 }

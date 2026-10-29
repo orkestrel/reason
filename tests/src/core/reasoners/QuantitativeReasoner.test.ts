@@ -1,3 +1,18 @@
+import {
+	quantitativeReasoner as reasoner,
+	createFieldDefinition,
+	evaluateSparseRanges,
+	evaluateLookupTable,
+	evaluateScale,
+	BASIC_SUBJECT,
+	DRIVER_SUBJECT,
+	EXTREME_NUMBERS,
+	expectQuantitative,
+	repeatValue,
+	sequence,
+	sparse,
+	TRICKY_KEYS,
+} from '../../../setup.js'
 import type { Factor, FactorGroup, ReasonResult, ReasonValidationResult } from '@src/core'
 import {
 	createBounds,
@@ -8,7 +23,6 @@ import {
 	createLogicalDefinition,
 	createLookupFactor,
 	createQuantitativeDefinition,
-	createQuantitativeReasoner,
 	createRangeFactor,
 	createStaticFactor,
 	createSubjectBuilder,
@@ -18,16 +32,6 @@ import {
 } from '@src/core'
 import { describe, expect, it } from 'vitest'
 import { captureError, invokeUnchecked } from '@orkestrel/test'
-import {
-	BASIC_SUBJECT,
-	DRIVER_SUBJECT,
-	EXTREME_NUMBERS,
-	expectQuantitative,
-	repeatValue,
-	sequence,
-	sparse,
-	TRICKY_KEYS,
-} from '../../../setup.js'
 
 // `QuantitativeReasoner` behavior — the full factor pipeline (checks gate →
 // source resolve with fallback → finite check → transforms → bounds clamp →
@@ -39,8 +43,6 @@ import {
 // parseNumber coercion rules (a non-finite subject number or a non-numeric
 // string like '12px' is UNRESOLVABLE and takes the fallback path), and the
 // FieldPath cases (a dotted STRING is ONE key; an ARRAY descends).
-
-const reasoner = createQuantitativeReasoner()
 
 describe('QuantitativeReasoner — identity', () => {
 	it('defaults its id to "quantitative" and reports its reasoning', () => {
@@ -643,34 +645,39 @@ describe('QuantitativeReasoner — field paths (FieldPath semantics)', () => {
 })
 
 describe('QuantitativeReasoner — parseNumber coercion (contracts semantics)', () => {
-	const readValue = (fallback?: number) =>
-		createQuantitativeDefinition('d', 'd', [
-			createFactorGroup('g1', 'sum', [
-				createFieldFactor('f1', 'value', fallback === undefined ? undefined : { fallback }),
-			]),
-		])
-
 	it('parses numeric strings, whitespace-padded and hex included', () => {
-		expect(expectQuantitative(reasoner.reason({ value: '42' }, readValue())).value).toBe(42)
-		expect(expectQuantitative(reasoner.reason({ value: '  42  ' }, readValue())).value).toBe(42)
-		expect(expectQuantitative(reasoner.reason({ value: '0x10' }, readValue())).value).toBe(16)
+		expect(
+			expectQuantitative(reasoner.reason({ value: '42' }, createFieldDefinition())).value,
+		).toBe(42)
+		expect(
+			expectQuantitative(reasoner.reason({ value: '  42  ' }, createFieldDefinition())).value,
+		).toBe(42)
+		expect(
+			expectQuantitative(reasoner.reason({ value: '0x10' }, createFieldDefinition())).value,
+		).toBe(16)
 	})
 
 	it('a non-numeric string takes the fallback', () => {
-		expect(expectQuantitative(reasoner.reason({ value: 'abc' }, readValue(0))).value).toBe(0)
+		expect(
+			expectQuantitative(reasoner.reason({ value: 'abc' }, createFieldDefinition(0))).value,
+		).toBe(0)
 	})
 
 	it('a prefix-numeric string like "12px" is UNRESOLVABLE — no prefix parse', () => {
-		expect(expectQuantitative(reasoner.reason({ value: '12px' }, readValue(7))).value).toBe(7)
+		expect(
+			expectQuantitative(reasoner.reason({ value: '12px' }, createFieldDefinition(7))).value,
+		).toBe(7)
 	})
 
 	it('a NaN subject number takes the fallback path, not the non-finite error path', () => {
-		const result = expectQuantitative(reasoner.reason({ value: Number.NaN }, readValue(5)))
+		const result = expectQuantitative(
+			reasoner.reason({ value: Number.NaN }, createFieldDefinition(5)),
+		)
 		expect(result.value).toBe(5)
 		expect(result.success).toBe(true)
 
 		// Without a fallback the factor is unresolvable — still no error.
-		const bare = expectQuantitative(reasoner.reason({ value: Number.NaN }, readValue()))
+		const bare = expectQuantitative(reasoner.reason({ value: Number.NaN }, createFieldDefinition()))
 		expect(bare.success).toBe(true)
 		expect(bare.trace).toContain('Factor "f1": could not resolve source')
 	})
@@ -1347,23 +1354,9 @@ describe('QuantitativeReasoner — weight & priority extremes', () => {
 
 describe('QuantitativeReasoner — sparse range sources', () => {
 	it('a present band inside a sparse ranges array applies; a hole-only position falls back (no throw, twice)', () => {
-		const buildAndRun = () => {
-			const ranges = sparse<{ bounds: ReturnType<typeof createBounds>; value: number }>(5, [
-				[0, { bounds: createBounds(0, 10), value: 1 }],
-				[4, { bounds: createBounds(90, 100), value: 99 }],
-			])
-			const definition = createQuantitativeDefinition('d', 'd', [
-				createFactorGroup('g1', 'sum', [createRangeFactor('f1', 'age', ranges, { fallback: 0 })]),
-			])
-			return {
-				inBand: expectQuantitative(reasoner.reason({ age: 5 }, definition)).value,
-				otherBand: expectQuantitative(reasoner.reason({ age: 95 }, definition)).value,
-				holeOnly: expectQuantitative(reasoner.reason({ age: 50 }, definition)).value,
-			}
-		}
-		const first = buildAndRun()
+		const first = evaluateSparseRanges()
 		expect(first).toEqual({ inBand: 1, otherBand: 99, holeOnly: 0 })
-		const second = buildAndRun()
+		const second = evaluateSparseRanges()
 		expect(second).toEqual(first)
 	})
 })
@@ -1444,25 +1437,7 @@ describe('QuantitativeReasoner — lookup-site stringification of non-record fie
 
 describe('QuantitativeReasoner — large lookup table (2000 keys, TRICKY_KEYS mixed in)', () => {
 	it('resolves exact hits for several tricky keys and an exact miss, twice, deep-equal', () => {
-		const buildTableAndRun = () => {
-			// `Object.fromEntries` creates OWN data properties even for "__proto__",
-			// unlike a dynamic bracket assignment (which would hit the proto setter).
-			const table: Readonly<Record<string, number>> = Object.fromEntries([
-				...sequence(2000).map((value): [string, number] => [`gen-${value}`, value]),
-				...TRICKY_KEYS.map((key, index): [string, number] => [key, 100000 + index]),
-			])
-			const definition = createQuantitativeDefinition('d', 'd', [
-				createFactorGroup('g1', 'sum', [createLookupFactor('f1', 'code', table, { fallback: -1 })]),
-			])
-			return {
-				genHit: expectQuantitative(reasoner.reason({ code: 'gen-1500' }, definition)).value,
-				properHit: expectQuantitative(reasoner.reason({ code: TRICKY_KEYS[0] }, definition)).value,
-				emojiHit: expectQuantitative(reasoner.reason({ code: '\u{1F600}' }, definition)).value,
-				emptyHit: expectQuantitative(reasoner.reason({ code: '' }, definition)).value,
-				miss: expectQuantitative(reasoner.reason({ code: 'not-in-table' }, definition)).value,
-			}
-		}
-		const first = buildTableAndRun()
+		const first = evaluateLookupTable()
 		expect(first).toEqual({
 			genHit: 1500,
 			properHit: 100000,
@@ -1470,7 +1445,7 @@ describe('QuantitativeReasoner — large lookup table (2000 keys, TRICKY_KEYS mi
 			emptyHit: 100000 + TRICKY_KEYS.indexOf(''),
 			miss: -1,
 		})
-		const second = buildTableAndRun()
+		const second = evaluateLookupTable()
 		expect(second).toEqual(first)
 	})
 })
@@ -1497,27 +1472,15 @@ describe('QuantitativeReasoner — scale: 300 groups × 30 factors, arithmetic s
 	it('sums an arithmetic series of 9000 static factors to the exact formula total, twice', () => {
 		const groupCount = 300
 		const factorsPerGroup = 30
-		const run = () => {
-			const groups = sequence(groupCount).map((groupIndex) =>
-				createFactorGroup(
-					`g${groupIndex}`,
-					'sum',
-					sequence(factorsPerGroup, groupIndex * factorsPerGroup).map((value) =>
-						createStaticFactor(`f${groupIndex}_${value}`, value),
-					),
-				),
-			)
-			return expectQuantitative(reasoner.reason({}, createQuantitativeDefinition('d', 'd', groups)))
-		}
 		const totalCount = groupCount * factorsPerGroup
 		const expectedTotal = (totalCount * (totalCount - 1)) / 2
 
-		const first = run()
+		const first = evaluateScale(groupCount, factorsPerGroup)
 		expect(first.value).toBe(expectedTotal)
 		expect(first.success).toBe(true)
 		expect(first.count).toBe(groupCount)
 
-		const second = run()
+		const second = evaluateScale(groupCount, factorsPerGroup)
 		expect(second.value).toBe(first.value)
 		expect(second.count).toBe(first.count)
 	})

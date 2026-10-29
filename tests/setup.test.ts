@@ -1,22 +1,10 @@
-// The proof of `tests/setup.ts` — the host-independent test infrastructure every Vitest
-// project in this workspace loads as `setupFiles[0]`. Its subject is that module's own
-// exported behavior: the narrowers, the builders, and the frozen data tables the suites
-// read. The `@src/core` production behavior those builders compose is proven by the
-// `src:core` suites, and nothing here re-proves it.
-
-import { describe, expect, it } from 'vitest'
-import { requireValue } from '@orkestrel/test'
-import type {
-	Expression,
-	InferentialResult,
-	LogicalResult,
-	QuantitativeResult,
-	ReasonResult,
-	Reasoning,
-	SymbolicExpression,
-	SymbolicResult,
-} from '@src/core'
 import {
+	NARROWERS,
+	LEAF,
+	TERM,
+	STEP,
+	readCompoundLayers,
+	readAdditionLayers,
 	ADVERSARIAL_SYMBOL_KEY,
 	ADVERSARIAL_VALUE_SUBJECT,
 	BASIC_SUBJECT,
@@ -27,10 +15,6 @@ import {
 	deepCompound,
 	deepFreeze,
 	DRIVER_SUBJECT,
-	expectInferential,
-	expectLogical,
-	expectQuantitative,
-	expectSymbolic,
 	EXTREME_NUMBERS,
 	INTEGER_KEY_SUBJECT,
 	NESTED_SUBJECT,
@@ -40,67 +24,30 @@ import {
 	sparse,
 	TRICKY_KEYS,
 } from './setup.js'
+import { describe, expect, it } from 'vitest'
+import { requireValue } from '@orkestrel/test'
+
+// The proof of `tests/setup.ts` — the host-independent test infrastructure every Vitest
+// project in this workspace loads as `setupFiles[0]`. Its subject is that module's own
+// exported behavior: the narrowers, the builders, and the frozen data tables the suites
+// read. The `@src/core` production behavior those builders compose is proven by the
+// `src:core` suites, and nothing here re-proves it.
 
 /** An inert `QuantitativeResult` — the narrowers read `reasoning` and nothing else. */
-const QUANTITATIVE_RESULT: QuantitativeResult = {
-	reasoning: 'quantitative',
-	value: 42,
-	groups: [],
-	count: 0,
-	success: true,
-	trace: [],
-	errors: [],
-}
 
 /** An inert `LogicalResult` — the {@link QUANTITATIVE_RESULT} sibling. */
-const LOGICAL_RESULT: LogicalResult = {
-	reasoning: 'logical',
-	conclusion: true,
-	rules: [],
-	count: 0,
-	success: true,
-	trace: [],
-	errors: [],
-}
 
 /** An inert `SymbolicResult` — the {@link QUANTITATIVE_RESULT} sibling. */
-const SYMBOLIC_RESULT: SymbolicResult = {
-	reasoning: 'symbolic',
-	solutions: {},
-	success: true,
-	trace: [],
-	errors: [],
-}
 
 /** An inert `InferentialResult` — the {@link QUANTITATIVE_RESULT} sibling. */
-const INFERENTIAL_RESULT: InferentialResult = {
-	reasoning: 'inferential',
-	derived: [],
-	success: true,
-	trace: [],
-	errors: [],
-}
 
 /** Each narrower paired with the reasoning it accepts and a result carrying that reasoning. */
-const NARROWERS: ReadonlyArray<{
-	readonly reasoning: Reasoning
-	readonly narrow: (result: ReasonResult | readonly ReasonResult[]) => ReasonResult
-	readonly result: ReasonResult
-}> = Object.freeze([
-	{ reasoning: 'quantitative', narrow: expectQuantitative, result: QUANTITATIVE_RESULT },
-	{ reasoning: 'logical', narrow: expectLogical, result: LOGICAL_RESULT },
-	{ reasoning: 'symbolic', narrow: expectSymbolic, result: SYMBOLIC_RESULT },
-	{ reasoning: 'inferential', narrow: expectInferential, result: INFERENTIAL_RESULT },
-])
 
 /** The leaf the compound-nesting cases wrap. */
-const LEAF: Expression = { form: 'atom', check: { field: 'age', operator: 'equals', value: 30 } }
 
 /** The innermost term the addition-nesting cases wrap. */
-const TERM: SymbolicExpression = { form: 'constant', value: 5 }
 
 /** The operand each addition layer adds. */
-const STEP: SymbolicExpression = { form: 'constant', value: 2 }
 
 describe('result narrowers', () => {
 	it('returns the matching single result unchanged', () => {
@@ -270,27 +217,19 @@ describe('sequence and fill builders', () => {
 
 describe('expression builders', () => {
 	it('wraps the leaf in one single-operand and-compound per layer', () => {
-		let node: Expression = deepCompound(3, LEAF)
-		let layers = 0
-		while (node.form === 'compound') {
-			expect(node.operator).toBe('and')
-			expect(node.operands).toHaveLength(1)
-			node = requireValue(node.operands[0])
-			layers += 1
-		}
+		const [node, layers] = readCompoundLayers(deepCompound(3, LEAF), (layer) => {
+			expect(layer.operator).toBe('and')
+			expect(layer.operands).toHaveLength(1)
+		})
 		expect(layers).toBe(3)
 		expect(node).toBe(LEAF)
 	})
 
 	it('left-nests one add operation per layer around the same step', () => {
-		let node: SymbolicExpression = deepAddition(3, TERM, STEP)
-		let layers = 0
-		while (node.form === 'operation') {
-			expect(node.operator).toBe('add')
-			expect(node.right).toBe(STEP)
-			node = node.left
-			layers += 1
-		}
+		const [node, layers] = readAdditionLayers(deepAddition(3, TERM, STEP), (layer) => {
+			expect(layer.operator).toBe('add')
+			expect(layer.right).toBe(STEP)
+		})
 		expect(layers).toBe(3)
 		expect(node).toBe(TERM)
 	})

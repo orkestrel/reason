@@ -1,7 +1,12 @@
-import type { FactManagerEventMap } from '@src/core'
-import { createFact, createFactManager, FactManager, isReasonError } from '@src/core'
+import {
+	createFactFixture as fact,
+	createFactManagerEvents as events,
+	createFactManagerTargetCalls as createTargetCalls,
+	createFactManagerDestroyedCalls as createDestroyedCalls,
+} from '../../../../setup.js'
+import { createFactManager, FactManager, isReasonError } from '@src/core'
 import { describe, expect, it } from 'vitest'
-import { captureError, createRecorders } from '@orkestrel/test'
+import { captureError } from '@orkestrel/test'
 
 // `FactManager` — the self-owning, kind-free manager over an inferential
 // definition's `facts`. `Fact.id` is an AUTHORING label, so this manager's
@@ -9,17 +14,6 @@ import { captureError, createRecorders } from '@orkestrel/test'
 // batch family reporting exactly what it removed, `seat` is the owning
 // builder's SILENT bulk re-seat channel, and `destroy()` is idempotent with
 // every other call afterwards throwing DESTROYED.
-
-function fact(id: string, term = 'socrates') {
-	return createFact(id, 'human', [term])
-}
-
-function events(manager: { readonly emitter: FactManager['emitter'] }) {
-	return createRecorders<
-		FactManagerEventMap,
-		'append' | 'prepend' | 'replace' | 'remove' | 'destroy'
-	>(manager.emitter, ['append', 'prepend', 'replace', 'remove', 'destroy'])
-}
 
 describe('FactManager — construction and accessors', () => {
 	it('defaults to an empty collection and seeds from options', () => {
@@ -74,10 +68,7 @@ describe('FactManager — placement verbs', () => {
 
 	it('throws TARGET when a target names no existing fact', () => {
 		const facts = createFactManager({ facts: [fact('a')] })
-		for (const call of [
-			() => facts.append(fact('b'), 'absent'),
-			() => facts.prepend(fact('c'), 'absent'),
-		]) {
+		for (const call of createTargetCalls(facts)) {
 			const error = captureError(call)
 			if (!isReasonError(error)) throw new Error('expected a ReasonError')
 			expect(error.code).toBe('TARGET')
@@ -168,16 +159,7 @@ describe('FactManager — destroy', () => {
 	it('throws DESTROYED on every call after destroy', () => {
 		const facts = createFactManager({ facts: [fact('a')] })
 		facts.destroy()
-		for (const call of [
-			() => facts.fact('a'),
-			() => facts.facts(),
-			() => facts.append(fact('b')),
-			() => facts.prepend(fact('c')),
-			() => facts.replace(fact('a')),
-			() => facts.remove('a'),
-			() => facts.remove(['a']),
-			() => facts.remove(),
-		]) {
+		for (const call of createDestroyedCalls(facts)) {
 			const error = captureError(call)
 			if (!isReasonError(error)) throw new Error('expected a ReasonError')
 			expect(error.code).toBe('DESTROYED')

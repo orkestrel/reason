@@ -89,11 +89,7 @@ export class GroupManager implements GroupManagerInterface {
 			return
 		}
 		if (isArray<string>(idOrIds)) {
-			let all = true
-			for (const id of idOrIds) {
-				if (!this.#removeOne(id)) all = false
-			}
-			return all
+			return Iterator.from(idOrIds).reduce((all, id) => this.#removeOne(id) && all, true)
 		}
 		return this.#removeOne(idOrIds)
 	}

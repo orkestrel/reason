@@ -84,11 +84,7 @@ export class VariableManager implements VariableManagerInterface {
 			return
 		}
 		if (isArray<string>(nameOrNames)) {
-			let all = true
-			for (const name of nameOrNames) {
-				if (!this.#removeOne(name)) all = false
-			}
-			return all
+			return Iterator.from(nameOrNames).reduce((all, name) => this.#removeOne(name) && all, true)
 		}
 		return this.#removeOne(nameOrNames)
 	}

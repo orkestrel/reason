@@ -181,48 +181,28 @@ export class DefinitionBuilder implements DefinitionBuilderInterface {
 				{ definition: this.#id, reasoning: current.reasoning },
 			)
 		}
-		let merged: Definition
-		if (current.reasoning === 'quantitative' && incoming.reasoning === 'quantitative') {
-			merged = mergeQuantitativeDefinition(current, incoming)
-		} else if (current.reasoning === 'logical' && incoming.reasoning === 'logical') {
-			merged = mergeLogicalDefinition(current, incoming)
-		} else if (current.reasoning === 'symbolic' && incoming.reasoning === 'symbolic') {
-			merged = mergeSymbolicDefinition(current, incoming)
-		} else if (current.reasoning === 'inferential' && incoming.reasoning === 'inferential') {
-			merged = mergeInferentialDefinition(current, incoming)
-		} else {
-			merged = current
-		}
+		const merged =
+			current.reasoning === 'quantitative' && incoming.reasoning === 'quantitative'
+				? mergeQuantitativeDefinition(current, incoming)
+				: current.reasoning === 'logical' && incoming.reasoning === 'logical'
+					? mergeLogicalDefinition(current, incoming)
+					: current.reasoning === 'symbolic' && incoming.reasoning === 'symbolic'
+						? mergeSymbolicDefinition(current, incoming)
+						: current.reasoning === 'inferential' && incoming.reasoning === 'inferential'
+							? mergeInferentialDefinition(current, incoming)
+							: current
 		this.#seat(merged)
 		this.#emitter.emit('merge', merged.reasoning)
 	}
 
 	clear(key: string): void {
 		this.#ensureAlive()
-		const current = this.#compose()
-		let next: Definition
-		if (current.reasoning === 'quantitative' && isQuantitativeClearKey(key)) {
-			next = clearQuantitativeDefinition(current, key)
-		} else if (current.reasoning === 'logical' && isLogicalClearKey(key)) {
-			next = clearLogicalDefinition(current, key)
-		} else if (current.reasoning === 'symbolic' && isSymbolicClearKey(key)) {
-			next = clearSymbolicDefinition(current, key)
-		} else if (current.reasoning === 'inferential' && isInferentialClearKey(key)) {
-			next = clearInferentialDefinition(current, key)
-		} else {
-			throw new ReasonError(
-				'MISMATCH',
-				`"${key}" is not a clearable field for reasoning "${current.reasoning}"`,
-				{ key, reasoning: current.reasoning },
-			)
-		}
-		this.#envelope = definitionToEnvelope(next)
+		this.#envelope = definitionToEnvelope(this.#clear(key))
 		this.#emitter.emit('clear', key)
 	}
 
 	destroy(): void {
-		// Cascade to every manager first (each idempotent, emitter last), then the
-		// builder's own destroy emit, then its emitter last — idempotent overall.
+		// Destroy child managers before their owner's emitter.
 		this.#groups.destroy()
 		this.#factors.destroy()
 		this.#rules.destroy()
@@ -233,6 +213,25 @@ export class DefinitionBuilder implements DefinitionBuilderInterface {
 		this.#destroyed = true
 		this.#emitter.emit('destroy')
 		this.#emitter.destroy()
+	}
+
+	#clear(key: string): Definition {
+		const current = this.#compose()
+		if (current.reasoning === 'quantitative' && isQuantitativeClearKey(key)) {
+			return clearQuantitativeDefinition(current, key)
+		} else if (current.reasoning === 'logical' && isLogicalClearKey(key)) {
+			return clearLogicalDefinition(current, key)
+		} else if (current.reasoning === 'symbolic' && isSymbolicClearKey(key)) {
+			return clearSymbolicDefinition(current, key)
+		} else if (current.reasoning === 'inferential' && isInferentialClearKey(key)) {
+			return clearInferentialDefinition(current, key)
+		} else {
+			throw new ReasonError(
+				'MISMATCH',
+				`"${key}" is not a clearable field for reasoning "${current.reasoning}"`,
+				{ key, reasoning: current.reasoning },
+			)
+		}
 	}
 
 	// Compose the current plain definition from the scalar envelope and the

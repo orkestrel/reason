@@ -1,7 +1,12 @@
-import type { RuleManagerEventMap } from '@src/core'
+import {
+	createRuleFixture as rule,
+	createRuleManagerEvents as events,
+	createRuleManagerTargetCalls as createTargetCalls,
+	createRuleManagerDestroyedCalls as createDestroyedCalls,
+} from '../../../../setup.js'
 import { createAtom, createRule, createRuleManager, isReasonError, RuleManager } from '@src/core'
 import { describe, expect, it } from 'vitest'
-import { captureError, createRecorders } from '@orkestrel/test'
+import { captureError } from '@orkestrel/test'
 
 // `RuleManager` — the self-owning, kind-free manager over a logical
 // definition's `rules`. Rule order is LOAD-BEARING (the forward conclusion is
@@ -10,17 +15,6 @@ import { captureError, createRecorders } from '@orkestrel/test'
 // it removed, `seat` is the owning builder's SILENT bulk re-seat channel, and
 // `destroy()` is idempotent with every other call afterwards throwing
 // DESTROYED.
-
-function rule(id: string) {
-	return createRule(id, [createAtom('age', 'from', 18)], createAtom(id, 'equals', true))
-}
-
-function events(manager: { readonly emitter: RuleManager['emitter'] }) {
-	return createRecorders<
-		RuleManagerEventMap,
-		'append' | 'prepend' | 'replace' | 'remove' | 'destroy'
-	>(manager.emitter, ['append', 'prepend', 'replace', 'remove', 'destroy'])
-}
 
 describe('RuleManager — construction and accessors', () => {
 	it('defaults to an empty collection and seeds from options', () => {
@@ -82,10 +76,7 @@ describe('RuleManager — placement verbs', () => {
 
 	it('throws TARGET when a target names no existing rule', () => {
 		const rules = createRuleManager({ rules: [rule('a')] })
-		for (const call of [
-			() => rules.append(rule('b'), 'absent'),
-			() => rules.prepend(rule('c'), 'absent'),
-		]) {
+		for (const call of createTargetCalls(rules)) {
 			const error = captureError(call)
 			if (!isReasonError(error)) throw new Error('expected a ReasonError')
 			expect(error.code).toBe('TARGET')
@@ -168,17 +159,7 @@ describe('RuleManager — destroy', () => {
 	it('throws DESTROYED on every call after destroy', () => {
 		const rules = createRuleManager({ rules: [rule('a')] })
 		rules.destroy()
-		for (const call of [
-			() => rules.rule('a'),
-			() => rules.rules(),
-			() => rules.append(rule('b')),
-			() => rules.prepend(rule('c')),
-			() => rules.replace(rule('a')),
-			() => rules.remove('a'),
-			() => rules.remove(['a']),
-			() => rules.remove(),
-			() => rules.seat([]),
-		]) {
+		for (const call of createDestroyedCalls(rules)) {
 			const error = captureError(call)
 			if (!isReasonError(error)) throw new Error('expected a ReasonError')
 			expect(error.code).toBe('DESTROYED')

@@ -1,10 +1,21 @@
+import {
+	runQuantitativeScenario,
+	runLogicalScenario,
+	runSymbolicScenario,
+	runInferentialScenario,
+	runOffKindScenario,
+	runDefinitionBuilderMergeScenario as runMergeScenario,
+	createDefinitionBuilderDestroyedCalls as createDestroyedCalls,
+	createDefinitionBuilderUnbrandedBuilder as createUnbrandedBuilder,
+	deepFreeze,
+	runTwice,
+} from '../../../setup.js'
 import type {
 	Definition,
 	DefinitionBuilderEventMap,
 	DefinitionBuilderInterface,
 	FactorManagerEventMap,
 	GroupManagerEventMap,
-	QuantitativeDefinition,
 	VariableManagerEventMap,
 } from '@src/core'
 import {
@@ -28,7 +39,6 @@ import {
 } from '@src/core'
 import { describe, expect, it } from 'vitest'
 import { captureError, createRecorders } from '@orkestrel/test'
-import { deepFreeze, runTwice } from '../../../setup.js'
 
 // `DefinitionBuilder` — the definitions & subjects capability layer's stateful
 // builder: always-present SELF-OWNING manager
@@ -44,24 +54,7 @@ describe('DefinitionBuilder — groups & factors (quantitative)', () => {
 	it('round-trips append / prepend / replace / remove through the manager properties', () => {
 		const seed = deepFreeze(createQuantitativeDefinition('risk', 'Risk', []))
 
-		const scenario = (): QuantitativeDefinition => {
-			const definition = createDefinitionBuilder(seed)
-			definition.groups.append(createFactorGroup('g1', 'sum', []))
-			definition.groups.append(createFactorGroup('g2', 'sum', []))
-			definition.groups.prepend(createFactorGroup('g0', 'sum', []))
-			definition.factors.append('g1', createStaticFactor('f1', 10))
-			definition.factors.prepend('g1', createStaticFactor('f0', 5))
-			definition.factors.append('g1', createStaticFactor('f2', 1))
-			definition.factors.replace('g1', createStaticFactor('f2', 99))
-			definition.factors.remove('g1', 'f0')
-			definition.groups.replace(createFactorGroup('g2', 'product', []))
-			definition.groups.remove('g0')
-			const built = definition.build()
-			if (built.reasoning !== 'quantitative') throw new Error('expected quantitative')
-			return built
-		}
-
-		const [first, second] = runTwice(scenario)
+		const [first, second] = runTwice(() => runQuantitativeScenario(seed))
 
 		expect(first.groups.map((group) => group.id)).toEqual(['g1', 'g2'])
 		expect(first.groups[1]?.aggregation).toBe('product')
@@ -107,18 +100,7 @@ describe('DefinitionBuilder — rules (logical)', () => {
 		const r2 = createRule('r2', [], createAtom('flag', 'equals', true))
 		const r3 = createRule('r3', [], createAtom('other', 'equals', true))
 
-		const scenario = () => {
-			const definition = createDefinitionBuilder(seed)
-			definition.rules.append(r1)
-			definition.rules.append(r2)
-			definition.rules.prepend(r3)
-			definition.rules.replace(createRule('r2', [], createAtom('flag', 'equals', false)))
-			const built = definition.build()
-			if (built.reasoning !== 'logical') throw new Error('expected logical')
-			return built
-		}
-
-		const [first, second] = runTwice(scenario)
+		const [first, second] = runTwice(() => runLogicalScenario(seed, r1, r2, r3))
 
 		expect(first.rules.map((entry) => entry.id)).toEqual(['r3', 'r1', 'r2'])
 		expect(first.rules[2]?.conclusion).toEqual(createAtom('flag', 'equals', false))
@@ -140,22 +122,7 @@ describe('DefinitionBuilder — equations & variables (symbolic)', () => {
 		const e1 = createEquation('e1', createVariable('x'), createConstant(1), 'x')
 		const e2 = createEquation('e2', createVariable('y'), createConstant(2), 'y')
 
-		const scenario = () => {
-			const definition = createDefinitionBuilder(seed)
-			definition.equations.append(e1)
-			definition.equations.prepend(e2)
-			definition.equations.replace(
-				createEquation('e1', createVariable('x'), createConstant(9), 'x'),
-			)
-			definition.variables.add('a', 1)
-			definition.variables.add('b', 2)
-			definition.variables.remove('a')
-			const built = definition.build()
-			if (built.reasoning !== 'symbolic') throw new Error('expected symbolic')
-			return built
-		}
-
-		const [first, second] = runTwice(scenario)
+		const [first, second] = runTwice(() => runSymbolicScenario(seed, e1, e2))
 
 		expect(first.equations.map((entry) => entry.id)).toEqual(['e2', 'e1'])
 		expect(first.equations[1]?.right).toEqual(createConstant(9))
@@ -192,25 +159,7 @@ describe('DefinitionBuilder — facts & inferences (inferential)', () => {
 			createFact('c', 'mortal', ['?y']),
 		)
 
-		const scenario = () => {
-			const definition = createDefinitionBuilder(seed)
-			definition.facts.append(f1)
-			definition.facts.prepend(f2)
-			definition.inferences.append(i1)
-			definition.inferences.replace(
-				createInference(
-					'i1',
-					[createFact('p', 'human', ['?z'])],
-					createFact('c', 'mortal', ['?z']),
-				),
-			)
-			definition.inferences.prepend(i2)
-			const built = definition.build()
-			if (built.reasoning !== 'inferential') throw new Error('expected inferential')
-			return built
-		}
-
-		const [first, second] = runTwice(scenario)
+		const [first, second] = runTwice(() => runInferentialScenario(seed, f1, f2, i1, i2))
 
 		expect(first.facts.map((entry) => entry.id)).toEqual(['f2', 'f1'])
 		expect(first.inferences.map((entry) => entry.id)).toEqual(['i2', 'i1'])
@@ -233,25 +182,7 @@ describe('DefinitionBuilder — facts & inferences (inferential)', () => {
 
 describe('DefinitionBuilder — off-kind managers are inert (kind-free)', () => {
 	it('mutating every off-kind manager does not throw and build() omits their collections', () => {
-		const scenario = (): QuantitativeDefinition => {
-			const definition = createDefinitionBuilder(createQuantitativeDefinition('risk', 'Risk', []))
-			definition.rules.append(createRule('r1', [], createAtom('a', 'equals', true)))
-			definition.equations.append(createEquation('e1', createVariable('x'), createConstant(1), 'x'))
-			definition.variables.add('x', 1)
-			definition.facts.append(createFact('f1', 'human', ['socrates']))
-			definition.inferences.append(
-				createInference(
-					'i1',
-					[createFact('p', 'human', ['?x'])],
-					createFact('c', 'mortal', ['?x']),
-				),
-			)
-			const built = definition.build()
-			if (built.reasoning !== 'quantitative') throw new Error('expected quantitative')
-			return built
-		}
-
-		const [first, second] = runTwice(scenario)
+		const [first, second] = runTwice(runOffKindScenario)
 
 		expect('rules' in first).toBe(false)
 		expect('equations' in first).toBe(false)
@@ -339,18 +270,7 @@ describe('DefinitionBuilder — merge', () => {
 			createFactorGroup('g2', 'sum', []),
 		])
 
-		const scenario = () => {
-			const definition = createDefinitionBuilder(base)
-			const events = createRecorders<DefinitionBuilderEventMap, 'merge'>(definition.emitter, [
-				'merge',
-			])
-			definition.merge(incoming)
-			const built = definition.build()
-			if (built.reasoning !== 'quantitative') throw new Error('expected quantitative')
-			return { built, mergeCalls: events.merge.calls }
-		}
-
-		const [first, second] = runTwice(scenario)
+		const [first, second] = runTwice(() => runMergeScenario(base, incoming))
 
 		expect(first.built.id).toBe('risk')
 		expect(first.built.name).toBe('Risk v2')
@@ -469,20 +389,7 @@ describe('DefinitionBuilder — manager lifecycle', () => {
 		definition.groups.append(createFactorGroup('g1', 'sum', []))
 		definition.destroy()
 
-		for (const call of [
-			() => definition.build(),
-			() => definition.merge(createQuantitativeDefinition('risk', 'Risk', [])),
-			() => definition.clear('description'),
-			() => definition.groups.groups(),
-			() => definition.groups.append(createFactorGroup('g2', 'sum', [])),
-			() => definition.factors.factors('g1'),
-			() => definition.factors.append('g1', createStaticFactor('f1', 10)),
-			() => definition.rules.rules(),
-			() => definition.equations.equations(),
-			() => definition.variables.variables(),
-			() => definition.facts.facts(),
-			() => definition.inferences.inferences(),
-		]) {
+		for (const call of createDestroyedCalls(definition)) {
 			const error = captureError(call)
 			if (!isReasonError(error)) throw new Error('expected a ReasonError')
 			expect(error.code).toBe('DESTROYED')
@@ -564,7 +471,7 @@ describe('DefinitionBuilder — id defaulting and seed protection', () => {
 
 describe('DefinitionBuilder — brand soundness', () => {
 	it('a plain record forging a build() field does NOT narrow as a DefinitionBuilder', () => {
-		const forged: unknown = { build: () => createQuantitativeDefinition('risk', 'Risk', []) }
+		const forged: unknown = createUnbrandedBuilder()
 		expect(isDefinitionBuilder(forged)).toBe(false)
 	})
 

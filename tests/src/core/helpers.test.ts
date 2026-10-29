@@ -1,3 +1,16 @@
+import {
+	readVariablePresence,
+	type Item,
+	ADVERSARIAL_VALUE_SUBJECT,
+	EXTREME_NUMBERS,
+	INTEGER_KEY_SUBJECT,
+	TRICKY_KEYS,
+	deepAddition,
+	deepCompound,
+	deepFreeze,
+	sequence,
+	sparse,
+} from '../../setup.js'
 import type { MathOperation, Subject } from '@src/core'
 import {
 	addVariable,
@@ -12,6 +25,7 @@ import {
 	assignField,
 	buildErrorResult,
 	clamp,
+	iterateIndices,
 	clearInferentialDefinition,
 	clearLogicalDefinition,
 	clearQuantitativeDefinition,
@@ -97,17 +111,6 @@ import {
 } from '@src/core'
 import { describe, expect, it } from 'vitest'
 import { captureError, invokeUnchecked } from '@orkestrel/test'
-import {
-	ADVERSARIAL_VALUE_SUBJECT,
-	EXTREME_NUMBERS,
-	INTEGER_KEY_SUBJECT,
-	TRICKY_KEYS,
-	deepAddition,
-	deepCompound,
-	deepFreeze,
-	sequence,
-	sparse,
-} from '../../setup.js'
 
 // The reasons helpers — `formatField`'s display form, the `clamp` / `roundTo`
 // numerics (inverted bounds, negative and overflowing precisions included), the
@@ -293,16 +296,9 @@ describe('sortByPriority — hole & junk tolerance (total, not throwing)', () =>
 
 	it('drops a null element (ill-typed) without throwing — priority order preserved', () => {
 		const items = [{ id: 'a', priority: 2 }, null, { id: 'b', priority: 1 }]
-		const sortByPriorityRaw = (
-			...args: never[]
-		): ReadonlyArray<{ readonly id: string; readonly priority?: number }> => {
-			const value = args[0]
-			if (value === undefined) throw new Error('expected items')
-			return sortByPriority<{ readonly id: string; readonly priority?: number }>(value)
-		}
 		const sorted = invokeUnchecked<ReadonlyArray<{ readonly id: string }>>(
 			undefined,
-			sortByPriorityRaw,
+			sortByPriority<{ readonly id: string; readonly priority?: number }>,
 			[items],
 		)
 		expect(sorted.map((item) => item.id)).toEqual(['b', 'a'])
@@ -1109,8 +1105,7 @@ describe('extractAtoms — atom leaves of an expression tree', () => {
 	})
 
 	it('flattens a 500-deep single-operand compound to its one leaf', () => {
-		let expression = createAtom('leaf', 'equals', true)
-		for (let depth = 0; depth < 500; depth += 1) expression = createCompound('and', [expression])
+		const expression = deepCompound(500, createAtom('leaf', 'equals', true))
 		expect(extractAtoms(expression)).toEqual([createAtom('leaf', 'equals', true)])
 	})
 
@@ -1377,7 +1372,6 @@ describe('extractAtoms — sparse compound operands', () => {
 
 describe('subjectToFacts — enumeration order (integer-like keys first)', () => {
 	it('orders integer-like keys ascending, then string keys insertion-ordered, id skipped', () => {
-		const run = () => subjectToFacts(INTEGER_KEY_SUBJECT).facts
 		const expected = [
 			{ id: 'subject:1', predicate: 'has', terms: ['1', 1], confidence: 1 },
 			{ id: 'subject:2', predicate: 'has', terms: ['2', 2], confidence: 1 },
@@ -1385,8 +1379,8 @@ describe('subjectToFacts — enumeration order (integer-like keys first)', () =>
 			{ id: 'subject:zeta', predicate: 'has', terms: ['zeta', 26], confidence: 1 },
 			{ id: 'subject:alpha', predicate: 'has', terms: ['alpha', 1], confidence: 1 },
 		]
-		const first = run()
-		const second = run()
+		const first = subjectToFacts(INTEGER_KEY_SUBJECT).facts
+		const second = subjectToFacts(INTEGER_KEY_SUBJECT).facts
 		expect(first).toEqual(expected)
 		expect(second).toEqual(expected)
 		expect(first).toEqual(second)
@@ -1418,21 +1412,24 @@ describe('subjectToFacts — ADVERSARIAL_VALUE_SUBJECT (symbol key, bigint/symbo
 
 describe('findDuplicates — integer-like strings mixed with TRICKY_KEYS (Map insertion order)', () => {
 	it('pins first-occurrence order — no numeric reordering (unlike Object.keys)', () => {
-		const run = () =>
+		const expected = ['10', '__proto__']
+		expect(
 			findDuplicates(
 				['10', '__proto__', '2', '10', 'constructor', '__proto__', '1'].map((id) => ({ id })),
-			)
-		const expected = ['10', '__proto__']
-		expect(run()).toEqual(expected)
-		expect(run()).toEqual(expected)
+			),
+		).toEqual(expected)
+		expect(
+			findDuplicates(
+				['10', '__proto__', '2', '10', 'constructor', '__proto__', '1'].map((id) => ({ id })),
+			),
+		).toEqual(expected)
 	})
 
 	it('mixes every TRICKY_KEYS value with integer-like ids, first-occurrence order preserved', () => {
 		const ids = [...TRICKY_KEYS, '9', '3', ...TRICKY_KEYS]
-		const run = () => findDuplicates(ids.map((id) => ({ id })))
 		const expected = [...TRICKY_KEYS]
-		expect(run()).toEqual(expected)
-		expect(run()).toEqual(expected)
+		expect(findDuplicates(ids.map((id) => ({ id })))).toEqual(expected)
+		expect(findDuplicates(ids.map((id) => ({ id })))).toEqual(expected)
 	})
 })
 
@@ -1499,12 +1496,8 @@ describe('extractAtoms / containsVariable — totality at 10,000-deep nesting', 
 
 	it('containsVariable over a 10,000-deep addition finds a present name, misses an absent one, twice', () => {
 		const expression = deepAddition(10000, createVariable('x'), createConstant(1))
-		const run = () => ({
-			present: containsVariable(expression, 'x', {}),
-			absent: containsVariable(expression, 'y', {}),
-		})
-		const first = run()
-		const second = run()
+		const first = readVariablePresence(expression)
+		const second = readVariablePresence(expression)
 		expect(first).toEqual({ present: true, absent: false })
 		expect(second).toEqual({ present: true, absent: false })
 		expect(first).toEqual(second)
@@ -1513,27 +1506,20 @@ describe('extractAtoms / containsVariable — totality at 10,000-deep nesting', 
 
 // === Definitions & subjects capability layer ================================
 
-interface Item {
-	readonly id: string
-	readonly v?: number
-}
-
 describe('appendById / prependById — dedup-then-insert primitives', () => {
 	it('appendById dedups an existing id and inserts at the end', () => {
 		const items = deepFreeze<readonly Item[]>([{ id: 'a' }, { id: 'b' }])
-		const run = () => appendById(items, { id: 'a', v: 9 })
 		const expected = [{ id: 'b' }, { id: 'a', v: 9 }]
-		expect(run()).toEqual(expected)
-		expect(run()).toEqual(expected)
+		expect(appendById(items, { id: 'a', v: 9 })).toEqual(expected)
+		expect(appendById(items, { id: 'a', v: 9 })).toEqual(expected)
 		expect(items).toEqual([{ id: 'a' }, { id: 'b' }]) // input untouched
 	})
 
 	it('appendById with a target inserts immediately after it', () => {
 		const items = deepFreeze<readonly Item[]>([{ id: 'a' }, { id: 'b' }])
-		const run = () => appendById(items, { id: 'c' }, 'a').map((item) => item.id)
 		const expected = ['a', 'c', 'b']
-		expect(run()).toEqual(expected)
-		expect(run()).toEqual(expected)
+		expect(appendById(items, { id: 'c' }, 'a').map((item) => item.id)).toEqual(expected)
+		expect(appendById(items, { id: 'c' }, 'a').map((item) => item.id)).toEqual(expected)
 	})
 
 	it('appendById throws ReasonError("TARGET") when target names no element', () => {
@@ -1546,18 +1532,16 @@ describe('appendById / prependById — dedup-then-insert primitives', () => {
 
 	it('prependById dedups an existing id and inserts at the start', () => {
 		const items = deepFreeze<readonly Item[]>([{ id: 'a' }, { id: 'b' }])
-		const run = () => prependById(items, { id: 'b', v: 9 }).map((item) => item.id)
 		const expected = ['b', 'a']
-		expect(run()).toEqual(expected)
-		expect(run()).toEqual(expected)
+		expect(prependById(items, { id: 'b', v: 9 }).map((item) => item.id)).toEqual(expected)
+		expect(prependById(items, { id: 'b', v: 9 }).map((item) => item.id)).toEqual(expected)
 	})
 
 	it('prependById with a target inserts immediately before it', () => {
 		const items = deepFreeze<readonly Item[]>([{ id: 'a' }, { id: 'b' }])
-		const run = () => prependById(items, { id: 'c' }, 'b').map((item) => item.id)
 		const expected = ['a', 'c', 'b']
-		expect(run()).toEqual(expected)
-		expect(run()).toEqual(expected)
+		expect(prependById(items, { id: 'c' }, 'b').map((item) => item.id)).toEqual(expected)
+		expect(prependById(items, { id: 'c' }, 'b').map((item) => item.id)).toEqual(expected)
 	})
 
 	it('prependById throws ReasonError("TARGET") when target names no element', () => {
@@ -1569,13 +1553,10 @@ describe('appendById / prependById — dedup-then-insert primitives', () => {
 
 	it('appendById over a sparse array skips holes (hostile input)', () => {
 		const items = sparse<Item>(3, [[1, { id: 'a' }]])
-		const appendByIdRaw = (...args: never[]): readonly Item[] => {
-			const existing = args[0]
-			const item = args[1]
-			if (existing === undefined || item === undefined) throw new Error('expected items')
-			return appendById<Item>(existing, item)
-		}
-		const result = invokeUnchecked<readonly Item[]>(undefined, appendByIdRaw, [items, { id: 'z' }])
+		const result = invokeUnchecked<readonly Item[]>(undefined, appendById<Item>, [
+			items,
+			{ id: 'z' },
+		])
 		expect(result.map((item) => item.id)).toEqual(['a', 'z'])
 	})
 })
@@ -1586,13 +1567,12 @@ describe('replaceById / removeById — position-preserving swap & filter', () =>
 			{ id: 'a', v: 1 },
 			{ id: 'b', v: 2 },
 		])
-		const run = () => replaceById(items, { id: 'a', v: 9 })
 		const expected = [
 			{ id: 'a', v: 9 },
 			{ id: 'b', v: 2 },
 		]
-		expect(run()).toEqual(expected)
-		expect(run()).toEqual(expected)
+		expect(replaceById(items, { id: 'a', v: 9 })).toEqual(expected)
+		expect(replaceById(items, { id: 'a', v: 9 })).toEqual(expected)
 	})
 
 	it('replaceById appends when no same-id element exists', () => {
@@ -1602,9 +1582,8 @@ describe('replaceById / removeById — position-preserving swap & filter', () =>
 
 	it('removeById filters out every same-id element, never throwing', () => {
 		const items = deepFreeze<readonly Item[]>([{ id: 'a' }, { id: 'b' }])
-		const run = () => removeById(items, 'a')
-		expect(run()).toEqual([{ id: 'b' }])
-		expect(run()).toEqual([{ id: 'b' }])
+		expect(removeById(items, 'a')).toEqual([{ id: 'b' }])
+		expect(removeById(items, 'a')).toEqual([{ id: 'b' }])
 	})
 
 	it('removeById is a same-length no-op copy when the id is absent', () => {
@@ -1619,13 +1598,7 @@ describe('replaceById / removeById — position-preserving swap & filter', () =>
 			[1, { id: TRICKY_KEYS[0] ?? '__proto__' }],
 			[3, { id: 'b' }],
 		])
-		const removeByIdRaw = (...args: never[]): readonly Item[] => {
-			const existing = args[0]
-			const id = args[1]
-			if (existing === undefined || id === undefined) throw new Error('expected items and id')
-			return removeById<Item>(existing, id)
-		}
-		expect(() => invokeUnchecked(undefined, removeByIdRaw, [items, 'nope'])).not.toThrow()
+		expect(() => invokeUnchecked(undefined, removeById<Item>, [items, 'nope'])).not.toThrow()
 	})
 })
 
@@ -1639,14 +1612,13 @@ describe('mergeById — incoming-order-first upsert with base-only survivors', (
 			{ id: 'c', v: 3 },
 			{ id: 'a', v: 9 },
 		])
-		const run = () => mergeById(base, incoming)
 		const expected = [
 			{ id: 'c', v: 3 },
 			{ id: 'a', v: 9 },
 			{ id: 'b', v: 2 },
 		]
-		expect(run()).toEqual(expected)
-		expect(run()).toEqual(expected)
+		expect(mergeById(base, incoming)).toEqual(expected)
+		expect(mergeById(base, incoming)).toEqual(expected)
 	})
 
 	it('a resolve callback reconciles a matched pair instead of incoming-wins-wholesale', () => {
@@ -1801,9 +1773,8 @@ describe('symbolic change/extend helpers — appendEquation / prependEquation / 
 
 	it('addVariable upserts, removeVariable omits the key entirely (never undefined)', () => {
 		const definition = deepFreeze(createSymbolicDefinition('s', 'S', [], { variables: { x: 1 } }))
-		const run = () => addVariable(definition, 'y', 2)
-		expect(run().variables).toEqual({ x: 1, y: 2 })
-		expect(run().variables).toEqual({ x: 1, y: 2 })
+		expect(addVariable(definition, 'y', 2).variables).toEqual({ x: 1, y: 2 })
+		expect(addVariable(definition, 'y', 2).variables).toEqual({ x: 1, y: 2 })
 
 		const cleared = removeVariable(definition, 'x')
 		expect(cleared.variables).toEqual({})
@@ -1898,13 +1869,12 @@ describe('merge helpers — whole-definition reconciliation', () => {
 				createFactorGroup('g3', 'sum', []),
 			]),
 		)
-		const run = () => mergeQuantitativeDefinition(base, incoming)
-		const merged = run()
+		const merged = mergeQuantitativeDefinition(base, incoming)
 		expect(merged.id).toBe('risk') // base id preserved
 		expect(merged.name).toBe('Risk v2') // incoming-wins scalar
 		expect(merged.groups.map((g) => g.id)).toEqual(['g1', 'g3', 'g2']) // incoming order, then base survivor
 		expect(merged.groups[0]?.factors.map((f) => f.id)).toEqual(['f2', 'f1']) // recursed factor merge, incoming first
-		expect(run()).toEqual(merged)
+		expect(mergeQuantitativeDefinition(base, incoming)).toEqual(merged)
 		expect(base.groups).toEqual([
 			createFactorGroup('g1', 'sum', [createStaticFactor('f1', 1)]),
 			createFactorGroup('g2', 'sum', []),
@@ -1984,22 +1954,15 @@ describe('clear helpers — optional-field key-deletion', () => {
 
 	it('clearing an already-absent key is a total no-op fresh copy', () => {
 		const definition = deepFreeze(createQuantitativeDefinition('risk', 'Risk', []))
-		const run = () => clearQuantitativeDefinition(definition, 'precision')
-		expect(run()).toEqual(definition)
-		expect(run()).not.toBe(definition)
+		expect(clearQuantitativeDefinition(definition, 'precision')).toEqual(definition)
+		expect(clearQuantitativeDefinition(definition, 'precision')).not.toBe(definition)
 	})
 
 	it('clearQuantitativeDefinition with a hostile non-listed key is total (invokeUnchecked)', () => {
 		const definition = deepFreeze(createQuantitativeDefinition('risk', 'Risk', []))
-		const clearRaw = (...args: never[]) => {
-			const current = args[0]
-			const key = args[1]
-			if (current === undefined || key === undefined) {
-				throw new Error('expected definition and key')
-			}
-			return clearQuantitativeDefinition(current, key)
-		}
-		expect(() => invokeUnchecked(undefined, clearRaw, [definition, '__proto__'])).not.toThrow()
+		expect(() =>
+			invokeUnchecked(undefined, clearQuantitativeDefinition, [definition, '__proto__']),
+		).not.toThrow()
 	})
 })
 
@@ -2008,9 +1971,8 @@ describe('parseDefinition — safe JSON round-trip', () => {
 		const definition = createLogicalDefinition('e', 'E', [
 			createRule('r1', [], createAtom('a', 'equals', true)),
 		])
-		const run = () => parseDefinition(JSON.stringify(definition))
-		expect(run()).toEqual(definition)
-		expect(run()).toEqual(definition)
+		expect(parseDefinition(JSON.stringify(definition))).toEqual(definition)
+		expect(parseDefinition(JSON.stringify(definition))).toEqual(definition)
 	})
 
 	it('fails safe to undefined on malformed JSON or a non-definition shape', () => {
@@ -2023,9 +1985,8 @@ describe('parseDefinition — safe JSON round-trip', () => {
 describe('subject engine — assignField / removeField / mergeSubjects / repeatSubject', () => {
 	it('assignField upserts a key through a copy-on-write spread, id-agnostic', () => {
 		const subject = deepFreeze({ id: 's1', age: 30 })
-		const run = () => assignField(subject, 'age', 31)
-		expect(run()).toEqual({ id: 's1', age: 31 })
-		expect(run()).toEqual({ id: 's1', age: 31 })
+		expect(assignField(subject, 'age', 31)).toEqual({ id: 's1', age: 31 })
+		expect(assignField(subject, 'age', 31)).toEqual({ id: 's1', age: 31 })
 		expect(assignField(subject, 'id', 'changed')).toEqual({ id: 'changed', age: 30 }) // id-agnostic
 		expect(subject).toEqual({ id: 's1', age: 30 }) // input untouched
 	})
@@ -2040,25 +2001,18 @@ describe('subject engine — assignField / removeField / mergeSubjects / repeatS
 	it('removeField over TRICKY_KEYS values is total and never throws (invokeUnchecked)', () => {
 		const key = TRICKY_KEYS[0] ?? '__proto__'
 		const subject = { id: 's1', [key]: 'x' }
-		const removeFieldRaw = (...args: never[]) => {
-			const current = args[0]
-			const field = args[1]
-			if (current === undefined || field === undefined) throw new Error('expected subject and key')
-			return removeField(current, field)
-		}
-		expect(() => invokeUnchecked(undefined, removeFieldRaw, [subject, key])).not.toThrow()
+		expect(() => invokeUnchecked(undefined, removeField, [subject, key])).not.toThrow()
 		expect(
-			Object.hasOwn(invokeUnchecked<Subject>(undefined, removeFieldRaw, [subject, key]), key),
+			Object.hasOwn(invokeUnchecked<Subject>(undefined, removeField, [subject, key]), key),
 		).toBe(false)
 	})
 
 	it('mergeSubjects is incoming-wins per key, base id preserved when present', () => {
 		const base = deepFreeze({ id: 's1', age: 30 })
 		const incoming = deepFreeze({ id: 's2', age: 31, name: 'Alice' })
-		const run = () => mergeSubjects(base, incoming)
 		const expected = { id: 's1', age: 31, name: 'Alice' }
-		expect(run()).toEqual(expected)
-		expect(run()).toEqual(expected)
+		expect(mergeSubjects(base, incoming)).toEqual(expected)
+		expect(mergeSubjects(base, incoming)).toEqual(expected)
 	})
 
 	it('mergeSubjects with no base id lets incoming id (if any) through unpreserved', () => {
@@ -2069,14 +2023,13 @@ describe('subject engine — assignField / removeField / mergeSubjects / repeatS
 
 	it('repeatSubject mints deterministic baseId-index ids, run-twice equal', () => {
 		const subject = deepFreeze({ id: 's1', age: 30 })
-		const run = () => repeatSubject(subject, 3)
 		const expected = [
 			{ id: 's1-0', age: 30 },
 			{ id: 's1-1', age: 30 },
 			{ id: 's1-2', age: 30 },
 		]
-		expect(run()).toEqual(expected)
-		expect(run()).toEqual(expected)
+		expect(repeatSubject(subject, 3)).toEqual(expected)
+		expect(repeatSubject(subject, 3)).toEqual(expected)
 	})
 
 	it('repeatSubject with no string id passes clones through unchanged', () => {
@@ -2088,5 +2041,22 @@ describe('subject engine — assignField / removeField / mergeSubjects / repeatS
 		const subject = deepFreeze({ id: 's1' })
 		expect(repeatSubject(subject, 0)).toEqual([])
 		expect(repeatSubject(subject, -3)).toEqual([])
+	})
+})
+
+describe('iterateIndices', () => {
+	it('keeps integer-loop limits for fractional, negative, and NaN bounds', () => {
+		expect([...iterateIndices(2.5)]).toEqual([0, 1, 2])
+		expect([...iterateIndices(0)]).toEqual([])
+		expect([...iterateIndices(-1)]).toEqual([])
+		expect([...iterateIndices(Number.NaN)]).toEqual([])
+	})
+
+	it('advances an unbounded sequence lazily and remains exhausted after its limit', () => {
+		expect(iterateIndices(Number.POSITIVE_INFINITY).take(3).toArray()).toEqual([0, 1, 2])
+		const indices = iterateIndices(1)
+		expect(indices.next()).toEqual({ done: false, value: 0 })
+		expect(indices.next()).toEqual({ done: true, value: undefined })
+		expect(indices.next()).toEqual({ done: true, value: undefined })
 	})
 })

@@ -1,4 +1,23 @@
 import {
+	RISK_DEFINITION,
+	ELIGIBILITY_DEFINITION,
+	RATE_DEFINITION,
+	readApplied,
+	runReasonScenarios,
+	runScalePipeline,
+	SCORE_DEFINITION,
+	TIER_DEFINITION,
+	RATE_CHAIN,
+	CLASSIFY,
+	createThrowingReasoner,
+	deepFreeze,
+	expectInferential,
+	expectLogical,
+	expectQuantitative,
+	expectSymbolic,
+	sequence,
+} from '../../setup.js'
+import {
 	createAggregator,
 	createAtom,
 	createBounds,
@@ -16,12 +35,10 @@ import {
 	createInferentialReasoner,
 	createLogicalDefinition,
 	createLogicalReasoner,
-	createLookupFactor,
 	createLookupSource,
 	createOperation,
 	createQuantitativeDefinition,
 	createQuantitativeReasoner,
-	createRangeFactor,
 	createRangeSource,
 	createReason,
 	createRule,
@@ -45,16 +62,6 @@ import {
 } from '@src/core'
 import { describe, expect, it } from 'vitest'
 import { captureError } from '@orkestrel/test'
-import {
-	buildSubjects,
-	createThrowingReasoner,
-	deepFreeze,
-	expectInferential,
-	expectLogical,
-	expectQuantitative,
-	expectSymbolic,
-	sequence,
-} from '../../setup.js'
 
 // Cross-module composition of the reasons layer (a cross-cutting
 // "integration" test, exempt from the 1:1 source mirror): the
@@ -67,67 +74,6 @@ import {
 // orchestrator error surface (bail conversion, `isReasonError`, DESTROYED).
 
 // The underwriting fixtures, built exclusively with the public builders.
-const RISK_DEFINITION = createQuantitativeDefinition(
-	'risk-score',
-	'Risk Score',
-	[
-		createFactorGroup('age', 'sum', [
-			createRangeFactor('age-band', 'age', [
-				{ bounds: createBounds(undefined, 24), value: 30 },
-				{ bounds: createBounds(25, 64), value: 15 },
-				{ bounds: createBounds(65), value: 10 },
-			]),
-		]),
-		createFactorGroup('financial', 'sum', [
-			createFieldFactor('income-score', 'income', {
-				transforms: [createTransform('divide', 1000)],
-				bounds: createBounds(0, 40),
-				fallback: 0,
-			}),
-			createLookupFactor('state-score', 'state', { CA: 5, NY: 8, TX: 2 }, { fallback: 1 }),
-		]),
-	],
-	{ base: 10, bounds: createBounds(0, 100), precision: 2 },
-)
-
-const ELIGIBILITY_DEFINITION = createLogicalDefinition(
-	'eligibility',
-	'Eligibility',
-	[
-		createRule('adult', [createAtom('age', 'from', 18)], createAtom('adult', 'equals', true)),
-		createRule('risk', [createAtom('riskScore', 'from', 40)], createAtom('riskOk', 'equals', true)),
-		createRule(
-			'eligible',
-			[createAtom('adult', 'equals', true), createAtom('riskOk', 'equals', true)],
-			createAtom('eligible', 'equals', true),
-		),
-	],
-	{ depth: 5 },
-)
-
-const RATE_DEFINITION = createSymbolicDefinition(
-	'rate',
-	'Rate',
-	[
-		createEquation(
-			'base-rate',
-			createVariable('baseRate'),
-			createOperation(
-				'subtract',
-				createConstant(15),
-				createOperation('divide', createVariable('riskScore'), createConstant(10)),
-			),
-			'baseRate',
-		),
-		createEquation(
-			'final-rate',
-			createVariable('finalRate'),
-			createOperation('maximum', createVariable('baseRate'), createConstant(3)),
-			'finalRate',
-		),
-	],
-	{ precision: 2 },
-)
 
 describe('reasons — quantitative → logical → symbolic pipeline', () => {
 	it('threads one applicant through risk scoring, eligibility, and rate solving', () => {
@@ -337,136 +283,14 @@ describe('reasons — error surface', () => {
 
 // Stage A — weighted quantitative: risk (weighted sum 46) + loyalty (weighted
 // average 6.5) + bonus (5) + base 10 = 67.5.
-const SCORE_DEFINITION = createQuantitativeDefinition(
-	'score',
-	'Score',
-	[
-		createFactorGroup('risk', 'sum', [
-			createRangeFactor(
-				'age',
-				'age',
-				[
-					{ bounds: createBounds(undefined, 25), value: 30 },
-					{ bounds: createBounds(26, 50), value: 15 },
-					{ bounds: createBounds(51), value: 25 },
-				],
-				{ weight: 2 },
-			),
-			createLookupFactor(
-				'region',
-				'region',
-				{ west: 10, east: 5, north: 8 },
-				{ fallback: 0, weight: 1 },
-			),
-			createFieldFactor('claims', 'claims', { weight: 3 }),
-		]),
-		createFactorGroup('loyalty', 'average', [
-			createFieldFactor('tenure', 'tenure', { weight: 1 }),
-			createFieldFactor('incomeScore', 'income', {
-				transforms: [createTransform('divide', 10000)],
-				bounds: createBounds(0, 10),
-				weight: 3,
-			}),
-		]),
-		createFactorGroup('bonus', 'sum', [createStaticFactor('flat', 5)]),
-	],
-	{ base: 10, precision: 2 },
-)
 
 // Stage B — 11 interdependent forward rules; derivations cascade preferred →
 // premium → { discountEligible, vip } → tier, so 9 of 11 rules apply.
-const TIER_DEFINITION = createLogicalDefinition('tier', 'Tier', [
-	createRule('adult', [createAtom('age', 'from', 18)], createAtom('adult', 'equals', true)),
-	createRule('senior', [createAtom('age', 'from', 65)], createAtom('senior', 'equals', true)),
-	createRule(
-		'scoreHigh',
-		[createAtom('score', 'above', 60)],
-		createAtom('highScore', 'equals', true),
-	),
-	createRule(
-		'scoreMid',
-		[createAtom('score', 'between', [40, 60])],
-		createAtom('midScore', 'equals', true),
-	),
-	createRule('lowClaims', [createAtom('claims', 'to', 3)], createAtom('lowClaims', 'equals', true)),
-	createRule('loyal', [createAtom('tenure', 'from', 5)], createAtom('loyal', 'equals', true)),
-	createRule(
-		'preferred',
-		[createAtom('highScore', 'equals', true), createAtom('lowClaims', 'equals', true)],
-		createAtom('preferred', 'equals', true),
-	),
-	createRule(
-		'premium',
-		[createAtom('preferred', 'equals', true), createAtom('loyal', 'equals', true)],
-		createAtom('premium', 'equals', true),
-	),
-	createRule(
-		'discountEligible',
-		[createAtom('premium', 'equals', true), createAtom('adult', 'equals', true)],
-		createAtom('discountEligible', 'equals', true),
-	),
-	createRule(
-		'vip',
-		[
-			createAtom('premium', 'equals', true),
-			createAtom('highScore', 'equals', true),
-			createAtom('loyal', 'equals', true),
-		],
-		createAtom('vip', 'equals', true),
-	),
-	createRule(
-		'finalTier',
-		[createAtom('vip', 'equals', true), createAtom('discountEligible', 'equals', true)],
-		createAtom('tier', 'equals', 3),
-	),
-])
 
 // Stage C — a three-equation chain: premium = score / 10 = 6.75; adjusted =
 // premium + rules = 15.75; final = adjusted × 2 = 31.5.
-const RATE_CHAIN = createSymbolicDefinition(
-	'rateChain',
-	'Rate Chain',
-	[
-		createEquation(
-			'e1',
-			createVariable('premium'),
-			createOperation('divide', createVariable('score'), createConstant(10)),
-			'premium',
-		),
-		createEquation(
-			'e2',
-			createVariable('adjusted'),
-			createOperation('add', createVariable('premium'), createVariable('rules')),
-			'adjusted',
-		),
-		createEquation(
-			'e3',
-			createVariable('final'),
-			createOperation('multiply', createVariable('adjusted'), createConstant(2)),
-			'final',
-		),
-	],
-	{ precision: 2 },
-)
 
 // Stage D — derive classified(final) then reviewed(final) from the injected fact.
-const CLASSIFY = createInferentialDefinition(
-	'classify',
-	'Classify',
-	[],
-	[
-		createInference(
-			'cls',
-			[createFact('p', 'has', ['final', '?f'])],
-			createFact('c', 'classified', ['?f']),
-		),
-		createInference(
-			'rev',
-			[createFact('p2', 'classified', ['?f'])],
-			createFact('c2', 'reviewed', ['?f']),
-		),
-	],
-)
 
 describe('reasons — complex multi-step end-to-end problem', () => {
 	it('threads a weighted score through a 11-rule chain, an equation chain, and a derivation', () => {
@@ -501,12 +325,11 @@ describe('reasons — complex multi-step end-to-end problem', () => {
 		expect(tier.success).toBe(true)
 		expect(tier.conclusion).toBe(true)
 		expect(tier.count).toBe(9)
-		const applied = (id: string) => tier.rules.find((result) => result.id === id)?.applied
-		expect(applied('senior')).toBe(false)
-		expect(applied('scoreMid')).toBe(false)
-		expect(applied('preferred')).toBe(true)
-		expect(applied('vip')).toBe(true)
-		expect(applied('finalTier')).toBe(true)
+		expect(readApplied(tier, 'senior')).toBe(false)
+		expect(readApplied(tier, 'scoreMid')).toBe(false)
+		expect(readApplied(tier, 'preferred')).toBe(true)
+		expect(readApplied(tier, 'vip')).toBe(true)
+		expect(readApplied(tier, 'finalTier')).toBe(true)
 
 		// Stage C — the equation chain seeds from the score and the applied-rule count.
 		const rate = expectSymbolic(
@@ -726,15 +549,20 @@ describe('reasons — cross-reasoner determinism through the orchestrator', () =
 			{ depth: 5 },
 		)
 
-		const runAll = () => ({
-			quantitative: reason.reason(quantitativeSubject, RISK_DEFINITION),
-			logical: reason.reason(logicalSubject, ELIGIBILITY_DEFINITION),
-			symbolic: reason.reason(symbolicSubject, RATE_DEFINITION),
-			inferential: reason.reason({}, detInferentialDefinition),
-		})
-
-		const first = runAll()
-		const second = runAll()
+		const first = runReasonScenarios(
+			reason,
+			quantitativeSubject,
+			logicalSubject,
+			symbolicSubject,
+			detInferentialDefinition,
+		)
+		const second = runReasonScenarios(
+			reason,
+			quantitativeSubject,
+			logicalSubject,
+			symbolicSubject,
+			detInferentialDefinition,
+		)
 		expect(second).toEqual(first)
 
 		expect(expectQuantitative(first.quantitative).success).toBe(true)
@@ -848,25 +676,8 @@ describe('reasons — mixed pipeline at scale (5000 subjects, quantitative feedi
 			],
 		)
 
-		const run = () => {
-			const reason = createReason({
-				reasoners: [createQuantitativeReasoner(), createLogicalReasoner()],
-			})
-			const subjects = buildSubjects(5000)
-
-			const quantitativeResults = reason.reason(subjects, SCALE_SCORE_DEFINITION)
-			const scores = quantitativeResults.map((result) => expectQuantitative(result).value)
-
-			const logicalSubjects = scores.map((score) => ({ score }))
-			const logicalResults = reason.reason(logicalSubjects, SCALE_THRESHOLD_DEFINITION)
-			const conclusions = logicalResults.map((result) => expectLogical(result).conclusion)
-
-			reason.destroy()
-			return { scores, conclusions }
-		}
-
-		const first = run()
-		const second = run()
+		const first = runScalePipeline(SCALE_SCORE_DEFINITION, SCALE_THRESHOLD_DEFINITION)
+		const second = runScalePipeline(SCALE_SCORE_DEFINITION, SCALE_THRESHOLD_DEFINITION)
 		expect(second).toEqual(first)
 
 		expect(first.scores).toHaveLength(5000)

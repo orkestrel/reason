@@ -1,18 +1,12 @@
-import type { ReasonResult, ReasonValidationResult } from '@src/core'
 import {
-	createDefinitionBuilder,
-	createFact,
-	createInference,
-	createInferentialDefinition,
-	createInferentialReasoner,
-	createQuantitativeDefinition,
-	createSubjectBuilder,
-	InferentialReasoner,
-	isReasonError,
-} from '@src/core'
-import { describe, expect, it } from 'vitest'
-import { captureError, invokeUnchecked } from '@orkestrel/test'
-import {
+	inferentialReasoner as reasoner,
+	createMortality as mortality,
+	hasDerivedPair,
+	readConfidence,
+	createMixedArity,
+	createInferenceChain,
+	readProofLeaf,
+	createAncestry as ancestry,
 	ADVERSARIAL_VALUE_SUBJECT,
 	EXTREME_NUMBERS,
 	expectInferential,
@@ -21,6 +15,19 @@ import {
 	sparse,
 	TRICKY_KEYS,
 } from '../../../setup.js'
+import type { ReasonResult, ReasonValidationResult } from '@src/core'
+import {
+	createDefinitionBuilder,
+	createFact,
+	createInference,
+	createInferentialDefinition,
+	createQuantitativeDefinition,
+	createSubjectBuilder,
+	InferentialReasoner,
+	isReasonError,
+} from '@src/core'
+import { describe, expect, it } from 'vitest'
+import { captureError, invokeUnchecked } from '@orkestrel/test'
 
 // `InferentialReasoner` behavior — bidirectional positional unification
 // (`?`-prefixed string terms are variables on EITHER side, consistent within a
@@ -37,23 +44,7 @@ import {
 // tree (`fact` / `inference` — the single-word proof-node members), and
 // validate()'s duplicate-id + confidence-range warnings.
 
-const reasoner = createInferentialReasoner()
-
 // The canonical mortality scenario: human(socrates) and human(?x) → mortal(?x).
-function mortality(subjects: readonly string[] = ['socrates']) {
-	return createInferentialDefinition(
-		'mortality',
-		'Mortality',
-		subjects.map((name, index) => createFact(`f${index + 1}`, 'human', [name])),
-		[
-			createInference(
-				'i1',
-				[createFact('p1', 'human', ['?x'])],
-				createFact('c1', 'mortal', ['?x']),
-			),
-		],
-	)
-}
 
 describe('InferentialReasoner — identity', () => {
 	it('defaults its id to "inferential" and reports its reasoning', () => {
@@ -956,26 +947,6 @@ describe('InferentialReasoner — mismatch vs malformed shape', () => {
 // (base rule) and distance-2 (recursive rule reading the distance-1 ancestors that
 // same pass added) — so completeness is reached in L-1 passes, not L, for a chain of
 // L edges. The full closure is every (i, j) with i < j — C(6, 2) = 15 pairs.
-function ancestry(depth: number) {
-	return createInferentialDefinition(
-		'ancestry',
-		'Ancestry',
-		sequence(5).map((node) => createFact(`p${node}`, 'parent', [node, node + 1])),
-		[
-			createInference(
-				'base',
-				[createFact('b1', 'parent', ['?x', '?y'])],
-				createFact('cb', 'ancestor', ['?x', '?y']),
-			),
-			createInference(
-				'trans',
-				[createFact('t1', 'parent', ['?x', '?y']), createFact('t2', 'ancestor', ['?y', '?z'])],
-				createFact('ct', 'ancestor', ['?x', '?z']),
-			),
-		],
-		{ depth },
-	)
-}
 
 describe('InferentialReasoner — higher-arity joins', () => {
 	it('threads a middle variable through arity-3 premises into an arity-5 conclusion', () => {
@@ -1046,11 +1017,9 @@ describe('InferentialReasoner — relational join scale', () => {
 		expect(result.success).toBe(true)
 		expect(result.derived).toHaveLength(size * size)
 		expect(result.derived.every((derived) => derived.predicate === 'pair')).toBe(true)
-		const hasPair = (x: number, y: number) =>
-			result.derived.some((derived) => derived.terms[0] === x && derived.terms[1] === y)
-		expect(hasPair(0, 0)).toBe(true)
-		expect(hasPair(49, 49)).toBe(true)
-		expect(hasPair(7, 13)).toBe(true)
+		expect(hasDerivedPair(result, 0, 0)).toBe(true)
+		expect(hasDerivedPair(result, 49, 49)).toBe(true)
+		expect(hasDerivedPair(result, 7, 13)).toBe(true)
 	})
 
 	it('a 100×100 cross join derives exactly 10,000 pairs (indexed join + O(1) dedup)', () => {
@@ -1077,11 +1046,9 @@ describe('InferentialReasoner — relational join scale', () => {
 		expect(result.success).toBe(true)
 		expect(result.derived).toHaveLength(size * size)
 		expect(result.derived.every((derived) => derived.predicate === 'pair')).toBe(true)
-		const hasPair = (x: number, y: number) =>
-			result.derived.some((derived) => derived.terms[0] === x && derived.terms[1] === y)
-		expect(hasPair(0, 0)).toBe(true)
-		expect(hasPair(99, 99)).toBe(true)
-		expect(hasPair(42, 7)).toBe(true)
+		expect(hasDerivedPair(result, 0, 0)).toBe(true)
+		expect(hasDerivedPair(result, 99, 99)).toBe(true)
+		expect(hasDerivedPair(result, 42, 7)).toBe(true)
 	})
 
 	it('a linear parent chain derives exactly N−1 grandparent pairs', () => {
@@ -1100,12 +1067,10 @@ describe('InferentialReasoner — relational join scale', () => {
 		)
 		const result = expectInferential(reasoner.reason({}, definition))
 		expect(result.derived).toHaveLength(size - 1)
-		const hasPair = (x: number, z: number) =>
-			result.derived.some((derived) => derived.terms[0] === x && derived.terms[1] === z)
-		expect(hasPair(0, 2)).toBe(true)
-		expect(hasPair(48, 50)).toBe(true)
+		expect(hasDerivedPair(result, 0, 2)).toBe(true)
+		expect(hasDerivedPair(result, 48, 50)).toBe(true)
 		// The last edge parent(49, 50) has no parent(50, …) to join, so no (49, 51).
-		expect(hasPair(49, 51)).toBe(false)
+		expect(hasDerivedPair(result, 49, 51)).toBe(false)
 	})
 })
 
@@ -1116,10 +1081,8 @@ describe('InferentialReasoner — transitive fixpoint depth', () => {
 		const result = expectInferential(reasoner.reason({}, ancestry(3)))
 		expect(result.derived).toHaveLength(14)
 		expect(result.derived.every((derived) => derived.predicate === 'ancestor')).toBe(true)
-		const hasPair = (x: number, z: number) =>
-			result.derived.some((derived) => derived.terms[0] === x && derived.terms[1] === z)
-		expect(hasPair(0, 4)).toBe(true)
-		expect(hasPair(0, 5)).toBe(false)
+		expect(hasDerivedPair(result, 0, 4)).toBe(true)
+		expect(hasDerivedPair(result, 0, 5)).toBe(false)
 		expect(result.trace.some((entry) => entry.includes('converged'))).toBe(false)
 	})
 
@@ -1329,15 +1292,13 @@ describe('InferentialReasoner — confidence extremes', () => {
 			],
 		)
 		const result = expectInferential(reasoner.reason({}, definition))
-		const confidenceOf = (predicate: string) =>
-			result.derived.find((derived) => derived.predicate === predicate)?.confidence
 		expect(result.derived).toHaveLength(5)
-		expect(confidenceOf('p1')).toBe(0.1)
-		expect(confidenceOf('p2')).toBe(0.01)
-		expect(confidenceOf('p3')).toBe(0.001)
-		expect(confidenceOf('p4')).toBe(0.0001)
+		expect(readConfidence(result, 'p1')).toBe(0.1)
+		expect(readConfidence(result, 'p2')).toBe(0.01)
+		expect(readConfidence(result, 'p3')).toBe(0.001)
+		expect(readConfidence(result, 'p4')).toBe(0.0001)
 		// 0.0001 × 0.1 = 0.00001 → roundTo(4) → 0: the derivation survives at confidence 0.
-		expect(confidenceOf('p5')).toBe(0)
+		expect(readConfidence(result, 'p5')).toBe(0)
 	})
 })
 
@@ -1517,33 +1478,6 @@ describe('InferentialReasoner — predicate+arity index determinism (before/afte
 	// bucket to facts matchFacts would have accepted anyway, so derived[]/trace
 	// must stay byte-identical before and after. Pinned from OBSERVED behavior
 	// against the pre-change code (indexed by predicate alone).
-	function mixedArity() {
-		return createInferentialDefinition(
-			'mixed-arity',
-			'Mixed-arity',
-			[
-				createFact('f1', 'rel', ['a', 'b'], 0.9),
-				createFact('f2', 'rel', ['x', 'y', 'z'], 0.8),
-				createFact('f3', 'rel', ['b', 'c'], 0.7),
-			],
-			[
-				createInference(
-					'pair-rule',
-					[createFact('p1', 'rel', ['?x', '?y'])],
-					createFact('c1', 'pair', ['?x', '?y']),
-					{
-						confidence: 0.5,
-					},
-				),
-				createInference(
-					'triple-rule',
-					[createFact('p2', 'rel', ['?x', '?y', '?z'])],
-					createFact('c2', 'triple', ['?x', '?y', '?z']),
-					{ confidence: 0.5 },
-				),
-			],
-		)
-	}
 
 	const PINNED_DERIVED = [
 		{ id: 'c1', predicate: 'pair', terms: ['a', 'b'], confidence: 0.45 },
@@ -1559,8 +1493,8 @@ describe('InferentialReasoner — predicate+arity index determinism (before/afte
 	]
 
 	it('derives the exact pinned facts and trace, byte-identical across two runs', () => {
-		const first = expectInferential(reasoner.reason({}, mixedArity()))
-		const second = expectInferential(reasoner.reason({}, mixedArity()))
+		const first = expectInferential(reasoner.reason({}, createMixedArity()))
+		const second = expectInferential(reasoner.reason({}, createMixedArity()))
 		expect(first).toEqual(second)
 		expect(first.derived).toEqual(PINNED_DERIVED)
 		expect(first.trace).toEqual(PINNED_TRACE)
@@ -1682,16 +1616,14 @@ describe('InferentialReasoner — confidence pins', () => {
 			reasoner.reason({}, createInferentialDefinition('d', 'd', facts, chain, { depth: 30 })),
 		)
 		expect(result.derived).toHaveLength(30)
-		const confidenceOf = (predicate: string) =>
-			result.derived.find((derived) => derived.predicate === predicate)?.confidence
 		// 0.1 → 0.01 → 0.001 → 0.0001 → 0.00001 rounds to 0 at step 5 — and every
 		// step after multiplies a 0 confidence, so it stays exactly 0 for the rest.
-		expect(confidenceOf('p1')).toBe(0.1)
-		expect(confidenceOf('p2')).toBe(0.01)
-		expect(confidenceOf('p3')).toBe(0.001)
-		expect(confidenceOf('p4')).toBe(0.0001)
-		expect(confidenceOf('p5')).toBe(0)
-		expect(confidenceOf('p30')).toBe(0)
+		expect(readConfidence(result, 'p1')).toBe(0.1)
+		expect(readConfidence(result, 'p2')).toBe(0.01)
+		expect(readConfidence(result, 'p3')).toBe(0.001)
+		expect(readConfidence(result, 'p4')).toBe(0.0001)
+		expect(readConfidence(result, 'p5')).toBe(0)
+		expect(readConfidence(result, 'p30')).toBe(0)
 	})
 })
 
@@ -1730,22 +1662,12 @@ describe('InferentialReasoner — subject injection edge fixtures', () => {
 })
 
 describe('InferentialReasoner — depth-cap-bounded backward proof', () => {
-	function chainOf(length: number) {
-		return sequence(length).map((step) =>
-			createInference(
-				`i${step}`,
-				[createFact(`a${step}`, `p${step + 1}`, ['?x'])],
-				createFact(`c${step}`, `p${step}`, ['?x']),
-			),
-		)
-	}
-
 	it('a 10-level proof chain proves exactly at the default depth cap of 10', () => {
 		const definition = createInferentialDefinition(
 			'chain10',
 			'Chain10',
 			[createFact('fbase', 'p10', ['x'])],
-			chainOf(10),
+			createInferenceChain(10),
 			{ strategy: 'backward', depth: 10 },
 		)
 		const first = expectInferential(reasoner.reason({}, definition))
@@ -1756,8 +1678,7 @@ describe('InferentialReasoner — depth-cap-bounded backward proof', () => {
 		expect(first.derived[0]?.predicate).toBe('p0')
 		expect(first.proof?.depth).toBe(0)
 		// The leaf base-fact reference lands at exactly depth 10 — the cap boundary.
-		let leaf = first.proof
-		while (leaf?.children && leaf.children.length > 0) leaf = leaf.children[0]
+		const leaf = readProofLeaf(first.proof)
 		expect(leaf).toEqual({ fact: 'fbase', depth: 10 })
 	})
 
@@ -1769,7 +1690,7 @@ describe('InferentialReasoner — depth-cap-bounded backward proof', () => {
 			'chain11',
 			'Chain11',
 			[createFact('fbase', 'p11', ['x'])],
-			chainOf(11),
+			createInferenceChain(11),
 			{ strategy: 'backward', depth: 10 },
 		)
 		const first = expectInferential(reasoner.reason({}, definition))

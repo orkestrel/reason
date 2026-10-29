@@ -2,7 +2,7 @@ import type {
 	Definition,
 	Fact,
 	Inference,
-	InferentialChainingResult,
+	InferentialChainResult,
 	InferentialDefinition,
 	InferentialReasonerOptions,
 	ProofNode,
@@ -18,6 +18,7 @@ import {
 	factToArityKey,
 	factToKey,
 	findDuplicates,
+	iterateIndices,
 	findUnboundVariables,
 	indexByArity,
 	instantiateFact,
@@ -32,6 +33,7 @@ import {
 	INFERENTIAL_ID,
 } from '../constants.js'
 import { ReasonError } from '../errors.js'
+import { InferenceJoin } from '../InferenceJoin.js'
 
 /**
  * Derives facts with unification variables and proof trees.
@@ -216,7 +218,7 @@ export class InferentialReasoner implements ReasonerInterface {
 		subjectFacts: readonly Fact[],
 		trace: string[],
 		errors: string[],
-	): InferentialChainingResult {
+	): InferentialChainResult {
 		const maxDepth = definition.depth ?? DEFAULT_DEPTH
 		const knownFacts: Fact[] = []
 		for (const known of [...definition.facts, ...subjectFacts]) {
@@ -267,13 +269,11 @@ export class InferentialReasoner implements ReasonerInterface {
 			validInferences.push(inference)
 		}
 
-		for (let iteration = 0; iteration < maxDepth; iteration++) {
-			let newDerivation = false
+		for (const iteration of iterateIndices(maxDepth)) {
+			const changed = validInferences.reduce((previous, inference) => {
+				const allBindings = new InferenceJoin(byArity).resolve(inference.premises)
 
-			for (const inference of validInferences) {
-				const allBindings = this.#findAllBindings(inference.premises, byArity)
-
-				for (const bindings of allBindings) {
+				return allBindings.reduce((updated, bindings) => {
 					const conclusion = instantiateFact(inference.conclusion, bindings)
 					const premiseConfidence = computePremiseConfidence(inference.premises, byArity, bindings)
 					const inferenceConfidence = inference.confidence ?? DEFAULT_CONFIDENCE
@@ -295,16 +295,17 @@ export class InferentialReasoner implements ReasonerInterface {
 						else byArity.set(arityKey, [derivedFact])
 						seen.add(key)
 						derived.push(derivedFact)
-						newDerivation = true
 						trace.push(
 							`Derived ${derivedFact.predicate}(${derivedFact.terms.join(', ')}) ` +
 								`through "${inference.id}" [confidence: ${derivedFact.confidence}] (iteration ${iteration + 1})`,
 						)
+						return true
 					}
-				}
-			}
+					return updated
+				}, previous)
+			}, false)
 
-			if (!newDerivation) {
+			if (!changed) {
 				trace.push(`Forward chaining converged at iteration ${iteration + 1}`)
 				break
 			}
@@ -320,7 +321,7 @@ export class InferentialReasoner implements ReasonerInterface {
 		subjectFacts: readonly Fact[],
 		trace: string[],
 		errors: string[],
-	): InferentialChainingResult {
+	): InferentialChainResult {
 		const maxDepth = definition.depth ?? DEFAULT_DEPTH
 		const derived: Fact[] = []
 		const allBaseFacts: Fact[] = []
@@ -401,18 +402,15 @@ export class InferentialReasoner implements ReasonerInterface {
 			if (!conclusionBindings) continue
 
 			const children: ProofNode[] = []
-			let allProved = true
-
-			for (const premise of inference.premises) {
+			const allProved = Iterator.from(inference.premises).every((premise) => {
 				const instantiated = instantiateFact(premise, conclusionBindings)
 				const child = this.#prove(instantiated, inferences, baseFacts, depth + 1, maxDepth)
 				if (child) {
 					children.push(child)
-				} else {
-					allProved = false
-					break
+					return true
 				}
-			}
+				return false
+			})
 
 			if (allProved) {
 				return { fact: goal.id, inference: inference.id, children, depth }
@@ -420,38 +418,5 @@ export class InferentialReasoner implements ReasonerInterface {
 		}
 
 		return undefined
-	}
-
-	// Relational join: thread accumulated bindings through each premise in turn,
-	// branching per matching fact; any empty stage short-circuits to none. Reads the
-	// live predicate+arity index (maintained by #forward), so each premise scans
-	// only its own predicate+arity bucket (append order kept) rather than the whole
-	// fact base — matchFacts already rejects a predicate or an arity mismatch, so
-	// the matches are identical.
-	#findAllBindings(
-		premises: readonly Fact[],
-		byArity: ReadonlyMap<string, Fact[]>,
-	): Array<Record<string, unknown>> {
-		if (premises.length === 0) return [{}]
-
-		let currentBindings: Array<Record<string, unknown>> = [{}]
-
-		for (const premise of premises) {
-			const nextBindings: Array<Record<string, unknown>> = []
-			const candidates = byArity.get(factToArityKey(premise)) ?? []
-
-			for (const existing of currentBindings) {
-				const instantiated = instantiateFact(premise, existing)
-				for (const fact of candidates) {
-					const match = matchFacts(instantiated, fact)
-					if (match) nextBindings.push({ ...existing, ...match })
-				}
-			}
-
-			currentBindings = nextBindings
-			if (currentBindings.length === 0) break
-		}
-
-		return currentBindings
 	}
 }

@@ -1,8 +1,16 @@
+import {
+	runUpsertScenario,
+	runRemoveScenario,
+	runSubjectBuilderMergeScenario as runMergeScenario,
+	createSubjectBuilderDestroyedCalls as createDestroyedCalls,
+	createSubjectBuilderUnbrandedBuilder as createUnbrandedBuilder,
+	deepFreeze,
+	runTwice,
+} from '../../../setup.js'
 import type { SubjectBuilderEventMap, SubjectBuilderInterface, Subject } from '@src/core'
 import { createSubjectBuilder, isReasonError, isSubjectBuilder } from '@src/core'
 import { describe, expect, it } from 'vitest'
 import { captureError, createRecorders } from '@orkestrel/test'
-import { deepFreeze, runTwice } from '../../../setup.js'
 
 // `SubjectBuilder` — the definitions & subjects capability layer's stateful
 // subject builder: a flat single-collection workspace
@@ -15,14 +23,7 @@ describe('SubjectBuilder — set / field / fields round-trip', () => {
 	it('upserts fields through set and reads them back through field/fields', () => {
 		const seed = deepFreeze<Subject>({ id: 's1', age: 30 })
 
-		const scenario = (): Subject => {
-			const subject = createSubjectBuilder(seed)
-			subject.set('age', 31)
-			subject.set('name', 'Alice')
-			return subject.build()
-		}
-
-		const [first, second] = runTwice(scenario)
+		const [first, second] = runTwice(() => runUpsertScenario(seed))
 
 		expect(first).toEqual({ id: 's1', age: 31, name: 'Alice' })
 		expect(second).toEqual(first)
@@ -48,14 +49,7 @@ describe('SubjectBuilder — remove', () => {
 	it('the array-first overload removes many keys and returns true only when all existed', () => {
 		const seed = deepFreeze<Subject>({ id: 's1', age: 30, name: 'Alice', extra: true })
 
-		const scenario = () => {
-			const subject = createSubjectBuilder(seed)
-			const allExisted = subject.remove(['age', 'name'])
-			const built = subject.build()
-			return { allExisted, built }
-		}
-
-		const [first, second] = runTwice(scenario)
+		const [first, second] = runTwice(() => runRemoveScenario(seed))
 
 		expect(first.allExisted).toBe(true)
 		expect(first.built).toEqual({ id: 's1', extra: true })
@@ -103,14 +97,7 @@ describe('SubjectBuilder — merge', () => {
 		const base = deepFreeze<Subject>({ id: 's1', age: 30, name: 'Alice' })
 		const incoming: Subject = { age: 31, extra: true }
 
-		const scenario = () => {
-			const subject = createSubjectBuilder(base)
-			const events = createRecorders<SubjectBuilderEventMap, 'merge'>(subject.emitter, ['merge'])
-			subject.merge(incoming)
-			return { built: subject.build(), mergeCalls: events.merge.calls }
-		}
-
-		const [first, second] = runTwice(scenario)
+		const [first, second] = runTwice(() => runMergeScenario(base, incoming))
 
 		expect(first.built).toEqual({ id: 's1', age: 31, name: 'Alice', extra: true })
 		expect(first.mergeCalls).toEqual([[incoming]])
@@ -179,16 +166,7 @@ describe('SubjectBuilder — destroy', () => {
 		const subject = createSubjectBuilder({ id: 's1', age: 30 })
 		subject.destroy()
 
-		for (const call of [
-			() => subject.field('age'),
-			() => subject.fields(),
-			() => subject.set('age', 31),
-			() => subject.remove('age'),
-			() => subject.merge({ age: 31 }),
-			() => subject.clear(),
-			() => subject.repeat(2),
-			() => subject.build(),
-		]) {
+		for (const call of createDestroyedCalls(subject)) {
 			const error = captureError(call)
 			if (!isReasonError(error)) throw new Error('expected a ReasonError')
 			expect(error.code).toBe('DESTROYED')
@@ -294,7 +272,7 @@ describe('SubjectBuilder — id defaulting, requirement, and seed protection', (
 
 describe('SubjectBuilder — brand soundness', () => {
 	it('a plain record forging a build() field does NOT narrow as a SubjectBuilder', () => {
-		const forged: unknown = { build: () => ({ id: 's1' }) }
+		const forged: unknown = createUnbrandedBuilder()
 		expect(isSubjectBuilder(forged)).toBe(false)
 	})
 

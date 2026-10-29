@@ -1,4 +1,19 @@
 import {
+	ADVERSARIAL,
+	DerivedFactResult,
+	ResultGuardFixture,
+	selectAccepted as accepted,
+	ReadCounter,
+	buildExpressionNest,
+	buildSymbolicNest,
+	findDepthBoundary,
+	createValidatorsUnbrandedBuilder as createUnbrandedBuilder,
+	ADVERSARIAL_VALUE_SUBJECT,
+	EXTREME_NUMBERS,
+	TRICKY_KEYS,
+	sequence,
+} from '../../setup.js'
+import {
 	createAtom,
 	createBounds,
 	createCheck,
@@ -29,7 +44,7 @@ import {
 	DEFINITION_BUILDER_BRAND,
 	isAggregation,
 	isBounds,
-	isChainingStrategy,
+	isChainStrategy,
 	isCheck,
 	isCheckResult,
 	isComparison,
@@ -76,7 +91,6 @@ import {
 import { parseJSON } from '@orkestrel/contract'
 import { describe, expect, it } from 'vitest'
 import { captureError } from '@orkestrel/test'
-import { ADVERSARIAL_VALUE_SUBJECT, EXTREME_NUMBERS, TRICKY_KEYS, sequence } from '../../setup.js'
 
 // The reasons validators are deep TOTAL guards. Input records are
 // exact and use finite-only numeric checks because definitions must survive
@@ -90,43 +104,8 @@ import { ADVERSARIAL_VALUE_SUBJECT, EXTREME_NUMBERS, TRICKY_KEYS, sequence } fro
 // the empty array, which ONLY isFieldPath accepts (an empty key path); every
 // record guard must reject both array probes (records get their own tailored
 // near-miss probes per guard).
-const ADVERSARIAL: readonly unknown[] = [
-	null,
-	undefined,
-	42,
-	3.14,
-	true,
-	false,
-	'junk',
-	Symbol('s'),
-	10n,
-	() => 1,
-	new Date(),
-	new Map(),
-	[],
-	[1, 2, 3],
-]
-
-class DerivedFactResult {
-	readonly id = 'f1'
-	readonly predicate = 'bird'
-	readonly terms: readonly unknown[] = ['tweety']
-}
-
-class ResultGuardFixture {
-	// An own member beyond the seed, so every class control also proves
-	// extra-member acceptance; its initializer keeps the class non-extraneous.
-	readonly fixture: boolean = true
-
-	constructor(seed: object) {
-		Object.assign(this, seed)
-	}
-}
 
 // The subset of the adversarial values a guard accepts (empty = rejects all).
-function accepted(guard: (value: unknown) => boolean): readonly unknown[] {
-	return ADVERSARIAL.filter((value) => guard(value))
-}
 
 describe('literal-union guards', () => {
 	it('isReasoning accepts the four strategies and rejects everything else', () => {
@@ -138,10 +117,10 @@ describe('literal-union guards', () => {
 	})
 
 	it('isChainingStrategy accepts forward / backward only', () => {
-		expect(isChainingStrategy('forward')).toBe(true)
-		expect(isChainingStrategy('backward')).toBe(true)
-		expect(isChainingStrategy('upward')).toBe(false)
-		expect(accepted(isChainingStrategy)).toEqual([])
+		expect(isChainStrategy('forward')).toBe(true)
+		expect(isChainStrategy('backward')).toBe(true)
+		expect(isChainStrategy('upward')).toBe(false)
+		expect(accepted(isChainStrategy)).toEqual([])
 	})
 
 	it('isMathOperation accepts all thirteen operations and rejects strays', () => {
@@ -371,8 +350,7 @@ describe('isExpression — recursive through lazyOf', () => {
 			),
 		).toBe(true)
 		// A 100-deep nest still validates (recursion is depth-tolerant at sane sizes).
-		let deep = createAtom('a', 'equals', 1)
-		for (let index = 0; index < 100; index++) deep = createCompound('not', [deep])
+		const deep = buildExpressionNest(100)
 		expect(isExpression(deep)).toBe(true)
 	})
 
@@ -395,8 +373,7 @@ describe('isExpression — recursive through lazyOf', () => {
 	it('contains a BEYOND-STACK-BUDGET nest — false, never a RangeError', () => {
 		// Recursion is stack-bounded, not unbounded: 100,000 levels of `not`
 		// overflow the engine stack; lazyOf contains the overflow as a non-match.
-		let deep = createAtom('a', 'equals', 1)
-		for (let index = 0; index < 100000; index++) deep = createCompound('not', [deep])
+		const deep = buildExpressionNest(100000)
 		expect(isExpression(deep)).toBe(false)
 	})
 })
@@ -476,8 +453,7 @@ describe('isSymbolicExpression — recursive through lazyOf', () => {
 	})
 
 	it('contains a BEYOND-STACK-BUDGET nest — false, never a RangeError', () => {
-		let deep = createConstant(1)
-		for (let index = 0; index < 100000; index++) deep = createOperation('abs', deep)
+		const deep = buildSymbolicNest(100000)
 		expect(isSymbolicExpression(deep)).toBe(false)
 	})
 })
@@ -917,35 +893,36 @@ describe('isProofNode', () => {
 		const nodeCount = 41
 		const wrapperCount = 20
 		const inspectionLimit = (nodeCount + wrapperCount) * 4
-		let inspections = 0
-		let shared: object | undefined
-		for (let depth = nodeCount - 1; depth >= 0; depth -= 1) {
-			const node: Record<string, unknown> = { fact: `node-${depth}`, depth }
-			if (shared !== undefined) node.children = [shared, shared]
-			shared =
-				depth < nodeCount - 1 && depth % 2 === 0
+		const inspections = new ReadCounter()
+		const shared = sequence(nodeCount)
+			.toReversed()
+			.reduce<object | undefined>((previous, depth) => {
+				const node: Record<string, unknown> = { fact: `node-${depth}`, depth }
+				if (previous !== undefined) node.children = [previous, previous]
+				return depth < nodeCount - 1 && depth % 2 === 0
 					? new Proxy(node, {
 							get(target, key, receiver) {
-								inspections += 1
-								if (inspections > inspectionLimit)
+								inspections.increment()
+								if (inspections.count > inspectionLimit)
 									throw new Error('proof traversal exceeded linear work')
 								return Reflect.get(target, key, receiver)
 							},
 						})
 					: node
-		}
+			}, undefined)
 		expect(isProofNode(shared)).toBe(true)
-		expect(inspections).toBeLessThanOrEqual(wrapperCount * 4)
+		expect(inspections.count).toBeLessThanOrEqual(wrapperCount * 4)
 
-		let defective: object | undefined
-		for (let depth = nodeCount - 1; depth >= 0; depth -= 1) {
-			const node: Record<string, unknown> = {
-				fact: depth === 20 ? 20 : `node-${depth}`,
-				depth,
-			}
-			if (defective !== undefined) node.children = [defective, defective]
-			defective = node
-		}
+		const defective = sequence(nodeCount)
+			.toReversed()
+			.reduce<object | undefined>((previous, depth) => {
+				const node: Record<string, unknown> = {
+					fact: depth === 20 ? 20 : `node-${depth}`,
+					depth,
+				}
+				if (previous !== undefined) node.children = [previous, previous]
+				return node
+			}, undefined)
 		expect(isProofNode(defective)).toBe(false)
 	})
 
@@ -954,26 +931,28 @@ describe('isProofNode', () => {
 		// reached through it. A memo that skips the settled leaf on the deep re-reach would
 		// accept one sibling order and refuse the other for the same value.
 		const sharedLeaf = { fact: 'leaf', depth: 0 }
-		let chain: Record<string, unknown> = sharedLeaf
-		for (let index = 0; index < 511; index += 1) {
-			chain = { fact: `chain-${index}`, depth: 0, children: [chain] }
-		}
+		const chain = sequence(511).reduce<Record<string, unknown>>(
+			(child, index) => ({ fact: `chain-${index}`, depth: 0, children: [child] }),
+			sharedLeaf,
+		)
 		expect(isProofNode({ fact: 'root', depth: 0, children: [sharedLeaf, chain] })).toBe(false)
 		expect(isProofNode({ fact: 'root', depth: 0, children: [chain, sharedLeaf] })).toBe(false)
 		const okLeaf = { fact: 'leaf', depth: 0 }
-		let okChain: Record<string, unknown> = okLeaf
-		for (let index = 0; index < 100; index += 1) {
-			okChain = { fact: `ok-${index}`, depth: 0, children: [okChain] }
-		}
+		const okChain = sequence(100).reduce<Record<string, unknown>>(
+			(child, index) => ({ fact: `ok-${index}`, depth: 0, children: [child] }),
+			okLeaf,
+		)
 		expect(isProofNode({ fact: 'root', depth: 0, children: [okLeaf, okChain] })).toBe(true)
 		expect(isProofNode({ fact: 'root', depth: 0, children: [okChain, okLeaf] })).toBe(true)
 	})
 
 	it('bounds a 10,001-node chain without a RangeError', () => {
-		let deep: Record<string, unknown> = { fact: 'leaf', depth: 10000 }
-		for (let depth = 9999; depth >= 0; depth -= 1) {
-			deep = { fact: `node-${depth}`, depth, children: [deep] }
-		}
+		const deep = sequence(10000)
+			.toReversed()
+			.reduce<Record<string, unknown>>(
+				(child, depth) => ({ fact: `node-${depth}`, depth, children: [child] }),
+				{ fact: 'leaf', depth: 10000 },
+			)
 		expect(isProofNode(deep)).toBe(false)
 		expect(captureError(() => isProofNode(deep))).toBeUndefined()
 	})
@@ -1273,16 +1252,6 @@ describe('isReasonResult', () => {
 	})
 
 	it('keeps every result guard total for hostile and repository adversarial values', () => {
-		let hostileReads = 0
-		const hostile = new Proxy(
-			{},
-			{
-				get() {
-					hostileReads += 1
-					throw new Error('hostile getter')
-				},
-			},
-		)
 		const revocable = Proxy.revocable({}, {})
 		revocable.revoke()
 		for (const guard of [
@@ -1299,7 +1268,16 @@ describe('isReasonResult', () => {
 			isReasonResult,
 			isReasonValidationResult,
 		]) {
-			hostileReads = 0
+			const hostileReads = new ReadCounter()
+			const hostile = new Proxy(
+				{},
+				{
+					get() {
+						hostileReads.increment()
+						throw new Error('hostile getter')
+					},
+				},
+			)
 			for (const value of [
 				hostile,
 				revocable.proxy,
@@ -1311,7 +1289,7 @@ describe('isReasonResult', () => {
 				expect(captureError(() => guard(value))).toBeUndefined()
 			}
 			// The trap must have run for THIS guard, or its totality was never exercised.
-			expect(hostileReads).toBeGreaterThan(0)
+			expect(hostileReads.count).toBeGreaterThan(0)
 		}
 	})
 })
@@ -1394,11 +1372,7 @@ describe('isDefinitionBuilder / isSubjectBuilder — entity brand guards', () =>
 		// The forge-negative: JSON data can carry a `build` field (a subject legally
 		// may) and string keys resembling the brand's Symbol description, but never
 		// the actual `unique symbol` key — so neither guard is fooled.
-		const forged = {
-			build: () => ({}),
-			'reasons.definitionBuilder': true,
-			'reasons.subjectBuilder': true,
-		}
+		const forged = createUnbrandedBuilder()
 		expect(isDefinitionBuilder(forged)).toBe(false)
 		expect(isSubjectBuilder(forged)).toBe(false)
 	})
@@ -1414,37 +1388,20 @@ describe('isDefinitionBuilder / isSubjectBuilder — entity brand guards', () =>
 // ITERATIVELY so the test's OWN stack cannot overflow — only the guard recurses.
 
 describe('recursion-depth boundary — isExpression / isSymbolicExpression', () => {
-	const nestExpression = (depth: number) => {
-		let deep = createAtom('a', 'equals', 1)
-		for (let index = 0; index < depth; index += 1) deep = createCompound('not', [deep])
-		return deep
-	}
-	const nestSymbolic = (depth: number) => {
-		let deep = createConstant(1)
-		for (let index = 0; index < depth; index += 1) deep = createOperation('abs', deep)
-		return deep
-	}
-
 	it('accepts a modest nest, rejects a beyond-stack nest, and never throws', () => {
-		expect(isExpression(nestExpression(100))).toBe(true)
-		expect(isExpression(nestExpression(100000))).toBe(false)
-		expect(isSymbolicExpression(nestSymbolic(100))).toBe(true)
-		expect(isSymbolicExpression(nestSymbolic(100000))).toBe(false)
+		expect(isExpression(buildExpressionNest(100))).toBe(true)
+		expect(isExpression(buildExpressionNest(100000))).toBe(false)
+		expect(isSymbolicExpression(buildSymbolicNest(100))).toBe(true)
+		expect(isSymbolicExpression(buildSymbolicNest(100000))).toBe(false)
 		// Containment, not a thrown RangeError (lazyOf catches the overflow).
-		expect(captureError(() => isExpression(nestExpression(100000)))).toBeUndefined()
-		expect(captureError(() => isSymbolicExpression(nestSymbolic(100000)))).toBeUndefined()
+		expect(captureError(() => isExpression(buildExpressionNest(100000)))).toBeUndefined()
+		expect(captureError(() => isSymbolicExpression(buildSymbolicNest(100000)))).toBeUndefined()
 	})
 
 	it('binary-searches the exact depth where isExpression flips true → false', () => {
-		let low = 100 // known-true floor
-		let high = 100000 // known-false ceiling
-		expect(isExpression(nestExpression(low))).toBe(true)
-		expect(isExpression(nestExpression(high))).toBe(false)
-		while (high - low > 1) {
-			const mid = Math.floor((low + high) / 2)
-			if (isExpression(nestExpression(mid))) low = mid
-			else high = mid
-		}
+		expect(isExpression(buildExpressionNest(100))).toBe(true)
+		expect(isExpression(buildExpressionNest(100000))).toBe(false)
+		const [low, high] = findDepthBoundary(100, 100000, buildExpressionNest, isExpression)
 		// A single adjacent boundary inside the probed window: `low` is the deepest
 		// accepted, `high === low + 1` the shallowest rejected.
 		expect(high).toBe(low + 1)
@@ -1456,33 +1413,27 @@ describe('recursion-depth boundary — isExpression / isSymbolicExpression', () 
 		// afterward, so only the probed window's edges are contract. The
 		// known-true floor still validates and the known-false ceiling still
 		// rejects post-warm-up.
-		expect(isExpression(nestExpression(100))).toBe(true)
-		expect(isExpression(nestExpression(100000))).toBe(false)
+		expect(isExpression(buildExpressionNest(100))).toBe(true)
+		expect(isExpression(buildExpressionNest(100000))).toBe(false)
 	})
 
 	it('binary-searches the exact depth where isSymbolicExpression flips true → false', () => {
-		let low = 100
-		let high = 100000
-		expect(isSymbolicExpression(nestSymbolic(low))).toBe(true)
-		expect(isSymbolicExpression(nestSymbolic(high))).toBe(false)
-		while (high - low > 1) {
-			const mid = Math.floor((low + high) / 2)
-			if (isSymbolicExpression(nestSymbolic(mid))) low = mid
-			else high = mid
-		}
+		expect(isSymbolicExpression(buildSymbolicNest(100))).toBe(true)
+		expect(isSymbolicExpression(buildSymbolicNest(100000))).toBe(false)
+		const [low, high] = findDepthBoundary(100, 100000, buildSymbolicNest, isSymbolicExpression)
 		expect(high).toBe(low + 1)
 		expect(low).toBeGreaterThanOrEqual(100)
 		expect(high).toBeLessThanOrEqual(100000)
 		// Same post-sweep re-confirmation as the expression sweep: window edges
 		// only — near-flip margins drift with JIT re-tiering and are unsound to pin.
-		expect(isSymbolicExpression(nestSymbolic(100))).toBe(true)
-		expect(isSymbolicExpression(nestSymbolic(100000))).toBe(false)
+		expect(isSymbolicExpression(buildSymbolicNest(100))).toBe(true)
+		expect(isSymbolicExpression(buildSymbolicNest(100000))).toBe(false)
 	})
 
 	it('never throws a RangeError at any probed depth (both guards)', () => {
 		for (const depth of [1, 50, 100, 500, 1000, 2000, 5000, 20000, 100000]) {
-			expect(captureError(() => isExpression(nestExpression(depth)))).toBeUndefined()
-			expect(captureError(() => isSymbolicExpression(nestSymbolic(depth)))).toBeUndefined()
+			expect(captureError(() => isExpression(buildExpressionNest(depth)))).toBeUndefined()
+			expect(captureError(() => isSymbolicExpression(buildSymbolicNest(depth)))).toBeUndefined()
 		}
 	})
 
@@ -1490,10 +1441,10 @@ describe('recursion-depth boundary — isExpression / isSymbolicExpression', () 
 		const cyclic: Record<string, unknown> = { form: 'compound', operator: 'and' }
 		cyclic.operands = [cyclic]
 		// Wrap the cyclic node under 50 valid compound layers — the cycle is not at root.
-		let deep: unknown = cyclic
-		for (let index = 0; index < 50; index += 1) {
-			deep = { form: 'compound', operator: 'and', operands: [deep] }
-		}
+		const deep = sequence(50).reduce<unknown>(
+			(child) => ({ form: 'compound', operator: 'and', operands: [child] }),
+			cyclic,
+		)
 		expect(isExpression(deep)).toBe(false)
 		expect(captureError(() => isExpression(deep))).toBeUndefined()
 	})

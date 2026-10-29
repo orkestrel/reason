@@ -1,8 +1,11 @@
-import type { VariableManagerEventMap } from '@src/core'
+import {
+	createVariableManagerEvents as events,
+	createVariableManagerDestroyedCalls as createDestroyedCalls,
+	TRICKY_KEYS,
+} from '../../../../setup.js'
 import { createVariableManager, isReasonError, VariableManager } from '@src/core'
 import { describe, expect, it } from 'vitest'
-import { captureError, createRecorders } from '@orkestrel/test'
-import { TRICKY_KEYS } from '../../../../setup.js'
+import { captureError } from '@orkestrel/test'
 
 // `VariableManager` — the self-owning, kind-free manager over a symbolic
 // definition's `variables`, a NAME-keyed unordered record. The record has no
@@ -11,14 +14,6 @@ import { TRICKY_KEYS } from '../../../../setup.js'
 // names. `seat` is the owning builder's SILENT bulk re-seat channel, and
 // `destroy()` is idempotent with every other call afterwards throwing
 // DESTROYED.
-
-function events(manager: { readonly emitter: VariableManager['emitter'] }) {
-	return createRecorders<VariableManagerEventMap, 'add' | 'remove' | 'destroy'>(manager.emitter, [
-		'add',
-		'remove',
-		'destroy',
-	])
-}
 
 describe('VariableManager — construction and accessors', () => {
 	it('defaults to an empty record and seeds from options', () => {
@@ -133,15 +128,7 @@ describe('VariableManager — destroy', () => {
 	it('throws DESTROYED on every call after destroy', () => {
 		const variables = createVariableManager({ variables: { x: 1 } })
 		variables.destroy()
-		for (const call of [
-			() => variables.variable('x'),
-			() => variables.variables(),
-			() => variables.add('y', 2),
-			() => variables.remove('x'),
-			() => variables.remove(['x']),
-			() => variables.remove(),
-			() => variables.seat({}),
-		]) {
+		for (const call of createDestroyedCalls(variables)) {
 			const error = captureError(call)
 			if (!isReasonError(error)) throw new Error('expected a ReasonError')
 			expect(error.code).toBe('DESTROYED')

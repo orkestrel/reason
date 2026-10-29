@@ -1,9 +1,27 @@
-import type { QuantitativeResult, ReasonerInterface, ReasonEventMap, Reasoning } from '@src/core'
 import {
-	createAtom,
+	AGE_DEFINITION,
+	LOGICAL_DEFINITION,
+	REASON_EVENTS,
+	type ReasonEvent,
+	createStringThrower,
+	createMismatchedReasoner,
+	conditional,
+	REAL_FAILURE_REASONER,
+	createRecordedReasoner,
+	createReasonDestroyedCalls as createDestroyedCalls,
+	runDefinitionScale,
+	runSubjectScale,
+	buildStaticDefinition,
+	createThrowingReasoner,
+	deepFreeze,
+	expectLogical,
+	expectQuantitative,
+	sequence,
+} from '../../setup.js'
+import type { Definition, ReasonEventMap, Reasoning } from '@src/core'
+import { attempt } from '@orkestrel/contract'
+import {
 	createDefinitionBuilder,
-	createFactorGroup,
-	createFieldFactor,
 	createInferentialDefinition,
 	createInferentialReasoner,
 	createLogicalDefinition,
@@ -11,7 +29,6 @@ import {
 	createQuantitativeDefinition,
 	createQuantitativeReasoner,
 	createReason,
-	createRule,
 	createSubjectBuilder,
 	createSymbolicDefinition,
 	createSymbolicReasoner,
@@ -21,15 +38,6 @@ import {
 } from '@src/core'
 import { describe, expect, it } from 'vitest'
 import { captureError, createRecorder, createRecorders, roundTripJSON } from '@orkestrel/test'
-import {
-	buildStaticDefinition,
-	buildSubjects,
-	createThrowingReasoner,
-	deepFreeze,
-	expectLogical,
-	expectQuantitative,
-	sequence,
-} from '../../setup.js'
 
 // `Reason` orchestrator behavior — the registry (one reasoner per reasoning,
 // re-registration replaces, fresh-array snapshots), dispatch by
@@ -43,26 +51,11 @@ import {
 // mocks.
 
 // A quantitative definition reading the subject's age on top of base 100.
-const AGE_DEFINITION = createQuantitativeDefinition(
-	'age-score',
-	'Age Score',
-	[createFactorGroup('g1', 'sum', [createFieldFactor('age', 'age')])],
-	{ base: 100 },
-)
 
 // A one-rule forward chain: active === true concludes result === true.
-const LOGICAL_DEFINITION = createLogicalDefinition('activation', 'Activation', [
-	createRule(
-		'activate',
-		[createAtom('active', 'equals', true)],
-		createAtom('result', 'equals', true),
-	),
-])
 
 // The ReasonEventMap names recorded across the emitter tests. `createRecorders` takes
 // its event union as an explicit type argument, so the list carries a matching alias.
-const REASON_EVENTS = ['register', 'reason', 'error', 'destroy'] as const
-type ReasonEvent = (typeof REASON_EVENTS)[number]
 
 describe('Reason — constructor', () => {
 	it('starts empty with no options', () => {
@@ -252,16 +245,7 @@ describe('Reason — options (validate / bail)', () => {
 	})
 
 	it('a NON-Error throw stringifies into the failure result (the raw value still emits)', () => {
-		const thrower: ReasonerInterface = {
-			id: 'string-thrower',
-			reasoning: 'quantitative',
-			supports: (definition) => definition.reasoning === 'quantitative',
-			validate: () => ({ valid: true, errors: [], warnings: [] }),
-			reason: () => {
-				// A deliberately non-Error throw — the String(error) branch.
-				throw 'string-throw'
-			},
-		}
+		const thrower = createStringThrower()
 		const reason = createReason({ reasoners: [thrower], bail: false })
 		const events = createRecorders<ReasonEventMap, ReasonEvent>(reason.emitter, REASON_EVENTS)
 		const result = expectQuantitative(reason.reason({}, buildStaticDefinition()))
@@ -270,30 +254,15 @@ describe('Reason — options (validate / bail)', () => {
 	})
 
 	it('validate: true repeats validation once per batch subject', () => {
-		let validations = 0
+		const validations = createRecorder<[Definition]>()
 		// A REAL counting reasoner (recorder-style, not a mock) — its validate
 		// tallies calls, its reason returns a fixed real result.
-		const counting: ReasonerInterface = {
-			id: 'counting',
-			reasoning: 'quantitative',
-			supports: (definition) => definition.reasoning === 'quantitative',
-			validate: () => {
-				validations++
-				return { valid: true, errors: [], warnings: [] }
-			},
-			reason: () => ({
-				reasoning: 'quantitative',
-				value: 0,
-				groups: [],
-				count: 0,
-				success: true,
-				trace: [],
-				errors: [],
-			}),
-		}
+		const counting = createRecordedReasoner(validations)
 		const reason = createReason({ reasoners: [counting], validate: true })
-		reason.reason([{}, {}, {}], buildStaticDefinition())
-		expect(validations).toBe(3)
+		const definition = buildStaticDefinition()
+		reason.reason([{}, {}, {}], definition)
+		expect(validations.count).toBe(3)
+		expect(validations.calls).toEqual([[definition], [definition], [definition]])
 	})
 })
 
@@ -301,14 +270,7 @@ describe('Reason — destroy', () => {
 	it('DESTROYED: every method throws a coded ReasonError afterwards', () => {
 		const reason = createReason({ reasoners: [createQuantitativeReasoner()] })
 		reason.destroy()
-		for (const call of [
-			() => reason.reasoners(),
-			() => reason.reasoner('quantitative'),
-			() => reason.supports('quantitative'),
-			() => reason.register(createQuantitativeReasoner()),
-			() => reason.validate(buildStaticDefinition()),
-			() => reason.reason({}, buildStaticDefinition()),
-		]) {
+		for (const call of createDestroyedCalls(reason)) {
 			const error = captureError(call)
 			if (!isReasonError(error)) throw new Error('expected a ReasonError')
 			expect(error.code).toBe('DESTROYED')
@@ -480,25 +442,6 @@ describe('Reason — large-batch orchestration & event ordering at scale', () =>
 	// `fail` for a flagged subject and otherwise returns a success result whose
 	// value doubles the subject's numeric `n`. Drives the mixed-batch event-order
 	// paths where SOME subjects succeed and SOME make the reasoner throw.
-	const conditional: ReasonerInterface = {
-		id: 'conditional',
-		reasoning: 'quantitative',
-		supports: (definition) => definition.reasoning === 'quantitative',
-		validate: () => ({ valid: true, errors: [], warnings: [] }),
-		reason: (subject) => {
-			if (subject.fail === true) throw new Error('fail')
-			const n = subject.n
-			return {
-				reasoning: 'quantitative',
-				value: typeof n === 'number' ? n * 2 : 0,
-				groups: [],
-				count: 0,
-				success: true,
-				trace: [],
-				errors: [],
-			}
-		},
-	}
 
 	// Scale/perf regression guard: 1500 subjects pins order preservation and
 	// per-subject emission at a batch size beyond trivial fixtures.
@@ -576,21 +519,6 @@ describe('Reason — large-batch orchestration & event ordering at scale', () =>
 describe('Reason — event semantics (post-guide-correction pins)', () => {
 	// A REAL minimal reasoner (createThrowingReasoner's style) whose `reason`
 	// RETURNS a success:false failure result without throwing.
-	const REAL_FAILURE_REASONER: ReasonerInterface = {
-		id: 'real-failure',
-		reasoning: 'quantitative',
-		supports: (definition) => definition.reasoning === 'quantitative',
-		validate: () => ({ valid: true, errors: [], warnings: [] }),
-		reason: () => ({
-			reasoning: 'quantitative',
-			value: 0,
-			groups: [],
-			count: 0,
-			success: false,
-			trace: ['deliberate failure'],
-			errors: ['deliberate failure'],
-		}),
-	}
 
 	it('a RETURNED success:false result fires reason exactly once (never error)', () => {
 		const reason = createReason({ reasoners: [REAL_FAILURE_REASONER] })
@@ -658,22 +586,7 @@ describe('Reason — error taxonomy exactness', () => {
 		// validates for 'quantitative' — mirroring QuantitativeReasoner's own
 		// MISMATCH guard so a definition routed to it (reasoning: 'logical')
 		// trips that internal check.
-		const mismatched: ReasonerInterface = {
-			id: 'mismatched',
-			reasoning: 'logical',
-			supports: (definition) => definition.reasoning === 'logical',
-			validate: () => ({ valid: true, errors: [], warnings: [] }),
-			reason: (_subject, definition) => {
-				if (definition.reasoning !== 'quantitative') {
-					throw new ReasonError(
-						'MISMATCH',
-						`Expected quantitative definition, got "${definition.reasoning}"`,
-						{ definition: definition.id, reasoning: 'quantitative' },
-					)
-				}
-				throw new Error('unreachable')
-			},
-		}
+		const mismatched = createMismatchedReasoner()
 		const reason = createReason({ reasoners: [mismatched], bail: false })
 		const events = createRecorders<ReasonEventMap, ReasonEvent>(reason.emitter, REASON_EVENTS)
 		const result = reason.reason({}, createLogicalDefinition('mismatch-def', 'Mismatch', []))
@@ -704,10 +617,11 @@ describe('Reason — no input mutation', () => {
 		const definitionSnapshot = JSON.parse(JSON.stringify(definition))
 		const subjectSnapshot = roundTripJSON(subject)
 
-		let result: QuantitativeResult | undefined
+		const outcome = attempt(() => expectQuantitative(reason.reason(subject, definition)))
 		expect(() => {
-			result = expectQuantitative(reason.reason(subject, definition))
+			if (!outcome.success) throw outcome.error
 		}).not.toThrow()
+		const result = outcome.success ? outcome.value : undefined
 		expect(result?.success).toBe(true)
 		expect(result?.value).toBe(7)
 		expect(definition).toEqual(definitionSnapshot)
@@ -717,17 +631,8 @@ describe('Reason — no input mutation', () => {
 
 describe('Reason — registry scale: several hundred distinct definitions in one instance', () => {
 	it('dispatches 300 distinct static definitions — pins first/middle/last and exact count, twice', () => {
-		const runOnce = () => {
-			const reason = createReason({ reasoners: [createQuantitativeReasoner()] })
-			const definitions = sequence(300).map((n) => buildStaticDefinition(`def-${n}`, n))
-			const results = definitions.map((definition) =>
-				expectQuantitative(reason.reason({}, definition)),
-			)
-			reason.destroy()
-			return results
-		}
-		const first = runOnce()
-		const second = runOnce()
+		const first = runDefinitionScale()
+		const second = runDefinitionScale()
 
 		expect(first).toHaveLength(300)
 		expect(first[0]?.value).toBe(0)
@@ -742,15 +647,8 @@ describe('Reason — batch scale beyond 1500: 7500 subjects', () => {
 	// Scale/perf regression guard: 7500 subjects pins order preservation and
 	// per-subject emission well past the 1500-subject batch above.
 	it('7500 subjects by using buildSubjects through a static definition — exact count, values, and order', () => {
-		const runOnce = () => {
-			const reason = createReason({ reasoners: [createQuantitativeReasoner()] })
-			const events = createRecorders<ReasonEventMap, ReasonEvent>(reason.emitter, REASON_EVENTS)
-			const subjects = buildSubjects(7500)
-			const results = reason.reason(subjects, buildStaticDefinition('scale-def', 9))
-			return { results, events }
-		}
-		const first = runOnce()
-		const second = runOnce()
+		const first = runSubjectScale()
+		const second = runSubjectScale()
 
 		expect(first.results).toHaveLength(7500)
 		const firstResult = first.results[0]

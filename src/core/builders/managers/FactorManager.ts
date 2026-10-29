@@ -110,11 +110,7 @@ export class FactorManager implements FactorManagerInterface {
 			return
 		}
 		if (isArray<string>(idOrIds)) {
-			let all = true
-			for (const id of idOrIds) {
-				if (!this.#removeOne(groupId, id)) all = false
-			}
-			return all
+			return Iterator.from(idOrIds).reduce((all, id) => this.#removeOne(groupId, id) && all, true)
 		}
 		return this.#removeOne(groupId, idOrIds)
 	}

@@ -1,13 +1,12 @@
-import type { InferenceManagerEventMap } from '@src/core'
 import {
-	createFact,
-	createInference,
-	createInferenceManager,
-	InferenceManager,
-	isReasonError,
-} from '@src/core'
+	createInferenceFixture as inference,
+	createInferenceManagerEvents as events,
+	createInferenceManagerTargetCalls as createTargetCalls,
+	createInferenceManagerDestroyedCalls as createDestroyedCalls,
+} from '../../../../setup.js'
+import { createInferenceManager, InferenceManager, isReasonError } from '@src/core'
 import { describe, expect, it } from 'vitest'
-import { captureError, createRecorders } from '@orkestrel/test'
+import { captureError } from '@orkestrel/test'
 
 // `InferenceManager` — the self-owning, kind-free manager over an inferential
 // definition's `inferences`. Inference order is LOAD-BEARING (backward proving
@@ -16,21 +15,6 @@ import { captureError, createRecorders } from '@orkestrel/test'
 // reporting exactly what it removed, `seat` is the owning builder's SILENT bulk
 // re-seat channel, and `destroy()` is idempotent with every other call
 // afterwards throwing DESTROYED.
-
-function inference(id: string, predicate = 'mortal') {
-	return createInference(
-		id,
-		[createFact('p1', 'human', ['?x'])],
-		createFact('c1', predicate, ['?x']),
-	)
-}
-
-function events(manager: { readonly emitter: InferenceManager['emitter'] }) {
-	return createRecorders<
-		InferenceManagerEventMap,
-		'append' | 'prepend' | 'replace' | 'remove' | 'destroy'
-	>(manager.emitter, ['append', 'prepend', 'replace', 'remove', 'destroy'])
-}
 
 describe('InferenceManager — construction and accessors', () => {
 	it('defaults to an empty collection and seeds from options', () => {
@@ -84,10 +68,7 @@ describe('InferenceManager — placement verbs', () => {
 
 	it('throws TARGET when a target names no existing inference', () => {
 		const inferences = createInferenceManager({ inferences: [inference('a')] })
-		for (const call of [
-			() => inferences.append(inference('b'), 'absent'),
-			() => inferences.prepend(inference('c'), 'absent'),
-		]) {
+		for (const call of createTargetCalls(inferences)) {
 			const error = captureError(call)
 			if (!isReasonError(error)) throw new Error('expected a ReasonError')
 			expect(error.code).toBe('TARGET')
@@ -180,16 +161,7 @@ describe('InferenceManager — destroy', () => {
 	it('throws DESTROYED on every call after destroy', () => {
 		const inferences = createInferenceManager({ inferences: [inference('a')] })
 		inferences.destroy()
-		for (const call of [
-			() => inferences.inference('a'),
-			() => inferences.inferences(),
-			() => inferences.append(inference('b')),
-			() => inferences.prepend(inference('c')),
-			() => inferences.replace(inference('a')),
-			() => inferences.remove('a'),
-			() => inferences.remove(['a']),
-			() => inferences.remove(),
-		]) {
+		for (const call of createDestroyedCalls(inferences)) {
 			const error = captureError(call)
 			if (!isReasonError(error)) throw new Error('expected a ReasonError')
 			expect(error.code).toBe('DESTROYED')

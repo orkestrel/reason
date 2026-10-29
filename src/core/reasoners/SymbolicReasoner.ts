@@ -20,6 +20,7 @@ import {
 } from '../helpers.js'
 import { DEFAULT_PRECISION, INVERTIBLE_OPERATIONS, SYMBOLIC_ID } from '../constants.js'
 import { ReasonError } from '../errors.js'
+import { SymbolicState } from '../SymbolicState.js'
 
 /**
  * Solves algebraic equations by variable isolation.
@@ -132,20 +133,17 @@ export class SymbolicReasoner implements ReasonerInterface {
 		const errors: string[] = []
 		const precision = definition.precision ?? DEFAULT_PRECISION
 
-		const bindings: Record<string, number> = { ...definition.variables }
-
-		// Numeric subject fields bind as variables, overriding definition
-		// variables of the same name; the `id` field is traceability, not data.
-		let bound = 0
-		for (const key of Object.keys(subject)) {
-			if (key === 'id') continue
+		const state = new SymbolicState(definition.variables)
+		const bound = Object.keys(subject).reduce((count, key) => {
+			if (key === 'id') return count
 			const value = parseNumber(subject[key])
 			if (value !== undefined) {
-				bindings[key] = value
+				state.set(key, value)
 				trace.push(`Subject field "${key}" bound as ${key} = ${value}`)
-				bound++
+				return count + 1
 			}
-		}
+			return count
+		}, 0)
 		if (bound > 0) trace.push(`Bound ${bound} variable(s) from subject`)
 
 		if (definition.equations.length === 0) {
@@ -156,7 +154,7 @@ export class SymbolicReasoner implements ReasonerInterface {
 		for (const equation of definition.equations) {
 			if (!isObject(equation)) continue
 			try {
-				const value = this.#solve(equation, bindings)
+				const value = this.#solve(equation, state.values)
 				const rounded = roundTo(value, precision)
 				// The finite gate covers a non-finite solved value as well as a finite
 				// value that overflows during rounding (a huge constant scaled past the
@@ -174,7 +172,7 @@ export class SymbolicReasoner implements ReasonerInterface {
 					continue
 				}
 				// Rounded before binding — later equations see the rounded value.
-				bindings[equation.target] = rounded
+				state.set(equation.target, rounded)
 				trace.push(`Equation "${equation.id}": ${equation.target} = ${rounded}`)
 			} catch (error) {
 				const message = isError(error) ? error.message : String(error)
@@ -183,19 +181,25 @@ export class SymbolicReasoner implements ReasonerInterface {
 			}
 		}
 
-		const solutions: Record<string, number> = {}
+		const solutions = new SymbolicState()
 		for (const equation of definition.equations) {
 			if (!isObject(equation)) continue
-			const value = bindings[equation.target]
-			if (value !== undefined) solutions[equation.target] = value
+			const value = state.values[equation.target]
+			if (value !== undefined) solutions.set(equation.target, value)
 		}
 
-		return { reasoning: 'symbolic', solutions, success: errors.length === 0, trace, errors }
+		return {
+			reasoning: 'symbolic',
+			solutions: solutions.values,
+			success: errors.length === 0,
+			trace,
+			errors,
+		}
 	}
 
 	// Isolate around whichever side holds the unbound target; a pre-bound target
 	// (or one absent from both sides) re-evaluates the right side instead.
-	#solve(equation: Equation, bindings: Record<string, number>): number {
+	#solve(equation: Equation, bindings: Readonly<Record<string, number>>): number {
 		const target = equation.target
 		const leftHas = containsVariable(equation.left, target, bindings)
 		const rightHas = containsVariable(equation.right, target, bindings)
@@ -218,7 +222,7 @@ export class SymbolicReasoner implements ReasonerInterface {
 		expression: SymbolicExpression,
 		target: string,
 		value: number,
-		bindings: Record<string, number>,
+		bindings: Readonly<Record<string, number>>,
 	): number {
 		if (expression.form === 'variable' && expression.name === target) return value
 		if (expression.form !== 'operation') {
@@ -265,7 +269,7 @@ export class SymbolicReasoner implements ReasonerInterface {
 
 	// Unary operations ignore `right`; a binary operation with no right operand
 	// treats it as 0; an unbound variable throws (caught per equation).
-	#evaluate(expression: SymbolicExpression, bindings: Record<string, number>): number {
+	#evaluate(expression: SymbolicExpression, bindings: Readonly<Record<string, number>>): number {
 		switch (expression.form) {
 			case 'constant':
 				return expression.value

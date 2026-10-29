@@ -1,8 +1,9 @@
-import type { CheckResult, Subject } from '@src/core'
-import { createCheck, createEvaluator, Evaluator } from '@src/core'
-import { describe, expect, it } from 'vitest'
-import { invokeUnchecked } from '@orkestrel/test'
 import {
+	evaluator,
+	ageFrom18,
+	evaluateArray,
+	scoreAbove50,
+	nameEqualsAlice,
 	BASIC_SUBJECT,
 	DRIVER_SUBJECT,
 	EXTREME_NUMBERS,
@@ -12,6 +13,10 @@ import {
 	sparse,
 	TRICKY_KEYS,
 } from '../../../setup.js'
+import type { CheckResult, Subject } from '@src/core'
+import { createCheck, Evaluator } from '@src/core'
+import { describe, expect, it } from 'vitest'
+import { invokeUnchecked } from '@orkestrel/test'
 
 // `Evaluator` behavior — the shared predicate engine: strict `===` / `!==` for
 // equals / not (no coercion, reference equality for objects), number-demanding
@@ -23,12 +28,7 @@ import {
 // project-wide one-word comparison vocabulary.
 // No mocks — the real stateless instance throughout.
 
-const evaluator = createEvaluator()
-
 // The recurring shared checks.
-const ageFrom18 = createCheck('age', 'from', 18)
-const scoreAbove50 = createCheck('score', 'above', 50)
-const nameEqualsAlice = createCheck('name', 'equals', 'Alice')
 
 describe('Evaluator — identity', () => {
 	it('defaults its id to "evaluator"', () => {
@@ -629,8 +629,7 @@ describe('Evaluator — Symbol and bigint field values (no coercion)', () => {
 
 describe('Evaluator — deep field path', () => {
 	it('descends ~100 levels to the leaf, one past the leaf is undefined', () => {
-		let deep: Subject = { leaf: 'bottom' }
-		for (let level = 0; level < 100; level += 1) deep = { child: deep }
+		const deep = sequence(100).reduce<Subject>((child) => ({ child }), { leaf: 'bottom' })
 		const toLeaf = [...repeatValue<string>(100, 'child'), 'leaf']
 		expect(evaluator.evaluate(createCheck(toLeaf, 'equals', 'bottom'), deep).met).toBe(true)
 		// One segment past the (string) leaf resolves undefined — total, never a throw.
@@ -844,13 +843,10 @@ describe('Evaluator — sparse expected arrays (any / none / between / outside)'
 			[0, 7],
 			[2, 9],
 		])
-		const runAny = () => evaluator.evaluate(createCheck('a', 'any', expected), { a: undefined }).met
-		const runNone = () =>
-			evaluator.evaluate(createCheck('a', 'none', expected), { a: undefined }).met
-		expect(runAny()).toBe(true)
-		expect(runAny()).toBe(true)
-		expect(runNone()).toBe(false)
-		expect(runNone()).toBe(false)
+		expect(evaluateArray('any', expected, undefined)).toBe(true)
+		expect(evaluateArray('any', expected, undefined)).toBe(true)
+		expect(evaluateArray('none', expected, undefined)).toBe(false)
+		expect(evaluateArray('none', expected, undefined)).toBe(false)
 		// A concrete member (7) and a genuine non-member (100) behave normally.
 		expect(evaluator.evaluate(createCheck('a', 'any', expected), { a: 7 }).met).toBe(true)
 		expect(evaluator.evaluate(createCheck('a', 'any', expected), { a: 100 }).met).toBe(false)
@@ -861,14 +857,10 @@ describe('Evaluator — sparse expected arrays (any / none / between / outside)'
 		// to undefined, which fails isNumber, so between is false regardless of
 		// the actual, and outside (the pure negation) is true.
 		const holeAtStart = sparse<number | undefined>(2, [[1, 40]])
-		const runBetween = () =>
-			evaluator.evaluate(createCheck('a', 'between', holeAtStart), { a: 30 }).met
-		const runOutside = () =>
-			evaluator.evaluate(createCheck('a', 'outside', holeAtStart), { a: 30 }).met
-		expect(runBetween()).toBe(false)
-		expect(runBetween()).toBe(false)
-		expect(runOutside()).toBe(true)
-		expect(runOutside()).toBe(true)
+		expect(evaluateArray('between', holeAtStart, 30)).toBe(false)
+		expect(evaluateArray('between', holeAtStart, 30)).toBe(false)
+		expect(evaluateArray('outside', holeAtStart, 30)).toBe(true)
+		expect(evaluateArray('outside', holeAtStart, 30)).toBe(true)
 
 		const holeAtSecond = sparse<number | undefined>(2, [[0, 20]])
 		expect(evaluator.evaluate(createCheck('a', 'between', holeAtSecond), { a: 30 }).met).toBe(false)
@@ -881,13 +873,9 @@ describe('Evaluator — sparse expected arrays (any / none / between / outside)'
 			[0, 20],
 			[1, 40],
 		])
-		const runBetween = () =>
-			evaluator.evaluate(createCheck('a', 'between', trailingHole), { a: 30 }).met
-		const runOutside = () =>
-			evaluator.evaluate(createCheck('a', 'outside', trailingHole), { a: 30 }).met
-		expect(runBetween()).toBe(true)
-		expect(runBetween()).toBe(true)
-		expect(runOutside()).toBe(false)
-		expect(runOutside()).toBe(false)
+		expect(evaluateArray('between', trailingHole, 30)).toBe(true)
+		expect(evaluateArray('between', trailingHole, 30)).toBe(true)
+		expect(evaluateArray('outside', trailingHole, 30)).toBe(false)
+		expect(evaluateArray('outside', trailingHole, 30)).toBe(false)
 	})
 })

@@ -1,14 +1,12 @@
-import type { EquationManagerEventMap } from '@src/core'
 import {
-	createConstant,
-	createEquation,
-	createEquationManager,
-	createVariable,
-	EquationManager,
-	isReasonError,
-} from '@src/core'
+	createEquationFixture as equation,
+	createEquationManagerEvents as events,
+	createEquationManagerTargetCalls as createTargetCalls,
+	createEquationManagerDestroyedCalls as createDestroyedCalls,
+} from '../../../../setup.js'
+import { createConstant, createEquationManager, EquationManager, isReasonError } from '@src/core'
 import { describe, expect, it } from 'vitest'
-import { captureError, createRecorders } from '@orkestrel/test'
+import { captureError } from '@orkestrel/test'
 
 // `EquationManager` — the self-owning, kind-free manager over a symbolic
 // definition's `equations`. Equation order is STRONGLY load-bearing (equations
@@ -17,17 +15,6 @@ import { captureError, createRecorders } from '@orkestrel/test'
 // batch family reporting exactly what it removed, `seat` is the owning
 // builder's SILENT bulk re-seat channel, and `destroy()` is idempotent with
 // every other call afterwards throwing DESTROYED.
-
-function equation(id: string, value = 42) {
-	return createEquation(id, createVariable(id), createConstant(value), id)
-}
-
-function events(manager: { readonly emitter: EquationManager['emitter'] }) {
-	return createRecorders<
-		EquationManagerEventMap,
-		'append' | 'prepend' | 'replace' | 'remove' | 'destroy'
-	>(manager.emitter, ['append', 'prepend', 'replace', 'remove', 'destroy'])
-}
 
 describe('EquationManager — construction and accessors', () => {
 	it('defaults to an empty collection and seeds from options', () => {
@@ -81,10 +68,7 @@ describe('EquationManager — placement verbs', () => {
 
 	it('throws TARGET when a target names no existing equation', () => {
 		const equations = createEquationManager({ equations: [equation('a')] })
-		for (const call of [
-			() => equations.append(equation('b'), 'absent'),
-			() => equations.prepend(equation('c'), 'absent'),
-		]) {
+		for (const call of createTargetCalls(equations)) {
 			const error = captureError(call)
 			if (!isReasonError(error)) throw new Error('expected a ReasonError')
 			expect(error.code).toBe('TARGET')
@@ -177,16 +161,7 @@ describe('EquationManager — destroy', () => {
 	it('throws DESTROYED on every call after destroy', () => {
 		const equations = createEquationManager({ equations: [equation('a')] })
 		equations.destroy()
-		for (const call of [
-			() => equations.equation('a'),
-			() => equations.equations(),
-			() => equations.append(equation('b')),
-			() => equations.prepend(equation('c')),
-			() => equations.replace(equation('a')),
-			() => equations.remove('a'),
-			() => equations.remove(['a']),
-			() => equations.remove(),
-		]) {
+		for (const call of createDestroyedCalls(equations)) {
 			const error = captureError(call)
 			if (!isReasonError(error)) throw new Error('expected a ReasonError')
 			expect(error.code).toBe('DESTROYED')

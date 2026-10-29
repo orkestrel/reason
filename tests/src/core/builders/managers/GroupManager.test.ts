@@ -1,13 +1,11 @@
-import type { GroupManagerEventMap } from '@src/core'
 import {
-	createFactorGroup,
-	createGroupManager,
-	createStaticFactor,
-	GroupManager,
-	isReasonError,
-} from '@src/core'
+	createGroupManagerEvents as events,
+	createGroupManagerTargetCalls as createTargetCalls,
+	createGroupManagerDestroyedCalls as createDestroyedCalls,
+} from '../../../../setup.js'
+import { createFactorGroup, createGroupManager, GroupManager, isReasonError } from '@src/core'
 import { describe, expect, it } from 'vitest'
-import { captureError, createRecorders } from '@orkestrel/test'
+import { captureError } from '@orkestrel/test'
 
 // `GroupManager` — the self-owning, kind-free manager over a quantitative
 // definition's `groups`. It owns its collection as copy-on-write state and its
@@ -16,13 +14,6 @@ import { captureError, createRecorders } from '@orkestrel/test'
 // reporting exactly what it removed, `seat` is the owning builder's SILENT bulk
 // re-seat channel, and `destroy()` is idempotent with every other call
 // afterwards throwing DESTROYED.
-
-function events(manager: { readonly emitter: GroupManager['emitter'] }) {
-	return createRecorders<
-		GroupManagerEventMap,
-		'append' | 'prepend' | 'replace' | 'remove' | 'destroy'
-	>(manager.emitter, ['append', 'prepend', 'replace', 'remove', 'destroy'])
-}
 
 describe('GroupManager — construction and accessors', () => {
 	it('defaults to an empty collection and seeds from options', () => {
@@ -98,10 +89,7 @@ describe('GroupManager — placement verbs', () => {
 
 	it('throws TARGET when a target names no existing group', () => {
 		const groups = createGroupManager({ groups: [createFactorGroup('a', 'sum', [])] })
-		for (const call of [
-			() => groups.append(createFactorGroup('b', 'sum', []), 'absent'),
-			() => groups.prepend(createFactorGroup('c', 'sum', []), 'absent'),
-		]) {
+		for (const call of createTargetCalls(groups)) {
 			const error = captureError(call)
 			if (!isReasonError(error)) throw new Error('expected a ReasonError')
 			expect(error.code).toBe('TARGET')
@@ -207,17 +195,7 @@ describe('GroupManager — destroy', () => {
 	it('throws DESTROYED on every call after destroy', () => {
 		const groups = createGroupManager({ groups: [createFactorGroup('a', 'sum', [])] })
 		groups.destroy()
-		for (const call of [
-			() => groups.group('a'),
-			() => groups.groups(),
-			() => groups.append(createFactorGroup('b', 'sum', [createStaticFactor('f', 1)])),
-			() => groups.prepend(createFactorGroup('c', 'sum', [])),
-			() => groups.replace(createFactorGroup('a', 'sum', [])),
-			() => groups.remove('a'),
-			() => groups.remove(['a']),
-			() => groups.remove(),
-			() => groups.seat([]),
-		]) {
+		for (const call of createDestroyedCalls(groups)) {
 			const error = captureError(call)
 			if (!isReasonError(error)) throw new Error('expected a ReasonError')
 			expect(error.code).toBe('DESTROYED')

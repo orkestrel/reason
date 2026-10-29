@@ -1,4 +1,11 @@
-import type { FactorManagerEventMap, GroupManagerEventMap } from '@src/core'
+import {
+	createSeededManagers as seeded,
+	createFactorManagerEvents as events,
+	createLocatorCalls,
+	createFactorManagerTargetCalls as createTargetCalls,
+	createFactorManagerDestroyedCalls as createDestroyedCalls,
+} from '../../../../setup.js'
+import type { GroupManagerEventMap } from '@src/core'
 import {
 	createFactorGroup,
 	createFactorManager,
@@ -18,26 +25,6 @@ import { captureError, createRecorders } from '@orkestrel/test'
 // group throws TARGET carrying `groupId` in the context; `remove` is the batch
 // family behind that locator and reports exactly what it removed.
 
-function seeded(ids: readonly string[] = []) {
-	const groups = createGroupManager({
-		groups: [
-			createFactorGroup(
-				'drivers',
-				'sum',
-				ids.map((id) => createStaticFactor(id, 1)),
-			),
-		],
-	})
-	return { groups, factors: createFactorManager(groups) }
-}
-
-function events(manager: { readonly emitter: FactorManager['emitter'] }) {
-	return createRecorders<
-		FactorManagerEventMap,
-		'append' | 'prepend' | 'replace' | 'remove' | 'destroy'
-	>(manager.emitter, ['append', 'prepend', 'replace', 'remove', 'destroy'])
-}
-
 describe('FactorManager — construction and accessors', () => {
 	it('reads ONE factor by group id + id and ALL factors of one group in order', () => {
 		const { factors } = seeded(['a', 'b'])
@@ -55,15 +42,7 @@ describe('FactorManager — construction and accessors', () => {
 
 	it('throws TARGET carrying groupId when the locator names no group', () => {
 		const { factors } = seeded()
-		for (const call of [
-			() => factors.factor('absent', 'a'),
-			() => factors.factors('absent'),
-			() => factors.append('absent', createStaticFactor('a', 1)),
-			() => factors.prepend('absent', createStaticFactor('a', 1)),
-			() => factors.replace('absent', createStaticFactor('a', 1)),
-			() => factors.remove('absent', 'a'),
-			() => factors.remove('absent'),
-		]) {
+		for (const call of createLocatorCalls(factors)) {
 			const error = captureError(call)
 			if (!isReasonError(error)) throw new Error('expected a ReasonError')
 			expect(error.code).toBe('TARGET')
@@ -99,10 +78,7 @@ describe('FactorManager — placement verbs', () => {
 
 	it('throws TARGET when a factor target names no existing factor', () => {
 		const { factors } = seeded(['a'])
-		for (const call of [
-			() => factors.append('drivers', createStaticFactor('b', 1), 'absent'),
-			() => factors.prepend('drivers', createStaticFactor('c', 1), 'absent'),
-		]) {
+		for (const call of createTargetCalls(factors)) {
 			const error = captureError(call)
 			if (!isReasonError(error)) throw new Error('expected a ReasonError')
 			expect(error.code).toBe('TARGET')
@@ -179,16 +155,7 @@ describe('FactorManager — destroy', () => {
 	it('throws DESTROYED on every call after destroy', () => {
 		const { factors } = seeded(['a'])
 		factors.destroy()
-		for (const call of [
-			() => factors.factor('drivers', 'a'),
-			() => factors.factors('drivers'),
-			() => factors.append('drivers', createStaticFactor('b', 1)),
-			() => factors.prepend('drivers', createStaticFactor('c', 1)),
-			() => factors.replace('drivers', createStaticFactor('a', 1)),
-			() => factors.remove('drivers', 'a'),
-			() => factors.remove('drivers', ['a']),
-			() => factors.remove('drivers'),
-		]) {
+		for (const call of createDestroyedCalls(factors)) {
 			const error = captureError(call)
 			if (!isReasonError(error)) throw new Error('expected a ReasonError')
 			expect(error.code).toBe('DESTROYED')

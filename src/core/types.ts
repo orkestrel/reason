@@ -31,7 +31,7 @@ export type Reasoning = 'quantitative' | 'logical' | 'symbolic' | 'inferential'
  * Names how a chaining reasoner walks its rules: `forward` (data-driven fixpoint) or
  * `backward` (goal-driven proving).
  */
-export type ChainingStrategy = 'forward' | 'backward'
+export type ChainStrategy = 'forward' | 'backward'
 
 /**
  * Names a math operation applied by the {@link TransformerInterface} and inside
@@ -343,7 +343,7 @@ export interface LogicalDefinition {
 	readonly name: string
 	readonly description?: string
 	readonly rules: readonly Rule[]
-	readonly strategy: ChainingStrategy
+	readonly strategy: ChainStrategy
 	readonly depth?: number
 }
 
@@ -467,7 +467,7 @@ export interface InferentialDefinition {
 	readonly description?: string
 	readonly inferences: readonly Inference[]
 	readonly facts: readonly Fact[]
-	readonly strategy: ChainingStrategy
+	readonly strategy: ChainStrategy
 	readonly depth?: number
 }
 
@@ -1571,7 +1571,7 @@ export type InferentialClearKey = 'description' | 'depth'
  * The shared return shape of the forward-fixpoint and backward-proving passes;
  * `LogicalResult.count` is derived from `rules` rather than carried here.
  */
-export interface LogicalChainingResult {
+export interface LogicalChainResult {
 	readonly conclusion: boolean
 	readonly rules: readonly RuleResult[]
 }
@@ -1585,7 +1585,7 @@ export interface LogicalChainingResult {
  * `proof` is produced only by the backward pass, and only when a conclusion was
  * proved.
  */
-export interface InferentialChainingResult {
+export interface InferentialChainResult {
 	readonly derived: readonly Fact[]
 	readonly proof?: ProofNode
 }

@@ -150,30 +150,27 @@ export class QuantitativeReasoner implements ReasonerInterface {
 
 		const trace: string[] = []
 		const errors: string[] = []
-		let count = 0
-
-		const groupResults: GroupResult[] = []
-		for (const group of definition.groups) {
-			if (!isObject(group)) continue
-			if (group.enabled === false) {
-				trace.push(`Skipped group "${group.id}" (disabled)`)
-				continue
-			}
-			const groupResult = this.#evaluateGroup(group, subject, trace, errors)
-			groupResults.push(groupResult)
-			if (groupResult.applied) count++
-		}
+		const groupResults = Iterator.from(definition.groups)
+			.flatMap((group) => {
+				if (!isObject(group)) return []
+				if (group.enabled === false) {
+					trace.push(`Skipped group "${group.id}" (disabled)`)
+					return []
+				}
+				return [this.#evaluateGroup(group, subject, trace, errors)]
+			})
+			.toArray()
 
 		const groupValues = groupResults.filter((group) => group.applied).map((group) => group.value)
 
 		const base = definition.base ?? DEFAULT_BASE
-		let value = base + this.#aggregator.aggregate(groupValues, definition.aggregation)
+		const raw = base + this.#aggregator.aggregate(groupValues, definition.aggregation)
 		trace.push(
-			`Aggregated ${groupValues.length} groups with "${definition.aggregation}": base=${base}, raw=${value}`,
+			`Aggregated ${groupValues.length} groups with "${definition.aggregation}": base=${base}, raw=${raw}`,
 		)
 
-		value = clamp(value, definition.bounds)
-		value = roundTo(value, definition.precision ?? DEFAULT_PRECISION)
+		const bounded = clamp(raw, definition.bounds)
+		const value = roundTo(bounded, definition.precision ?? DEFAULT_PRECISION)
 
 		// Definition-level finite check (mirrors the factor-level formatter): a
 		// minimum / maximum over zero applied groups aggregates to NaN — that is
@@ -189,7 +186,7 @@ export class QuantitativeReasoner implements ReasonerInterface {
 			reasoning: 'quantitative',
 			value,
 			groups: groupResults,
-			count,
+			count: groupValues.length,
 			success: errors.length === 0,
 			trace,
 			errors,
@@ -209,14 +206,15 @@ export class QuantitativeReasoner implements ReasonerInterface {
 			return { id: group.id, applied: false, value: group.base ?? DEFAULT_BASE, factors: [] }
 		}
 
-		const factorResults: FactorResult[] = []
-		for (const factor of sortByPriority(group.factors)) {
-			if (factor.enabled === false) {
-				trace.push(`Skipped factor "${factor.id}" (disabled)`)
-				continue
-			}
-			factorResults.push(this.#evaluateFactor(factor, subject, trace, errors))
-		}
+		const factorResults = Iterator.from(sortByPriority(group.factors))
+			.flatMap((factor) => {
+				if (factor.enabled === false) {
+					trace.push(`Skipped factor "${factor.id}" (disabled)`)
+					return []
+				}
+				return [this.#evaluateFactor(factor, subject, trace, errors)]
+			})
+			.toArray()
 
 		const appliedFactors = factorResults.filter((factor) => factor.applied)
 
@@ -244,8 +242,8 @@ export class QuantitativeReasoner implements ReasonerInterface {
 		const weights = appliedFactors.map((factor) => weightById.get(factor.id) ?? DEFAULT_WEIGHT)
 
 		const base = group.base ?? DEFAULT_BASE
-		let value = base + this.#aggregator.aggregate(factorValues, group.aggregation, weights)
-		value = clamp(value, group.bounds)
+		const raw = base + this.#aggregator.aggregate(factorValues, group.aggregation, weights)
+		const value = clamp(raw, group.bounds)
 
 		trace.push(
 			`Group "${group.id}": ${appliedFactors.length}/${factorResults.length} factors applied, value=${value}`,
@@ -292,12 +290,11 @@ export class QuantitativeReasoner implements ReasonerInterface {
 			return { id: factor.id, applied: false, value: 0, raw }
 		}
 
-		let value = raw
-		if (factor.transforms && factor.transforms.length > 0) {
-			value = this.#transformer.chain(value, factor.transforms)
-		}
-
-		value = clamp(value, factor.bounds)
+		const transformed =
+			factor.transforms && factor.transforms.length > 0
+				? this.#transformer.chain(raw, factor.transforms)
+				: raw
+		const value = clamp(transformed, factor.bounds)
 
 		if (!isFiniteNumber(value)) {
 			const description = Number.isNaN(value) ? 'NaN' : String(value)

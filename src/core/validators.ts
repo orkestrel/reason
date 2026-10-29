@@ -2,7 +2,7 @@ import type { FieldPath, Guard } from '@orkestrel/contract'
 import type {
 	Aggregation,
 	Bounds,
-	ChainingStrategy,
+	ChainStrategy,
 	Check,
 	CheckResult,
 	Comparison,
@@ -107,20 +107,20 @@ export const isReasoning: Guard<Reasoning> = literalOf(
 )
 
 /**
- * Determines whether a value is a {@link ChainingStrategy} literal.
+ * Determines whether a value is a {@link ChainStrategy} literal.
  *
  * @param value - The value to test
  * @returns True if `value` is `'forward'` or `'backward'`; false otherwise
  *
  * @example
  * ```ts
- * import { isChainingStrategy } from '@src/core'
+ * import { isChainStrategy } from '@src/core'
  *
- * isChainingStrategy('forward') // true
- * isChainingStrategy('upward')  // false
+ * isChainStrategy('forward') // true
+ * isChainStrategy('upward')  // false
  * ```
  */
-export const isChainingStrategy: Guard<ChainingStrategy> = literalOf('forward', 'backward')
+export const isChainStrategy: Guard<ChainStrategy> = literalOf('forward', 'backward')
 
 /**
  * Determines whether a value is a {@link MathOperation} literal.
@@ -685,7 +685,7 @@ export function isLogicalDefinition(value: unknown): value is LogicalDefinition 
 			name: isString,
 			description: isString,
 			rules: arrayOf(isRule),
-			strategy: isChainingStrategy,
+			strategy: isChainStrategy,
 			depth: isFiniteNumber,
 		},
 		['description', 'depth'],
@@ -744,7 +744,7 @@ export function isInferentialDefinition(value: unknown): value is InferentialDef
 			description: isString,
 			inferences: arrayOf(isInference),
 			facts: arrayOf(isFact),
-			strategy: isChainingStrategy,
+			strategy: isChainStrategy,
 			depth: isFiniteNumber,
 		},
 		['description', 'depth'],
@@ -1053,8 +1053,7 @@ export function isProofNode(value: unknown): value is ProofNode {
 			if (!isArray(children)) return false
 			const entries = readArrayEntries(children)
 			if (!entries.success || !entries.value.dense) return false
-			for (let index = entries.value.entries.length - 1; index >= 0; index -= 1) {
-				const child = entries.value.entries[index]
+			for (const child of entries.value.entries.toReversed()) {
 				if (!isObject(child) || isArray(child)) return false
 				worklist.push([child, depth + 1, false])
 			}

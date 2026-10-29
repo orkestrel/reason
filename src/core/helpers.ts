@@ -76,6 +76,22 @@ export function formatField(field: FieldPath): string {
 // === Numeric helpers
 
 /**
+ * Iterates nonnegative indices below a numeric limit without allocating a range.
+ *
+ * @example
+ * ```ts
+ * [...iterateIndices(2.5)] // [0, 1, 2]
+ * ```
+ */
+export function* iterateIndices(limit: number): Generator<number> {
+	yield* Array.prototype.keys.call({ length: Math.max(0, Math.ceil(limit)) })
+	if (limit > Number.MAX_SAFE_INTEGER) yield Number.MAX_SAFE_INTEGER
+	if (limit > Number.MAX_SAFE_INTEGER + 1) {
+		for (;;) yield Number.MAX_SAFE_INTEGER + 1
+	}
+}
+
+/**
  * Clamps a number to inclusive {@link Bounds}.
  *
  * @remarks
@@ -96,10 +112,8 @@ export function formatField(field: FieldPath): string {
  */
 export function clamp(value: number, limit?: Bounds): number {
 	if (!limit) return value
-	let result = value
-	if (limit.minimum !== undefined && result < limit.minimum) result = limit.minimum
-	if (limit.maximum !== undefined && result > limit.maximum) result = limit.maximum
-	return result
+	const minimum = limit.minimum !== undefined && value < limit.minimum ? limit.minimum : value
+	return limit.maximum !== undefined && minimum > limit.maximum ? limit.maximum : minimum
 }
 
 /**
@@ -323,11 +337,7 @@ export function equalValues(left: unknown, right: unknown): boolean {
 export function sortByPriority<T extends { readonly priority?: number }>(
 	items: readonly T[],
 ): readonly T[] {
-	const usable: T[] = []
-	for (const item of items) {
-		if (!isObject(item)) continue
-		usable.push(item)
-	}
+	const usable = Iterator.from(items).filter(isObject).toArray()
 	return usable.sort(
 		(left, right) => (left.priority ?? DEFAULT_PRIORITY) - (right.priority ?? DEFAULT_PRIORITY),
 	)
@@ -354,9 +364,11 @@ export function sortByPriority<T extends { readonly priority?: number }>(
  * ```
  */
 export function findDuplicates(items: ReadonlyArray<{ readonly id: string }>): readonly string[] {
-	const counts = new Map<string, number>()
-	for (const item of items) counts.set(item.id, (counts.get(item.id) ?? 0) + 1)
-	return [...counts.entries()].filter(([, count]) => count > 1).map(([id]) => id)
+	const counts = Iterator.from(items).reduce(
+		(previous, item) => new Map(previous).set(item.id, (previous.get(item.id) ?? 0) + 1),
+		new Map<string, number>(),
+	)
+	return [...counts].filter(([, count]) => count > 1).map(([id]) => id)
 }
 
 // === Inferential fact machinery
@@ -416,14 +428,7 @@ export function factToArityKey(fact: Fact): string {
  * ```
  */
 export function indexByArity(facts: readonly Fact[]): ReadonlyMap<string, readonly Fact[]> {
-	const index = new Map<string, Fact[]>()
-	for (const entry of facts) {
-		const key = factToArityKey(entry)
-		const bucket = index.get(key)
-		if (bucket) bucket.push(entry)
-		else index.set(key, [entry])
-	}
-	return index
+	return Map.groupBy(facts, factToArityKey)
 }
 
 /**
@@ -530,30 +535,29 @@ export function matchFacts(pattern: Fact, candidate: Fact): Record<string, unkno
 	if (pattern.predicate !== candidate.predicate) return undefined
 	if (pattern.terms.length !== candidate.terms.length) return undefined
 
-	const bindings: Record<string, unknown> = {}
+	const bindings = new Map<string, unknown>()
 
-	for (let index = 0; index < pattern.terms.length; index++) {
-		const patternTerm = pattern.terms[index]
+	for (const [index, patternTerm] of pattern.terms.entries()) {
 		const factTerm = candidate.terms[index]
 
 		if (isString(patternTerm) && patternTerm.startsWith('?')) {
-			if (patternTerm in bindings) {
-				if (bindings[patternTerm] !== factTerm) return undefined
+			if (bindings.has(patternTerm)) {
+				if (bindings.get(patternTerm) !== factTerm) return undefined
 			} else {
-				bindings[patternTerm] = factTerm
+				bindings.set(patternTerm, factTerm)
 			}
 		} else if (isString(factTerm) && factTerm.startsWith('?')) {
-			if (factTerm in bindings) {
-				if (bindings[factTerm] !== patternTerm) return undefined
+			if (bindings.has(factTerm)) {
+				if (bindings.get(factTerm) !== patternTerm) return undefined
 			} else {
-				bindings[factTerm] = patternTerm
+				bindings.set(factTerm, patternTerm)
 			}
 		} else if (patternTerm !== factTerm) {
 			return undefined
 		}
 	}
 
-	return bindings
+	return Object.fromEntries(bindings)
 }
 
 /**
@@ -620,19 +624,15 @@ export function computePremiseConfidence(
 	index: ReadonlyMap<string, readonly Fact[]>,
 	bindings: Record<string, unknown>,
 ): number {
-	let confidence = 1
-
-	for (const premise of premises) {
+	return Iterator.from(premises).reduce((confidence, premise) => {
 		const instantiated = instantiateFact(premise, bindings)
 		for (const candidate of index.get(factToArityKey(premise)) ?? []) {
 			if (matchFacts(instantiated, candidate)) {
-				confidence *= candidate.confidence ?? DEFAULT_CONFIDENCE
-				break
+				return confidence * (candidate.confidence ?? DEFAULT_CONFIDENCE)
 			}
 		}
-	}
-
-	return confidence
+		return confidence
+	}, 1)
 }
 
 /**
@@ -660,26 +660,27 @@ export function subjectToFacts(subject: Subject): {
 	readonly facts: readonly Fact[]
 	readonly trace: readonly string[]
 } {
-	const facts: Fact[] = []
-	const trace: string[] = []
-
-	for (const key of Object.keys(subject)) {
-		if (key === 'id') continue
+	const rows = Object.keys(subject).flatMap((key) => {
+		if (key === 'id') return []
 		const value = subject[key]
-		if (value === undefined || value === null) continue
-		if (isObject(value)) continue
+		if (value === undefined || value === null) return []
+		if (isObject(value)) return []
 
-		facts.push({
+		const fact: Fact = {
 			id: `subject:${key}`,
 			predicate: 'has',
 			terms: [key, value],
 			confidence: DEFAULT_CONFIDENCE,
-		})
-		trace.push(`Subject field "${key}" → has(${key}, ${String(value)})`)
+		}
+		return [{ fact, trace: `Subject field "${key}" → has(${key}, ${String(value)})` }]
+	})
+	return {
+		facts: rows.map((row) => row.fact),
+		trace: [
+			...rows.map((row) => row.trace),
+			...(rows.length > 0 ? [`Injected ${rows.length} fact(s) from subject`] : []),
+		],
 	}
-
-	if (facts.length > 0) trace.push(`Injected ${facts.length} fact(s) from subject`)
-	return { facts, trace }
 }
 
 /**
@@ -709,23 +710,18 @@ export function subjectToFacts(subject: Subject): {
  * ```
  */
 export function findUnboundVariables(inference: Inference): readonly string[] {
-	const bound = new Set<string>()
-	for (const premise of inference.premises) {
-		for (const term of premise.terms) {
-			if (isString(term) && term.startsWith('?')) bound.add(term)
-		}
-	}
-
-	const unbound: string[] = []
-	const seen = new Set<string>()
-	for (const term of inference.conclusion.terms) {
-		if (!isString(term) || !term.startsWith('?')) continue
-		if (bound.has(term) || seen.has(term)) continue
-		seen.add(term)
-		unbound.push(term)
-	}
-
-	return unbound
+	const bound = new Set(
+		Iterator.from(inference.premises).flatMap((premise) =>
+			Iterator.from(premise.terms).filter((term) => isString(term) && term.startsWith('?')),
+		),
+	)
+	return [
+		...new Set(
+			Iterator.from(inference.conclusion.terms).filter(
+				(term): term is string => isString(term) && term.startsWith('?') && !bound.has(term),
+			),
+		),
+	]
 }
 
 // === Symbolic algebra machinery
@@ -990,7 +986,9 @@ export function extractAtoms(expression: Expression): readonly Atom[] {
 			continue
 		}
 		const operands = node.operands
-		for (let index = operands.length - 1; index >= 0; index--) {
+		const length = operands.length
+		for (const offset of iterateIndices(length)) {
+			const index = length - 1 - offset
 			const operand = operands[index]
 			if (operand !== undefined) stack.push(operand)
 		}
@@ -1065,29 +1063,23 @@ export function extractConclusions(expression: Expression): Record<string, unkno
  * ```
  */
 export function findOverlayMismatches(rules: readonly Rule[]): readonly string[] {
-	const writeKeys: string[] = []
-	const seenWrites = new Set<string>()
-	for (const candidate of rules) {
-		for (const atomLeaf of extractAtoms(candidate.conclusion)) {
-			if (!isArray(atomLeaf.check.field)) continue
-			const key = formatField(atomLeaf.check.field)
-			if (seenWrites.has(key)) continue
-			seenWrites.add(key)
-			writeKeys.push(key)
-		}
-	}
-
-	const readKeys = new Set<string>()
-	for (const candidate of rules) {
-		for (const premise of candidate.premises) {
-			for (const atomLeaf of extractAtoms(premise)) {
-				if (!isArray(atomLeaf.check.field)) continue
-				readKeys.add(formatField(atomLeaf.check.field))
-			}
-		}
-	}
-
-	return writeKeys.filter((key) => readKeys.has(key))
+	const writeKeys = new Set(
+		Iterator.from(rules).flatMap((candidate) =>
+			extractAtoms(candidate.conclusion).flatMap((atom) =>
+				isArray(atom.check.field) ? [formatField(atom.check.field)] : [],
+			),
+		),
+	)
+	const readKeys = new Set(
+		Iterator.from(rules).flatMap((candidate) =>
+			Iterator.from(candidate.premises).flatMap((premise) =>
+				extractAtoms(premise).flatMap((atom) =>
+					isArray(atom.check.field) ? [formatField(atom.check.field)] : [],
+				),
+			),
+		),
+	)
+	return [...writeKeys].filter((key) => readKeys.has(key))
 }
 
 /**
@@ -1387,20 +1379,23 @@ export function mergeById<T extends { readonly id: string }>(
 	const baseById = new Map<string, T>()
 	for (const item of base) if (!baseById.has(item.id)) baseById.set(item.id, item)
 
-	const seen = new Set<string>()
-	const merged: T[] = []
+	const merged: Array<{ readonly id: string; readonly value: T }> = []
 	for (const item of incoming) {
-		if (seen.has(item.id)) continue
-		seen.add(item.id)
+		const query = item.id
+		if (merged.some((entry) => entry.id === query)) continue
+		const id = item.id
 		const existing = baseById.get(item.id)
-		merged.push(existing === undefined ? item : resolve ? resolve(existing, item) : item)
+		merged.push({
+			id,
+			value: existing === undefined ? item : resolve ? resolve(existing, item) : item,
+		})
 	}
 	for (const item of base) {
-		if (seen.has(item.id)) continue
-		seen.add(item.id)
-		merged.push(item)
+		const query = item.id
+		if (merged.some((entry) => entry.id === query)) continue
+		merged.push({ id: item.id, value: item })
 	}
-	return merged
+	return merged.map((entry) => entry.value)
 }
 
 // === Quantitative change/extend helpers
@@ -2416,9 +2411,7 @@ export function mergeSubjects(base: Subject, incoming: Subject): Subject {
  */
 export function repeatSubject(subject: Subject, count: number): readonly Subject[] {
 	const baseId = subject.id
-	const clones: Subject[] = []
-	for (let index = 0; index < count; index += 1) {
-		clones.push(isString(baseId) ? { ...subject, id: `${baseId}-${index}` } : { ...subject })
-	}
-	return clones
+	return iterateIndices(count)
+		.map((index) => (isString(baseId) ? { ...subject, id: `${baseId}-${index}` } : { ...subject }))
+		.toArray()
 }

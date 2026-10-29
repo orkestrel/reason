@@ -1,3 +1,10 @@
+import {
+	type Entry,
+	createEntry as entry,
+	createCollection as collection,
+	createCollectionTargetCalls as createTargetCalls,
+	createCollectionDestroyedCalls as createDestroyedCalls,
+} from '../../../../setup.js'
 import { isReasonError } from '@src/core'
 import { describe, expect, it } from 'vitest'
 import { captureError } from '@orkestrel/test'
@@ -9,22 +16,6 @@ import { Collection } from '../../../../../src/core/builders/managers/Collection
 // its array as copy-on-write state, delegates every write verb to the exported
 // collection-level pure helper, emits nothing itself, reports from `remove`
 // whether the id was there, and names its OWNER in the DESTROYED message.
-
-interface Entry {
-	readonly id: string
-	readonly value: number
-}
-
-function entry(id: string, value = 0): Entry {
-	return { id, value }
-}
-
-function collection(...ids: readonly string[]) {
-	return new Collection<Entry>(
-		'TestOwner',
-		ids.map((id) => entry(id)),
-	)
-}
 
 describe('Collection — accessors', () => {
 	it('reads ONE element by id and ALL elements in order', () => {
@@ -73,10 +64,7 @@ describe('Collection — placement verbs', () => {
 
 	it('throws TARGET when a target names no element', () => {
 		const items = collection('a')
-		for (const call of [
-			() => items.append(entry('b'), 'absent'),
-			() => items.prepend(entry('c'), 'absent'),
-		]) {
+		for (const call of createTargetCalls(items)) {
 			const error = captureError(call)
 			if (!isReasonError(error)) throw new Error('expected a ReasonError')
 			expect(error.code).toBe('TARGET')
@@ -128,15 +116,7 @@ describe('Collection — destroy', () => {
 	it('throws a DESTROYED error naming its OWNER on every other call', () => {
 		const items = collection('a')
 		items.destroy()
-		for (const call of [
-			() => items.item('a'),
-			() => items.items(),
-			() => items.append(entry('b')),
-			() => items.prepend(entry('c')),
-			() => items.replace(entry('a')),
-			() => items.remove('a'),
-			() => items.seat([]),
-		]) {
+		for (const call of createDestroyedCalls(items)) {
 			const error = captureError(call)
 			if (!isReasonError(error)) throw new Error('expected a ReasonError')
 			expect(error.code).toBe('DESTROYED')

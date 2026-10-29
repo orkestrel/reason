@@ -1,21 +1,9 @@
-import type { Equation, ReasonResult, SymbolicExpression, SymbolicResult } from '@src/core'
 import {
-	createConstant,
-	createDefinitionBuilder,
-	createEquation,
-	createOperation,
-	createQuantitativeDefinition,
-	createSubjectBuilder,
-	createSymbolicDefinition,
-	createSymbolicReasoner,
-	createVariable,
-	isReasonError,
-	roundTo,
-	SymbolicReasoner,
-} from '@src/core'
-import { describe, expect, it } from 'vitest'
-import { captureError, invokeUnchecked } from '@orkestrel/test'
-import {
+	symbolicReasoner as reasoner,
+	evaluateExpression,
+	evaluateSubjectBinding,
+	readSolution,
+	readSubjectTrace,
 	deepAddition,
 	EXTREME_NUMBERS,
 	expectSymbolic,
@@ -24,6 +12,22 @@ import {
 	sparse,
 	TRICKY_KEYS,
 } from '../../../setup.js'
+import type { Equation, ReasonResult, SymbolicExpression } from '@src/core'
+import {
+	createConstant,
+	createDefinitionBuilder,
+	createEquation,
+	createOperation,
+	createQuantitativeDefinition,
+	createSubjectBuilder,
+	createSymbolicDefinition,
+	createVariable,
+	isReasonError,
+	roundTo,
+	SymbolicReasoner,
+} from '@src/core'
+import { describe, expect, it } from 'vitest'
+import { captureError, createRecorder, invokeUnchecked } from '@orkestrel/test'
 
 // `SymbolicReasoner` behavior — bindings seeded from definition variables and
 // OVERRIDDEN by numeric subject fields (parseNumber coercion: numeric strings
@@ -35,8 +39,6 @@ import {
 // equation and continue), precision rounding applied BEFORE binding (so later
 // equations see the rounded value), and solutions keyed by equation targets
 // only, all keyed on the `form` discriminant.
-
-const reasoner = createSymbolicReasoner()
 
 describe('SymbolicReasoner — identity', () => {
 	it('defaults its id to "symbolic" and reports its reasoning', () => {
@@ -772,44 +774,48 @@ describe('SymbolicReasoner — multi-peel isolation', () => {
 
 describe('SymbolicReasoner — full-operator evaluation', () => {
 	// The target appears on neither side, so the right expression is evaluated directly.
-	const evaluate = (expression: SymbolicExpression): number => {
-		const definition = createSymbolicDefinition('d', 'd', [
-			createEquation('e1', createVariable('result'), expression, 'result'),
-		])
-		const result = expectSymbolic(reasoner.reason({}, definition)).solutions.result
-		if (result === undefined) throw new Error('expected result solution')
-		return result
-	}
 
 	it('evaluates power, percentage, minimum, maximum and average', () => {
-		expect(evaluate(createOperation('power', createConstant(2), createConstant(10)))).toBe(1024)
-		expect(evaluate(createOperation('percentage', createConstant(200), createConstant(15)))).toBe(
-			30,
-		)
-		expect(evaluate(createOperation('minimum', createConstant(3), createConstant(8)))).toBe(3)
-		expect(evaluate(createOperation('maximum', createConstant(3), createConstant(8)))).toBe(8)
-		expect(evaluate(createOperation('average', createConstant(10), createConstant(20)))).toBe(15)
+		expect(
+			evaluateExpression(createOperation('power', createConstant(2), createConstant(10))),
+		).toBe(1024)
+		expect(
+			evaluateExpression(createOperation('percentage', createConstant(200), createConstant(15))),
+		).toBe(30)
+		expect(
+			evaluateExpression(createOperation('minimum', createConstant(3), createConstant(8))),
+		).toBe(3)
+		expect(
+			evaluateExpression(createOperation('maximum', createConstant(3), createConstant(8))),
+		).toBe(8)
+		expect(
+			evaluateExpression(createOperation('average', createConstant(10), createConstant(20))),
+		).toBe(15)
 	})
 
 	it('evaluates the unary operations round, ceil, floor and abs', () => {
-		expect(evaluate(createOperation('round', createConstant(2.5)))).toBe(3)
-		expect(evaluate(createOperation('ceil', createConstant(2.1)))).toBe(3)
-		expect(evaluate(createOperation('floor', createConstant(2.9)))).toBe(2)
-		expect(evaluate(createOperation('abs', createConstant(-7)))).toBe(7)
+		expect(evaluateExpression(createOperation('round', createConstant(2.5)))).toBe(3)
+		expect(evaluateExpression(createOperation('ceil', createConstant(2.1)))).toBe(3)
+		expect(evaluateExpression(createOperation('floor', createConstant(2.9)))).toBe(2)
+		expect(evaluateExpression(createOperation('abs', createConstant(-7)))).toBe(7)
 	})
 
 	it('a unary operation IGNORES a supplied right operand', () => {
-		expect(evaluate(createOperation('abs', createConstant(-7), createConstant(999)))).toBe(7)
-		expect(evaluate(createOperation('round', createConstant(2.5), createConstant(999)))).toBe(3)
+		expect(
+			evaluateExpression(createOperation('abs', createConstant(-7), createConstant(999))),
+		).toBe(7)
+		expect(
+			evaluateExpression(createOperation('round', createConstant(2.5), createConstant(999))),
+		).toBe(3)
 	})
 
 	it('a binary operation with no right operand treats it as 0', () => {
-		expect(evaluate(createOperation('power', createConstant(5)))).toBe(1)
-		expect(evaluate(createOperation('multiply', createConstant(5)))).toBe(0)
-		expect(evaluate(createOperation('minimum', createConstant(5)))).toBe(0)
-		expect(evaluate(createOperation('maximum', createConstant(5)))).toBe(5)
-		expect(evaluate(createOperation('subtract', createConstant(5)))).toBe(5)
-		expect(evaluate(createOperation('percentage', createConstant(5)))).toBe(0)
+		expect(evaluateExpression(createOperation('power', createConstant(5)))).toBe(1)
+		expect(evaluateExpression(createOperation('multiply', createConstant(5)))).toBe(0)
+		expect(evaluateExpression(createOperation('minimum', createConstant(5)))).toBe(0)
+		expect(evaluateExpression(createOperation('maximum', createConstant(5)))).toBe(5)
+		expect(evaluateExpression(createOperation('subtract', createConstant(5)))).toBe(5)
+		expect(evaluateExpression(createOperation('percentage', createConstant(5)))).toBe(0)
 	})
 
 	it('a binary DIVIDE with no right operand is a divide-by-zero non-finite error', () => {
@@ -1120,10 +1126,7 @@ describe('SymbolicReasoner — unicode & adversarial variable names', () => {
 
 describe('SymbolicReasoner — deep expression tree', () => {
 	it('evaluates a 300-deep left-nested addition without stack overflow', () => {
-		let expression: SymbolicExpression = createConstant(0)
-		for (let index = 0; index < 300; index += 1) {
-			expression = createOperation('add', expression, createConstant(1))
-		}
+		const expression = deepAddition(300, createConstant(0), createConstant(1))
 		const definition = createSymbolicDefinition('d', 'd', [
 			createEquation('e1', createVariable('result'), expression, 'result'),
 		])
@@ -1207,64 +1210,50 @@ describe('SymbolicReasoner — divide-by-zero inversion (zero guards)', () => {
 })
 
 describe('SymbolicReasoner — parseNumber binding-site boundary pins', () => {
-	const bindsAs = (value: unknown): SymbolicResult => {
-		const definition = createSymbolicDefinition('d', 'd', [
-			createEquation('e1', createVariable('y'), createVariable('x'), 'y'),
-		])
-		return expectSymbolic(reasoner.reason({ x: value }, definition))
-	}
-
-	const neverBinds = (value: unknown): SymbolicResult => {
-		const definition = createSymbolicDefinition('d', 'd', [
-			createEquation('e1', createVariable('y'), createVariable('x'), 'y'),
-		])
-		return expectSymbolic(reasoner.reason({ x: value }, definition))
-	}
-
 	it('exponential-notation string "1e3" binds 1000', () => {
-		const result = bindsAs('1e3')
+		const result = evaluateSubjectBinding('1e3')
 		expect(result.success).toBe(true)
 		expect(result.solutions.y).toBe(1000)
 	})
 
 	it('hex-notation string "0x10" binds 16', () => {
-		const result = bindsAs('0x10')
+		const result = evaluateSubjectBinding('0x10')
 		expect(result.success).toBe(true)
 		expect(result.solutions.y).toBe(16)
 	})
 
 	it('a numeric string with surrounding spaces binds trimmed (" 42 " → 42)', () => {
-		const result = bindsAs(' 42 ')
+		const result = evaluateSubjectBinding(' 42 ')
 		expect(result.success).toBe(true)
 		expect(result.solutions.y).toBe(42)
 	})
 
 	it('an empty string never binds', () => {
-		const result = neverBinds('')
+		const result = evaluateSubjectBinding('')
 		expect(result.success).toBe(false)
 		expect(result.errors).toEqual(['Equation "e1": Unbound variable: x'])
 	})
 
 	it('a whitespace-only string never binds', () => {
-		const result = neverBinds('   ')
+		const result = evaluateSubjectBinding('   ')
 		expect(result.success).toBe(false)
 		expect(result.errors).toEqual(['Equation "e1": Unbound variable: x'])
 	})
 
 	it('the string "Infinity" never binds (finite guard rejects it)', () => {
-		const result = neverBinds('Infinity')
+		const result = evaluateSubjectBinding('Infinity')
 		expect(result.success).toBe(false)
 		expect(result.errors).toEqual(['Equation "e1": Unbound variable: x'])
 	})
 
 	it('a boolean true never binds — never coerced to 1', () => {
-		const result = neverBinds(true)
+		const result = evaluateSubjectBinding(true)
 		expect(result.success).toBe(false)
 		expect(result.errors).toEqual(['Equation "e1": Unbound variable: x'])
 	})
 
 	it('a bigint value never binds', () => {
-		const result = neverBinds(9007199254740993n)
+		const result = evaluateSubjectBinding(9007199254740993n)
 		expect(result.success).toBe(false)
 		expect(result.errors).toEqual(['Equation "e1": Unbound variable: x'])
 	})
@@ -1361,13 +1350,8 @@ describe('SymbolicReasoner — deep invertible isolation (750-peel)', () => {
 				'x',
 			),
 		])
-		const run = (): number => {
-			const result = expectSymbolic(reasoner.reason({}, definition)).solutions.x
-			if (result === undefined) throw new Error('expected x solution')
-			return result
-		}
-		const first = run()
-		const second = run()
+		const first = readSolution(definition)
+		const second = readSolution(definition)
 		expect(first).toBe(250)
 		expect(second).toBe(250)
 	})
@@ -1378,13 +1362,8 @@ describe('SymbolicReasoner — binding enumeration order (INTEGER_KEY_SUBJECT)',
 		const definition = createSymbolicDefinition('d', 'd', [
 			createEquation('e1', createVariable('y'), createConstant(0), 'y'),
 		])
-		const run = (): readonly string[] => {
-			const result = expectSymbolic(reasoner.reason(INTEGER_KEY_SUBJECT, definition))
-			expect(result.success).toBe(true)
-			return result.trace
-		}
-		const first = run()
-		const second = run()
+		const first = readSubjectTrace(definition, (result) => expect(result.success).toBe(true))
+		const second = readSubjectTrace(definition, (result) => expect(result.success).toBe(true))
 		expect(first).toEqual(second)
 
 		const order = ['1', '2', '10', 'zeta', 'alpha']
@@ -1407,13 +1386,8 @@ describe('SymbolicReasoner — precision drift over a long additive chain', () =
 				'x',
 			),
 		])
-		const run = (): number => {
-			const result = expectSymbolic(reasoner.reason({}, definition)).solutions.x
-			if (result === undefined) throw new Error('expected x solution')
-			return result
-		}
-		const first = run()
-		const second = run()
+		const first = readSolution(definition)
+		const second = readSolution(definition)
 		// Repeated floating-point subtraction of 0.1 across 100 peels drifts the raw
 		// solve to 989.9999999999977 — roundTo(·, 4) settles it at exactly 990.
 		expect(first).toBe(990)
@@ -1447,5 +1421,36 @@ describe('SymbolicReasoner — builder build() output passed to supports/validat
 		const results = subjects.map((subject) => reasoner.reason(subject, builtDefinition))
 		const expected = [reasoner.reason({}, definition), reasoner.reason(builtSubject, definition)]
 		expect(results).toEqual(expected)
+	})
+})
+
+describe('SymbolicReasoner — assignment before trace failure', () => {
+	it('retains a solved binding when the following trace read throws', () => {
+		const reads = createRecorder<[]>()
+		const first = Object.defineProperty(
+			createEquation('first', createVariable('x'), createConstant(5), 'x'),
+			'id',
+			{
+				get() {
+					reads.handler()
+					if (reads.count === 1) throw new Error('trace read failed')
+					return 'first'
+				},
+			},
+		)
+		const definition = createSymbolicDefinition('d', 'd', [
+			first,
+			createEquation(
+				'second',
+				createVariable('y'),
+				createOperation('add', createVariable('x'), createConstant(1)),
+				'y',
+			),
+		])
+		const result = expectSymbolic(reasoner.reason({}, definition))
+		expect(result.solutions).toEqual({ x: 5, y: 6 })
+		expect(result.errors).toEqual(['Equation "first": trace read failed'])
+		expect(result.success).toBe(false)
+		expect(reads.calls).toEqual([[], [], []])
 	})
 })

@@ -23,7 +23,12 @@ const MODULES = Object.freeze({ [PACKAGE_NAME]: 'src/core', '@src/core': 'src/co
  * intentional rather than forgotten — and the assertion that follows it fails when a name
  * here stops being stranded, so the list cannot rot.
  */
-const INTERNAL: readonly string[] = Object.freeze(['class Collection'])
+const INTERNAL: readonly string[] = Object.freeze([
+	'class Collection',
+	'class InferenceJoin',
+	'class LogicalState',
+	'class SymbolicState',
+])
 
 await new GuideCommand({
 	root: new URL('../', import.meta.url),
