@@ -364,11 +364,16 @@ export function sortByPriority<T extends { readonly priority?: number }>(
  * ```
  */
 export function findDuplicates(items: ReadonlyArray<{ readonly id: string }>): readonly string[] {
-	const counts = Iterator.from(items).reduce(
-		(previous, item) => new Map(previous).set(item.id, (previous.get(item.id) ?? 0) + 1),
-		new Map<string, number>(),
+	const indexed = Iterator.from(items)
+		.map((item, index): readonly [string, number] => [item.id, index])
+		.toArray()
+	const first = new Map(indexed.toReversed())
+	const duplicates = new Set(
+		indexed.filter(([id, index]) => first.get(id) !== index).map(([id]) => id),
 	)
-	return [...counts].filter(([, count]) => count > 1).map(([id]) => id)
+	return indexed
+		.filter(([id, index]) => first.get(id) === index && duplicates.has(id))
+		.map(([id]) => id)
 }
 
 // === Inferential fact machinery
@@ -1379,23 +1384,20 @@ export function mergeById<T extends { readonly id: string }>(
 	const baseById = new Map<string, T>()
 	for (const item of base) if (!baseById.has(item.id)) baseById.set(item.id, item)
 
-	const merged: Array<{ readonly id: string; readonly value: T }> = []
+	const merged = new Map<string, T>()
 	for (const item of incoming) {
 		const query = item.id
-		if (merged.some((entry) => entry.id === query)) continue
+		if (merged.has(query)) continue
 		const id = item.id
 		const existing = baseById.get(item.id)
-		merged.push({
-			id,
-			value: existing === undefined ? item : resolve ? resolve(existing, item) : item,
-		})
+		merged.set(id, existing === undefined ? item : resolve ? resolve(existing, item) : item)
 	}
 	for (const item of base) {
 		const query = item.id
-		if (merged.some((entry) => entry.id === query)) continue
-		merged.push({ id: item.id, value: item })
+		if (merged.has(query)) continue
+		merged.set(item.id, item)
 	}
-	return merged.map((entry) => entry.value)
+	return [...merged.values()]
 }
 
 // === Quantitative change/extend helpers

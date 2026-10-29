@@ -532,6 +532,15 @@ describe('findDuplicates — empty-string, prototype-name & unicode ids, at scal
 		expect(findDuplicates(doubled)).toEqual([...TRICKY_KEYS])
 	})
 
+	it('retains base duplicate order when repeat order differs from first occurrence order', () => {
+		// Base: 836efee:src/core/helpers.ts:357.
+		const base = sequence(5000).map((index) => ({ id: `k${index}` }))
+		expect(findDuplicates([...base, { id: 'k100' }, { id: 'k50' }, { id: 'k100' }])).toEqual([
+			'k50',
+			'k100',
+		])
+	})
+
 	it('scans a large list, reporting each duplicate once in first-occurrence order', () => {
 		// 5,000 unique ids, then re-append k100 / k50 / k100 — k50 first appears before
 		// k100, so first-occurrence order lists k50 ahead of k100.
@@ -1629,6 +1638,21 @@ describe('mergeById — incoming-order-first upsert with base-only survivors', (
 			v: (left.v ?? 0) + (right.v ?? 0),
 		}))
 		expect(merged).toEqual([{ id: 'a', v: 3 }])
+	})
+
+	it('retains incoming winners and base survivors across wide duplicate lists', () => {
+		// Base: 836efee:src/core/helpers.ts:1390.
+		const base = sequence(5000).map((index) => ({ id: `k${index}`, value: index }))
+		const incoming = [
+			{ id: 'k100', value: -100 },
+			{ id: 'k50', value: -50 },
+		]
+		const merged = mergeById([...base, ...base], [...incoming, ...incoming])
+		expect(merged).toEqual([
+			...incoming,
+			...base.filter((item) => item.id !== 'k100' && item.id !== 'k50'),
+		])
+		expect(merged[0]).toBe(incoming[0])
 	})
 
 	it('dedups same-id twins within either input to their first occurrence', () => {
