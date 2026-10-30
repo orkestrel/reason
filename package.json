@@ -1,6 +1,6 @@
 {
 	"name": "@orkestrel/reason",
-	"version": "0.0.14",
+	"version": "0.0.15",
 	"description": "A typed reasoning engine: definitions, subjects, and quantitative/logical/symbolic/inferential reasoners. Part of the @orkestrel line.",
 	"keywords": [
 		"decision-engine",
@@ -75,8 +75,8 @@
 	},
 	"devDependencies": {
 		"@microsoft/api-extractor": "^7.60.0",
-		"@orkestrel/guide": "^0.0.25",
-		"@orkestrel/probe": "^0.0.25",
+		"@orkestrel/guide": "^0.0.26",
+		"@orkestrel/probe": "^0.0.26",
 		"@orkestrel/scaffold": "^0.0.113",
 		"@orkestrel/test": "^0.0.31",
 		"@types/node": "^26.6.6",
