@@ -48,7 +48,7 @@ reason.reasoner('quantitative')?.supports(definition) // the reasoner's own guar
 
 ### Entity factories
 
-| API                          | Kind     | Summary                                                                                                                                                                                                                |
+| Name                         | Kind     | Summary                                                                                                                                                                                                                |
 | ---------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `createReason`               | function | Creates the reasoning orchestrator.                                                                                                                                                                                    |
 | `createQuantitativeReasoner` | function | Creates the quantitative reasoner — factor-based numeric scoring.                                                                                                                                                      |
@@ -70,7 +70,7 @@ reason.reasoner('quantitative')?.supports(definition) // the reasoner's own guar
 
 ### Orchestrator & reasoners
 
-| API                    | Kind  | Summary                                                                                     |
+| Name                   | Kind  | Summary                                                                                     |
 | ---------------------- | ----- | ------------------------------------------------------------------------------------------- |
 | `Reason`               | class | Implements the reasoning orchestrator — a thin router over registered `ReasonerInterface`s. |
 | `QuantitativeReasoner` | class | Performs factor-based numeric scoring.                                                      |
@@ -80,7 +80,7 @@ reason.reasoner('quantitative')?.supports(definition) // the reasoner's own guar
 
 ### Operators
 
-| API           | Kind  | Summary                                                                                                           |
+| Name          | Kind  | Summary                                                                                                           |
 | ------------- | ----- | ----------------------------------------------------------------------------------------------------------------- |
 | `Evaluator`   | class | Evaluates `Check`s against subjects — the shared predicate engine of the quantitative and logical reasoners.      |
 | `Transformer` | class | Applies math `Transform`s to numbers — the quantitative reasoner's per-factor pipeline stage.                     |
@@ -90,7 +90,7 @@ reason.reasoner('quantitative')?.supports(definition) // the reasoner's own guar
 
 The definitions & subjects capability layer's stateful workspace builders: mutate through named methods, then `build()` a fresh plain payload to hand to `reason` at the call site. The managers are self-owning (each owns its own collection state and emitter, takes its own options, and has its own factory) and kind-free (an off-kind manager accumulates silently and is ignored by `build()` — never a `MISMATCH`). `DefinitionBuilder` and `SubjectBuilder` each carry a `unique symbol` brand — `DEFINITION_BUILDER_BRAND` and `SUBJECT_BUILDER_BRAND` — that `isDefinitionBuilder` and `isSubjectBuilder` read through `Reflect.get`, so plain data can never forge a builder.
 
-| API                 | Kind  | Summary                                                                                                                                                                                                                                                   |
+| Name                | Kind  | Summary                                                                                                                                                                                                                                                   |
 | ------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `DefinitionBuilder` | class | Implements a stateful workspace builder accumulating a `Definition` through always-present self-owning manager properties: a private scalar envelope (reasoning / id / name plus the kind's scalars) composed with each collection read from its manager. |
 | `GroupManager`      | class | Implements the `GroupManagerInterface` — a self-owning, kind-free manager over a quantitative definition's `groups`.                                                                                                                                      |
@@ -106,7 +106,7 @@ The definitions & subjects capability layer's stateful workspace builders: mutat
 
 Plain-data constructors for the declarative definition vocabulary — no lifecycle, no emitter, no identity. Reach for the entity factories earlier when you need a working instance instead.
 
-| API                            | Kind     | Summary                                                                                              |
+| Name                           | Kind     | Summary                                                                                              |
 | ------------------------------ | -------- | ---------------------------------------------------------------------------------------------------- |
 | `createCheck`                  | function | Creates a `Check` — one field predicate.                                                             |
 | `createAtom`                   | function | Creates an atom `Expression` — a leaf wrapping one `Check`.                                          |
@@ -138,7 +138,7 @@ Every value factory returns a fresh object and omits absent optional keys entire
 
 ### Helpers
 
-| API                        | Kind     | Summary                                                                                                                                                 |
+| Name                       | Kind     | Summary                                                                                                                                                 |
 | -------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `formatField`              | function | Formats a `FieldPath` for display — the single string key itself, or the array segments joined with `.`.                                                |
 | `clamp`                    | function | Clamps a number to inclusive `Bounds`.                                                                                                                  |
@@ -170,7 +170,7 @@ Every value factory returns a fresh object and omits absent optional keys entire
 
 The definitions & subjects capability layer (§ Classes) adds a pure, copy-on-write change / extend / merge / store surface over every definition kind, plus a subject engine of pure helpers — none of it mutates an input, and every helper returns a fresh value.
 
-| API                           | Kind     | Summary                                                                                                                                                 |
+| Name                          | Kind     | Summary                                                                                                                                                 |
 | ----------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `appendById`                  | function | Inserts `item` into an id-keyed collection, deduping any existing element sharing its id, then placing it at the end, or immediately after `target`.    |
 | `prependById`                 | function | Inserts `item` into an id-keyed collection, deduping any existing element sharing its id, then placing it at the start, or immediately before `target`. |
@@ -224,7 +224,7 @@ Total guards return `false`, never throw, for adversarial input such as junk, cy
 
 In a guard table a `Shape` cell holds the type the guard narrows to.
 
-| API                        | Kind     | Shape                              | Summary                                                                                                                                                 |
+| Name                       | Kind     | Shape                              | Summary                                                                                                                                                 |
 | -------------------------- | -------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `isReasoning`              | const    | `Reasoning`                        | Determines whether a value is a `Reasoning` literal.                                                                                                    |
 | `isChainStrategy`          | const    | `ChainStrategy`                    | Determines whether a value is a `ChainStrategy` literal.                                                                                                |
@@ -273,7 +273,7 @@ In a guard table a `Shape` cell holds the type the guard narrows to.
 
 ### Errors
 
-| API             | Kind     | Summary                                             |
+| Name            | Kind     | Summary                                             |
 | --------------- | -------- | --------------------------------------------------- |
 | `ReasonError`   | class    | Represents an error thrown by the reasons layer.    |
 | `isReasonError` | function | Narrows an unknown caught value to a `ReasonError`. |
@@ -284,7 +284,7 @@ In a guard table a `Shape` cell holds the type the guard narrows to.
 
 A `Shape` cell holds the constant's declared type.
 
-| API                        | Kind  | Shape                        | Summary                                                                                                                                                                            |
+| Name                       | Kind  | Shape                        | Summary                                                                                                                                                                            |
 | -------------------------- | ----- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `DEFAULT_REASON_BAIL`      | const | `boolean`                    | Holds the default `bail` for the `Reason` orchestrator — a reasoner throw is rethrown after the `error` emit. Default: `true`.                                                     |
 | `DEFAULT_VALIDATE`         | const | `boolean`                    | Holds the default `validate` for the `Reason` orchestrator — per-call validation is skipped. Default: `false`.                                                                     |
@@ -310,7 +310,7 @@ A `Shape` cell holds the constant's declared type.
 
 A `Shape` cell holds an interface's data members as bare names in braces, `?` marking an optional member and `plus` introducing its call-signature members, and a type alias's own type literal with a union's arms escaped as `\|`.
 
-| Type                          | Kind      | Shape                                                                                                                                                                                        | Summary                                                                                                                                                                                                                                               |
+| Name                          | Kind      | Shape                                                                                                                                                                                        | Summary                                                                                                                                                                                                                                               |
 | ----------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `Reasoning`                   | type      | `'quantitative' \| 'logical' \| 'symbolic' \| 'inferential'`                                                                                                                                 | Names the reasoning strategies — the axis a `Definition` and a `ReasonResult` discriminate on.                                                                                                                                                        |
 | `ChainStrategy`               | type      | `'forward' \| 'backward'`                                                                                                                                                                    | Names how a chaining reasoner walks its rules: `forward` (data-driven fixpoint) or `backward` (goal-driven proving).                                                                                                                                  |
