@@ -12,13 +12,12 @@ import type {
 	ReasonerInterface,
 	Subject,
 } from '../types.js'
-import { isArray, isObject } from '@orkestrel/contract'
+import { isArray, isObject, iterateIndices } from '@orkestrel/contract'
 import {
 	computePremiseConfidence,
 	factToArityKey,
 	factToKey,
 	findDuplicates,
-	iterateIndices,
 	findUnboundVariables,
 	indexByArity,
 	instantiateFact,
@@ -269,7 +268,7 @@ export class InferentialReasoner implements ReasonerInterface {
 			validInferences.push(inference)
 		}
 
-		for (const iteration of iterateIndices(maxDepth)) {
+		for (const iteration of iterateIndices(() => maxDepth)) {
 			const changed = validInferences.reduce((previous, inference) => {
 				const allBindings = new InferenceJoin(byArity).resolve(inference.premises)
 

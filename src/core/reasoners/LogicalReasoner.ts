@@ -13,12 +13,11 @@ import type {
 	RuleResult,
 	Subject,
 } from '../types.js'
-import { isArray, isObject } from '@orkestrel/contract'
+import { isArray, isObject, iterateIndices } from '@orkestrel/contract'
 import {
 	equalValues,
 	extractConclusions,
 	findDuplicates,
-	iterateIndices,
 	findOverlayMismatches,
 	formatField,
 	sortByPriority,
@@ -207,7 +206,7 @@ export class LogicalReasoner implements ReasonerInterface {
 			}),
 		)
 
-		for (const iteration of iterateIndices(maxDepth)) {
+		for (const iteration of iterateIndices(() => maxDepth)) {
 			const currentSubject: Subject = { ...subject, ...state.fields }
 
 			const changed = sortedRules.reduce((previous, rule) => {

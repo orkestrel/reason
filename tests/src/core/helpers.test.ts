@@ -25,7 +25,6 @@ import {
 	assignField,
 	buildErrorResult,
 	clamp,
-	iterateIndices,
 	clearInferentialDefinition,
 	clearLogicalDefinition,
 	clearQuantitativeDefinition,
@@ -2065,22 +2064,5 @@ describe('subject engine — assignField / removeField / mergeSubjects / repeatS
 		const subject = deepFreeze({ id: 's1' })
 		expect(repeatSubject(subject, 0)).toEqual([])
 		expect(repeatSubject(subject, -3)).toEqual([])
-	})
-})
-
-describe('iterateIndices', () => {
-	it('keeps integer-loop limits for fractional, negative, and NaN bounds', () => {
-		expect([...iterateIndices(2.5)]).toEqual([0, 1, 2])
-		expect([...iterateIndices(0)]).toEqual([])
-		expect([...iterateIndices(-1)]).toEqual([])
-		expect([...iterateIndices(Number.NaN)]).toEqual([])
-	})
-
-	it('advances an unbounded sequence lazily and remains exhausted after its limit', () => {
-		expect(iterateIndices(Number.POSITIVE_INFINITY).take(3).toArray()).toEqual([0, 1, 2])
-		const indices = iterateIndices(1)
-		expect(indices.next()).toEqual({ done: false, value: 0 })
-		expect(indices.next()).toEqual({ done: true, value: undefined })
-		expect(indices.next()).toEqual({ done: true, value: undefined })
 	})
 })

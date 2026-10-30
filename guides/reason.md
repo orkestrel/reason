@@ -142,7 +142,6 @@ Every value factory returns a fresh object and omits absent optional keys entire
 | -------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `formatField`              | function | Formats a `FieldPath` for display — the single string key itself, or the array segments joined with `.`.                                                |
 | `clamp`                    | function | Clamps a number to inclusive `Bounds`.                                                                                                                  |
-| `iterateIndices`           | function | Iterates nonnegative indices below a numeric limit without allocating a range.                                                                          |
 | `roundTo`                  | function | Rounds a number to a fixed count of decimal places.                                                                                                     |
 | `matchesBounds`            | function | Checks whether a value falls inside an inclusive range expressed as an array.                                                                           |
 | `emptyAggregate`           | function | Returns the empty-input identity of one `Aggregation`.                                                                                                  |

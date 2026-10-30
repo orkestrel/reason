@@ -33,6 +33,7 @@ import {
 	isNumber,
 	isObject,
 	isString,
+	iterateIndices,
 	parseNumberField,
 	resolveField,
 } from '@orkestrel/contract'
@@ -74,22 +75,6 @@ export function formatField(field: FieldPath): string {
 }
 
 // === Numeric helpers
-
-/**
- * Iterates nonnegative indices below a numeric limit without allocating a range.
- *
- * @example
- * ```ts
- * [...iterateIndices(2.5)] // [0, 1, 2]
- * ```
- */
-export function* iterateIndices(limit: number): Generator<number> {
-	yield* Array.prototype.keys.call({ length: Math.max(0, Math.ceil(limit)) })
-	if (limit > Number.MAX_SAFE_INTEGER) yield Number.MAX_SAFE_INTEGER
-	if (limit > Number.MAX_SAFE_INTEGER + 1) {
-		for (;;) yield Number.MAX_SAFE_INTEGER + 1
-	}
-}
 
 /**
  * Clamps a number to inclusive {@link Bounds}.
@@ -992,7 +977,7 @@ export function extractAtoms(expression: Expression): readonly Atom[] {
 		}
 		const operands = node.operands
 		const length = operands.length
-		for (const offset of iterateIndices(length)) {
+		for (const offset of iterateIndices(() => length)) {
 			const index = length - 1 - offset
 			const operand = operands[index]
 			if (operand !== undefined) stack.push(operand)
@@ -2413,7 +2398,7 @@ export function mergeSubjects(base: Subject, incoming: Subject): Subject {
  */
 export function repeatSubject(subject: Subject, count: number): readonly Subject[] {
 	const baseId = subject.id
-	return iterateIndices(count)
+	return iterateIndices(() => count)
 		.map((index) => (isString(baseId) ? { ...subject, id: `${baseId}-${index}` } : { ...subject }))
 		.toArray()
 }
