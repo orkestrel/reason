@@ -222,8 +222,6 @@ The definitions & subjects capability layer (§ Classes) adds a pure, copy-on-wr
 
 Total guards return `false`, never throw, for adversarial input such as junk, cycles, and hostile prototypes. Input guards compose the [contracts](contract.md) combinators. Result guards use bespoke open member checks and retain those combinators for nested values. Exactness follows who produces the value, not who declares the type: caller-supplied input records are exact, while package or foreign-interface result records are open to extra members. Numeric input fields guard with `isFiniteNumber` (JSON cannot carry `NaN` / `±Infinity`); the recursive input shapes recurse through `lazyOf`.
 
-In a guard table a `Shape` cell holds the type the guard narrows to.
-
 | Name                       | Kind     | Signature                                                 | Summary                                                                                                                                                 |
 | -------------------------- | -------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `isReasoning`              | const    | `Guard<Reasoning>`                                        | Determines whether a value is a `Reasoning` literal.                                                                                                    |
@@ -282,8 +280,6 @@ In a guard table a `Shape` cell holds the type the guard narrows to.
 
 ### Constants
 
-A `Shape` cell holds the constant's declared type.
-
 | Name                       | Kind  | Signature                    | Summary                                                                                                                                                                            |
 | -------------------------- | ----- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `DEFAULT_REASON_BAIL`      | const | `true`                       | Holds the default `bail` for the `Reason` orchestrator — a reasoner throw is rethrown after the `error` emit. Default: `true`.                                                     |
@@ -307,8 +303,6 @@ A `Shape` cell holds the constant's declared type.
 | `SUBJECT_BUILDER_BRAND`    | const | `unique symbol`              | Holds the `SubjectBuilder` entity brand — a `unique symbol` key carrying `readonly true` on every `SubjectBuilderInterface` instance.                                              |
 
 ### Types
-
-A `Shape` cell holds an interface's data members as bare names in braces, `?` marking an optional member and `plus` introducing its call-signature members, and a type alias's own type literal with a union's arms escaped as `\|`.
 
 | Name                          | Kind      | Signature                                                                                                                                                                                                      | Summary                                                                                                                                                                                                                                               |
 | ----------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
