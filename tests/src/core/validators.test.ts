@@ -88,6 +88,7 @@ import {
 	isTransform,
 	SUBJECT_BUILDER_BRAND,
 } from '@src/core'
+import type { FactorSource } from '@src/core'
 import { parseJSON } from '@orkestrel/contract'
 import { describe, expect, it } from 'vitest'
 import { captureError } from '@orkestrel/test'
@@ -292,6 +293,16 @@ describe('isSource', () => {
 		expect(isSource({ origin: 'static', value: 42, field: 'age' })).toBe(false)
 		expect(isSource({ origin: 'lookup', field: 'state', table: { CA: 'high' } })).toBe(false)
 		expect(accepted(isSource)).toEqual([])
+	})
+
+	it('narrows a mixed list to the FactorSource members', () => {
+		const values: readonly unknown[] = [
+			createStaticSource(42),
+			{ origin: 'random' },
+			createLookupSource('state', { CA: 5 }),
+		]
+		const sources: readonly FactorSource[] = values.filter(isSource)
+		expect(sources.map((source) => source.origin)).toEqual(['static', 'lookup'])
 	})
 })
 

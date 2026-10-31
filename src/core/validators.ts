@@ -15,6 +15,7 @@ import type {
 	FactorGroup,
 	FactorRange,
 	FactorResult,
+	FactorSource,
 	GroupResult,
 	Inference,
 	InferentialClearKey,
@@ -34,7 +35,6 @@ import type {
 	Reasoning,
 	Rule,
 	RuleResult,
-	Source,
 	SubjectBuilderInterface,
 	SymbolicClearKey,
 	SymbolicDefinition,
@@ -346,7 +346,7 @@ export function isFactorRange(value: unknown): value is FactorRange {
 }
 
 /**
- * Determines whether a value is a {@link Source} — a static, field, lookup, or
+ * Determines whether a value is a {@link FactorSource} — a static, field, lookup, or
  * range factor source, discriminated by `origin`.
  *
  * @param value - The value to test
@@ -361,7 +361,7 @@ export function isFactorRange(value: unknown): value is FactorRange {
  * isSource({ origin: 'random' })                                   // false
  * ```
  */
-export function isSource(value: unknown): value is Source {
+export function isSource(value: unknown): value is FactorSource {
 	return unionOf(
 		recordOf({ origin: literalOf('static'), value: isFiniteNumber }),
 		recordOf({ origin: literalOf('field'), field: isFieldPath }),

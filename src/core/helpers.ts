@@ -9,6 +9,7 @@ import type {
 	Fact,
 	Factor,
 	FactorGroup,
+	FactorSource,
 	Inference,
 	InferentialClearKey,
 	InferentialDefinition,
@@ -19,7 +20,6 @@ import type {
 	QuantitativeDefinition,
 	ReasonResult,
 	Rule,
-	Source,
 	Subject,
 	SymbolicClearKey,
 	SymbolicDefinition,
@@ -169,7 +169,7 @@ export function emptyAggregate(aggregation: Aggregation): number {
 }
 
 /**
- * Resolves one {@link Source} against a subject, falling back when it cannot.
+ * Resolves one {@link FactorSource} against a subject, falling back when it cannot.
  *
  * @remarks
  * The source-resolution leaf of the quantitative factor pipeline. A `static`
@@ -196,7 +196,7 @@ export function emptyAggregate(aggregation: Aggregation): number {
  * ```
  */
 export function resolveSource(
-	source: Source,
+	source: FactorSource,
 	subject: Subject,
 	fallback?: number,
 ): number | undefined {

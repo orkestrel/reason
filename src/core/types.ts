@@ -212,7 +212,7 @@ export interface RangeSource {
 }
 
 /** Represents a static, field, lookup, or range factor source, discriminated by `origin`. */
-export type Source = StaticSource | FieldSource | LookupSource | RangeSource
+export type FactorSource = StaticSource | FieldSource | LookupSource | RangeSource
 
 /** Represents one band of a {@link RangeSource} — an optional inclusive bounds test and the value it yields. */
 export interface FactorRange {
@@ -236,7 +236,7 @@ export interface Factor {
 	readonly id: string
 	readonly name: string
 	readonly description?: string
-	readonly source: Source
+	readonly source: FactorSource
 	readonly fallback?: number
 	readonly checks?: readonly Check[]
 	readonly transforms?: readonly Transform[]

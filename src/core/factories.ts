@@ -22,6 +22,7 @@ import type {
 	FactorManagerInterface,
 	FactorManagerOptions,
 	FactorRange,
+	FactorSource,
 	GroupManagerInterface,
 	GroupManagerOptions,
 	Inference,
@@ -41,7 +42,6 @@ import type {
 	Rule,
 	RuleManagerInterface,
 	RuleManagerOptions,
-	Source,
 	Subject,
 	SubjectBuilderInterface,
 	SubjectBuilderOptions,
@@ -839,7 +839,7 @@ export function createInference(
 // === Sources
 
 /**
- * Creates a static {@link Source} — a fixed number.
+ * Creates a static {@link FactorSource} — a fixed number.
  *
  * @param value - The fixed value
  * @returns A fresh static source
@@ -851,12 +851,12 @@ export function createInference(
  * createStaticSource(42) // { origin: 'static', value: 42 }
  * ```
  */
-export function createStaticSource(value: number): Source {
+export function createStaticSource(value: number): FactorSource {
 	return { origin: 'static', value }
 }
 
 /**
- * Creates a field {@link Source} — a subject field read as a number.
+ * Creates a field {@link FactorSource} — a subject field read as a number.
  *
  * @param field - The subject field to resolve
  * @returns A fresh field source
@@ -868,12 +868,12 @@ export function createStaticSource(value: number): Source {
  * createFieldSource(['profile', 'score']) // descends into nested objects
  * ```
  */
-export function createFieldSource(field: FieldPath): Source {
+export function createFieldSource(field: FieldPath): FactorSource {
 	return { origin: 'field', field }
 }
 
 /**
- * Creates a lookup {@link Source} — a subject field mapped through a table.
+ * Creates a lookup {@link FactorSource} — a subject field mapped through a table.
  *
  * @param field - The subject field to resolve (stringified into a table key)
  * @param table - The lookup table
@@ -889,12 +889,12 @@ export function createFieldSource(field: FieldPath): Source {
 export function createLookupSource(
 	field: FieldPath,
 	table: Readonly<Record<string, number>>,
-): Source {
+): FactorSource {
 	return { origin: 'lookup', field, table }
 }
 
 /**
- * Creates a range {@link Source} — a numeric subject field banded through ordered
+ * Creates a range {@link FactorSource} — a numeric subject field banded through ordered
  * ranges (first match wins).
  *
  * @param field - The subject field to resolve as a number
@@ -912,14 +912,14 @@ export function createLookupSource(
  * ])
  * ```
  */
-export function createRangeSource(field: FieldPath, ranges: readonly FactorRange[]): Source {
+export function createRangeSource(field: FieldPath, ranges: readonly FactorRange[]): FactorSource {
 	return { origin: 'range', field, ranges }
 }
 
 // === Factors, groups & definitions
 
 /**
- * Creates a {@link Factor} over a static {@link Source}.
+ * Creates a {@link Factor} over a static {@link FactorSource}.
  *
  * @remarks
  * `name`. Default: the `id`; every other {@link Factor} field (checks,
@@ -947,7 +947,7 @@ export function createStaticFactor(
 }
 
 /**
- * Creates a {@link Factor} over a field {@link Source}.
+ * Creates a {@link Factor} over a field {@link FactorSource}.
  *
  * @param id - The factor id
  * @param field - The subject field to resolve as a number
@@ -970,7 +970,7 @@ export function createFieldFactor(
 }
 
 /**
- * Creates a {@link Factor} over a lookup {@link Source}.
+ * Creates a {@link Factor} over a lookup {@link FactorSource}.
  *
  * @param id - The factor id
  * @param field - The subject field to resolve (stringified into a table key)
@@ -995,7 +995,7 @@ export function createLookupFactor(
 }
 
 /**
- * Creates a {@link Factor} over a range {@link Source}.
+ * Creates a {@link Factor} over a range {@link FactorSource}.
  *
  * @param id - The factor id
  * @param field - The subject field to resolve as a number
