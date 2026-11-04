@@ -875,6 +875,15 @@ Connectives combine in strong Kleene logic (§ Reading what is there), and one o
 
 Quirks to design around. **Derived-overlay keys are `formatField` strings**: a conclusion written with an array path derives the dot-joined flat key, and the overlay answers a premise reading that path in either form. **A `premises: []` rule refuses in both strategies** with `Rule "<id>" has no premises`. **The fixpoint snapshots per iteration**: a derivation made mid-pass is invisible until the next pass (unlike the inferential reasoner's live fact list), so a `depth` cap truncates chains one hop per iteration regardless of declaration order.
 
+Both strategies pass over every rule once per pass, so a chain grows about quadratically. At the default `depth` a long chain refuses after 10 passes, so these costs only show with `depth` raised to fit it. A chain with `depth` raised, median of three on one desktop, with a chain this long not a path anything takes today:
+
+| Rules | Forward  | Backward |
+| ----- | -------- | -------- |
+| 100   | 24 ms    | 18 ms    |
+| 300   | 133 ms   | 134 ms   |
+| 600   | 541 ms   | 565 ms   |
+| 1,200 | 2,307 ms | 2,150 ms |
+
 ### Reading what is there
 
 The engine answers only from what it read. A check and a rule settle on `met`, `unmet`, or `unread`, a logical result's `conclusion` does too, and `unread` never becomes an answer by default: any rule left `unread` makes `success` false, `faults` names each input field that stopped it, and `errors` holds one string per fault.
