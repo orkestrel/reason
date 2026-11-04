@@ -81,6 +81,76 @@ describe('LogicalReasoner — identity', () => {
 	})
 })
 
+describe('LogicalReasoner — settled proof reuse', () => {
+	it.each([true, false])('proves a shared rule settling on seed %s only once', (seed) => {
+		const result = reasonRules(
+			{ seed },
+			[
+				...['first', 'second'].map((id, priority) =>
+					createRule(id, [createAtom('shared', 'equals', true)], createAtom(id, 'equals', true), {
+						priority,
+					}),
+				),
+				createRule(
+					'shared',
+					[createAtom('seed', 'equals', true)],
+					createAtom('shared', 'equals', true),
+					{
+						priority: 2,
+					},
+				),
+			],
+			'backward',
+		)
+		expect(result.success).toBe(true)
+		expect(result.trace.filter((entry) => entry.startsWith('Proof: rule "shared" '))).toEqual([
+			`Proof: rule "shared" ${seed ? 'established' : 'not established'} (depth 1)`,
+		])
+	})
+})
+
+describe('LogicalReasoner — candidate proof priority', () => {
+	it('traces the first establishing candidate in priority order, before authored order', () => {
+		const result = reasonRules(
+			{ seed: true },
+			[
+				createRule(
+					'late',
+					[createAtom('seed', 'equals', true)],
+					createAtom('shared', 'equals', true),
+					{
+						priority: 10,
+					},
+				),
+				createRule(
+					'reader',
+					[createAtom('shared', 'equals', true)],
+					createAtom('done', 'equals', true),
+					{
+						priority: -1,
+					},
+				),
+				createRule(
+					'early',
+					[createAtom('seed', 'equals', true)],
+					createAtom('shared', 'equals', true),
+					{
+						priority: 0,
+					},
+				),
+			],
+			'backward',
+		)
+		expect(result.success).toBe(true)
+		expect(
+			result.trace.find(
+				(entry) =>
+					entry.startsWith('Proof: rule "early" ') || entry.startsWith('Proof: rule "late" '),
+			),
+		).toBe('Proof: rule "early" established (depth 1)')
+	})
+})
+
 describe('LogicalReasoner — supports', () => {
 	it('supports logical definitions only', () => {
 		expect(reasoner.supports(createLogicalDefinition('d', 'd', []))).toBe(true)

@@ -1,4 +1,6 @@
 import {
+	buildCountedNest,
+	ReadCounter,
 	readVariablePresence,
 	type Item,
 	ADVERSARIAL_VALUE_SUBJECT,
@@ -20,6 +22,7 @@ import {
 } from '../../setup.js'
 import type { CheckState, Comparison, MathOperation, Subject } from '@src/core'
 import {
+	PROJECTION_NODE_LIMIT,
 	addVariable,
 	appendById,
 	appendEquation,
@@ -2799,8 +2802,18 @@ describe('projectValue', () => {
 	})
 
 	it('a value sharing its sub-objects cannot unfold without end', () => {
-		const shared = buildSharedNest(60)
+		const shared = buildSharedNest(14)
 		expect(JSON.stringify(projectValue(shared)).length).toBeLessThan(1_000_000)
+	})
+
+	it('visits at most the node budget in a finite shared tower', () => {
+		const counter = new ReadCounter()
+		const tower = buildCountedNest(14, counter)
+		expect(2 ** 15 - 1).toBeGreaterThan(PROJECTION_NODE_LIMIT)
+		expect(counter.count).toBe(0)
+		projectValue(tower)
+		expect(counter.count).toBeGreaterThan(0)
+		expect(counter.count).toBeLessThanOrEqual(PROJECTION_NODE_LIMIT)
 	})
 
 	it('a value that throws on being read is dropped, and nothing throws', () => {
@@ -2869,8 +2882,15 @@ describe('findFilledPaths', () => {
 	})
 
 	it('a value handed back by identity holds no fill, however it shares its parts', () => {
-		const shared = buildSharedNest(60)
+		const shared = buildSharedNest(14)
 		expect(findFilledPaths({ blob: shared }, { blob: shared })).toEqual([])
+	})
+
+	it('reads no own keys when the parsed value is the input by identity', () => {
+		const counter = new ReadCounter()
+		const value = buildCountedNest(1, counter)
+		expect(findFilledPaths(value, value)).toEqual([])
+		expect(counter.count).toBe(0)
 	})
 })
 

@@ -503,7 +503,7 @@ export class LogicalReasoner implements ReasonerInterface {
 			return 'unread'
 		}
 		const outcomes: CheckState[] = []
-		// Priority order, as forward fires them, so a key two rules conclude takes the same value.
+		// Priority selects the first establishing candidate the proof trace records, independently of the answer.
 		for (const candidate of sortByPriority(state.concluders(key))) {
 			const outcome = this.#proveRule(candidate, depth, proofs, subject, state, trace, maxDepth)
 			// Matched by field alone: the goal re-reads what the candidate actually concluded.

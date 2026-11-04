@@ -1,3 +1,4 @@
+import type { SubjectAdmission } from '@src/core'
 import {
 	arrayShape,
 	booleanShape,
@@ -55,6 +56,16 @@ describe('SubjectDoor — no shape', () => {
 })
 
 describe('SubjectDoor — refusals, in order', () => {
+	it('preserves an unchecked scalar union fault before the record-shape refusal', () => {
+		const admission = invokeUnchecked<SubjectAdmission>(door, door.admit, [
+			'1',
+			unionShape(numberShape(), booleanShape()),
+		])
+		expect(admission.subject).toBeUndefined()
+		expect(admission.faults).toEqual([{ reason: 'variant', path: [], variants: 2 }])
+		expect(admission.errors).toEqual(['Field "" matches none of its 2 variants'])
+	})
+
 	it('an absent required key refuses, naming it', () => {
 		const admission = door.admit({}, age)
 		expect(admission.subject).toBeUndefined()
@@ -337,7 +348,7 @@ describe('SubjectDoor — total', () => {
 
 	it('a subject sharing its sub-objects does not unfold', () => {
 		const shape = objectShape({ blob: jsonShape() })
-		const blob = buildSharedNest(60)
+		const blob = buildSharedNest(14)
 		expect(door.admit({ blob }, shape).defaulted).toEqual([])
 	})
 

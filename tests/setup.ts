@@ -742,6 +742,21 @@ export function buildSharedNest(depth: number): Record<string, unknown> {
 	return { a: next, b: next }
 }
 
+/** Builds a finite shared tree whose object-key visits the supplied counter records. */
+export function buildCountedNest(
+	depth: number,
+	counter: ReadCounter,
+): Readonly<Record<string, unknown>> {
+	const next = depth <= 0 ? undefined : buildCountedNest(depth - 1, counter)
+	const value = next === undefined ? { leaf: 1 } : { a: next, b: next }
+	return new Proxy(value, {
+		ownKeys(target) {
+			counter.increment()
+			return Reflect.ownKeys(target)
+		},
+	})
+}
+
 // A definition's `shape` is any JSON value to its published shape and a real one to its guard,
 // so a generated definition drops it before the guard reads it.
 export function dropShapeKey(value: unknown): unknown {

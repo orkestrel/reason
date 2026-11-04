@@ -18,7 +18,7 @@ import {
 	expectQuantitative,
 	sequence,
 } from '../../setup.js'
-import type { Definition, ReasonEventMap, Reasoning } from '@src/core'
+import type { Definition, ReasonEventMap, Reasoning, ReasonValidationResult } from '@src/core'
 import { attempt } from '@orkestrel/contract'
 import {
 	createDefinitionBuilder,
@@ -111,6 +111,23 @@ describe('Reason — registry', () => {
 })
 
 describe('Reason — validate', () => {
+	it.each<[string, unknown]>([
+		['null', null],
+		['undefined', undefined],
+		['a symbol', Symbol('definition')],
+		['a symbol reasoning', { reasoning: Symbol('x') }],
+		['a null-prototype record', Object.create(null)],
+	])('refuses %s without throwing on unchecked access or coercion', (_label, definition) => {
+		const reason = createReason({ reasoners: [createLogicalReasoner()] })
+		const validation = invokeUnchecked<ReasonValidationResult>(reason, reason.validate, [
+			definition,
+		])
+		expect(validation.valid).toBe(false)
+		expect(validation.errors.length).toBeGreaterThan(0)
+		expect(validation.warnings).toEqual([])
+		reason.destroy()
+	})
+
 	it('delegates to the registered reasoner', () => {
 		const reason = createReason({ reasoners: [createQuantitativeReasoner()] })
 		const validation = reason.validate(buildStaticDefinition())

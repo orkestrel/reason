@@ -1,4 +1,6 @@
 import {
+	buildCountedNest,
+	ReadCounter,
 	NARROWERS,
 	LEAF,
 	TERM,
@@ -70,6 +72,19 @@ describe('result narrowers', () => {
 			const other = requireValue(NARROWERS[(index + 1) % NARROWERS.length])
 			expect(() => entry.narrow(other.result)).toThrow(`got "${other.reasoning}"`)
 		}
+	})
+})
+
+describe('buildCountedNest', () => {
+	it('shares its child by identity and counts each own-key read without eager traversal', () => {
+		const counter = new ReadCounter()
+		const tree = buildCountedNest(1, counter)
+		expect(tree.a).toBe(tree.b)
+		expect(counter.count).toBe(0)
+		expect(Object.keys(tree)).toEqual(['a', 'b'])
+		expect(counter.count).toBe(1)
+		Object.keys(tree)
+		expect(counter.count).toBe(2)
 	})
 })
 

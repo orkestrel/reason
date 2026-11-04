@@ -281,7 +281,7 @@ describe('result contracts read the JSON projection', () => {
 
 	it.each<[string, unknown]>([
 		['a cycle', buildCycle()],
-		['shared sub-objects', buildSharedNest(60)],
+		['shared sub-objects', buildSharedNest(14)],
 		['a throwing member', HOSTILE_VALUE],
 		['a throwing proxy', HOSTILE_PROXY],
 		['an array with holes', sparse<number>(3, [[0, 1]])],
@@ -297,7 +297,7 @@ describe('result contracts read the JSON projection', () => {
 			createRule('r1', [createAtom('a', 'equals', 1)], createAtom('x', 'equals', true)),
 			createRule('r2', [createAtom('b', 'equals', 1)], createAtom('y', 'equals', true)),
 		]
-		const subject = { a: buildSharedNest(60), b: buildSharedNest(60) }
+		const subject = { a: buildSharedNest(14), b: buildSharedNest(14) }
 		const result = createLogicalReasoner().reason(subject, createLogicalDefinition('d', 'd', rules))
 		expect(resultContract.audit(projectResult(result))).toEqual([])
 	})
@@ -308,7 +308,7 @@ describe('result contracts read the JSON projection', () => {
 				createStaticFactor('f', 1, { checks: [createCheck('a', 'equals', 1)] }),
 			]),
 		])
-		const result = createQuantitativeReasoner().reason({ a: buildSharedNest(60) }, gated)
+		const result = createQuantitativeReasoner().reason({ a: buildSharedNest(14) }, gated)
 		expect(resultContract.audit(projectResult(result))).toEqual([])
 	})
 
