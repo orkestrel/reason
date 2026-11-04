@@ -888,8 +888,8 @@ export interface TransformerInterface {
  *
  * @remarks
  * Total: never throws. Empty-input identities: `sum` / `average` → `0`,
- * `product` → `1`, `minimum` / `maximum` → `NaN`. `weights` are honored only
- * when their length matches `values` exactly (otherwise silently unweighted).
+ * `product` → `1`, `minimum` / `maximum` → `NaN`. `weights` of another length than
+ * `values` have no answer and yield `NaN`, as a zero total weight on `average` does.
  */
 export interface AggregatorInterface {
 	readonly id: string

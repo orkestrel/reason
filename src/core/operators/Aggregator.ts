@@ -9,12 +9,11 @@ import { AGGREGATOR_ID, DEFAULT_WEIGHT } from '../constants.js'
  * @remarks
  * Total: never throws. Empty-input identities: `sum` / `average` → `0`,
  * `product` → `1`, `minimum` / `maximum` → `NaN` (the deliberate "no data"
- * signal). Weights are honored only when their length matches `values` exactly
- * (otherwise silently unweighted): a weight multiplies into a `sum`, acts as an
- * exponent for a `product`, is the weight of a weighted mean for `average`
- * (a zero total weight yields `0`, never a division blow-up), and is ignored by
- * `minimum` / `maximum`. An unknown aggregation yields `0`. Stateless and
- * deterministic.
+ * signal). Weights of another length than `values` have no answer and yield
+ * `NaN`: a weight multiplies into a `sum`, acts as an exponent for a `product`,
+ * is the weight of a weighted mean for `average` (a zero total weight yields
+ * `NaN`, as no data does), and is ignored by `minimum` / `maximum`. An unknown
+ * aggregation yields `NaN`. Stateless and deterministic.
  *
  * @example
  * ```ts
