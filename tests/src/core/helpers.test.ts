@@ -2263,11 +2263,13 @@ describe('settleComparison', () => {
 		['a', 'none', 'a', r],
 		[1, 'any', [Number.NaN], r],
 		[{}, 'any', ['a'], r],
-		// A blank or padded string reads unread, under membership as under equality.
+		// A blank or padded string reads unread, unless the list holds it exactly.
 		[' CA ', 'any', ['CA'], r],
 		[' CA ', 'none', ['CA'], r],
-		[' CA ', 'any', [' CA '], r],
-		['', 'any', [''], r],
+		[' CA ', 'any', [' CA '], m],
+		[' CA ', 'none', [' CA '], u],
+		['', 'any', [''], m],
+		['', 'none', [''], u],
 		['  ', 'none', ['a'], r],
 	])('membership: %o %s %o is %s', (actual, operator, expected, state) => {
 		expect(settleComparison(actual, operator, expected)).toBe(state)

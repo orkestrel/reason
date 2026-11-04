@@ -18,6 +18,9 @@ import {
 	THROWING_EVALUATOR,
 	EXTREME_NUMBERS,
 	expectLogical,
+	GENERATED_SUBJECTS,
+	generateRuleSet,
+	pickOne,
 	sequence,
 	sparse,
 	TRICKY_KEYS,
@@ -43,6 +46,7 @@ import {
 	isReasonError,
 	LogicalReasoner,
 } from '@src/core'
+import { seededRandom } from '@orkestrel/contract'
 import { describe, expect, it } from 'vitest'
 import { captureError, invokeUnchecked, requireValue } from '@orkestrel/test'
 
@@ -915,7 +919,7 @@ describe('LogicalReasoner — SameValueZero convergence on signed zero', () => {
 })
 
 describe('LogicalReasoner — backward long cycle terminates', () => {
-	it('a 20-rule cycle with no base facts settles unmet within depth, and refuses past it', () => {
+	it('a 20-rule cycle with no base facts settles unmet, because nothing derives to count', () => {
 		// c_i needs k_{i+1} to conclude k_i, closing k1←k2←…←k20←k1 — unprovable, must not recurse forever.
 		const cycle = sequence(20, 1).map((index) => {
 			const next = (index % 20) + 1
@@ -939,9 +943,8 @@ describe('LogicalReasoner — backward long cycle terminates', () => {
 		const capped = expectLogical(
 			reasoner.reason({}, createLogicalDefinition('d', 'd', cycle, { strategy: 'backward' })),
 		)
-		expect(capped.success).toBe(false)
-		expect(capped.conclusion).toBe('unread')
-		expect(capped.errors.every((error) => error.includes('hit depth 10'))).toBe(true)
+		expect(capped.success).toBe(true)
+		expect(capped.conclusion).toBe('unmet')
 	})
 })
 
@@ -987,15 +990,9 @@ describe('LogicalReasoner — priority extremes', () => {
 })
 
 describe('LogicalReasoner — backward depth-cap enforcement (sub-goal proving)', () => {
-	// A 6-hop chain declared in REVERSE order (r6 first, needing k5, down to r1
-	// needing k0). Since the top-level loop attempts each rule at depth 0, the
-	// FIRST-attempted rule (the deepest, r6) is the only one whose own proof must
-	// recurse the full chain from scratch — recursing r6→r5→r4→r3→r2→r1 costs 5
-	// nested `#proveExpression` calls (depth 1..5); direct facts (k0 in the
-	// subject) resolve without consuming a depth level. Rules positioned later in
-	// the array benefit from facts already committed by an earlier rule's
-	// (successful, sub-cap) recursive proof, so only the OVER-cap prefix of the
-	// chain (here r6 and r5) goes unproven, and any cap hit refuses the whole run.
+	// A 6-hop chain declared in REVERSE order (r6 first, needing k5, down to r1 needing k0).
+	// `depth` counts the passes that derive something, as forward does, so the chain's order
+	// decides nothing: only the proofs in the trace stop at the cap, and they answer nothing.
 
 	it('depth 3 is insufficient — the goal (r6, needing 5 hops) refuses', () => {
 		const definition = createLogicalDefinition('d', 'd', buildBackwardChain(), {
@@ -1006,8 +1003,9 @@ describe('LogicalReasoner — backward depth-cap enforcement (sub-goal proving)'
 		expect(result.conclusion).toBe('unread')
 		expect(result.success).toBe(false)
 		expect(result.errors.length).toBeGreaterThan(0)
-		expect(result.errors.every((error) => error.includes('hit depth 3'))).toBe(true)
+		expect(result.errors).toEqual(['Backward chaining did not settle within depth 3'])
 		expect(result.trace).toContain('Rule "r6": does not hold (backward, depth 0)')
+		expect(result.trace).toContain('Stopped proving "k2" at depth 3')
 		// r5 is proved once, under r6, so its one line carries the depth that proof reached.
 		expect(
 			result.trace.filter((entry) => entry.startsWith('Rule "r5": does not hold')),
@@ -1019,11 +1017,11 @@ describe('LogicalReasoner — backward depth-cap enforcement (sub-goal proving)'
 		expect(readRuleApplied('r6', undefined)).toBe('met')
 	})
 
-	it('pins the exact off-by-one boundary — 4 hops settle at depth 3, 5 hops (and beyond) refuse (run twice, deep-equal)', () => {
+	it('pins the exact off-by-one boundary — 3 hops settle at depth 3, 4 hops (and beyond) refuse (run twice, deep-equal)', () => {
 		const first = computeDepthBoundary()
 		const second = computeDepthBoundary()
 		expect(first).toEqual(second)
-		expect(first).toEqual([true, true, true, true, false, false])
+		expect(first).toEqual([true, true, true, false, false, false])
 	})
 })
 
@@ -1411,11 +1409,11 @@ describe('LogicalReasoner — a cycle through negation', () => {
 		])
 	})
 
-	it('backward refuses before any proof when validate was skipped', () => {
+	it('backward refuses the same way when validate was skipped', () => {
 		const result = reasonRules({}, rules, 'backward')
 		expect(result.conclusion).toBe('unread')
 		expect(result.success).toBe(false)
-		expect(result.errors).toEqual(['Unstratified: conclusions depend on their own negation: a, b'])
+		expect(result.errors).toEqual(reasonRules({}, rules, 'forward').errors)
 	})
 
 	it('validate leaves a positive cycle and a negation off any cycle alone', () => {
@@ -1590,6 +1588,23 @@ describe('LogicalReasoner — both strategies compute one supported model', () =
 		[
 			'a disabled concluder',
 			[createRule('a', [x], flag('a'), { enabled: false }), createFlagRule('b', 'b', [not('a')])],
+		],
+		[
+			'a key concluded twice, and read between the two',
+			[
+				createRule('ok', [createAtom('score', 'equals', 1)], flag('ok'), { priority: -10 }),
+				createRule('low', [flag('bridge')], createAtom('score', 'equals', 1), { priority: 0 }),
+				createRule('high', [x], createAtom('score', 'equals', 2), { priority: 1 }),
+				createRule('bridge', [x], flag('bridge'), { priority: 2 }),
+			],
+		],
+		[
+			'a derived value an ordering cannot read',
+			[
+				createRule('score', [x], createAtom('score', 'equals', '30')),
+				createRule('ok', [createAtom('score', 'above', 18)], flag('ok')),
+				createRule('done', [x], flag('done')),
+			],
 		],
 	]
 	const SUBJECTS = [
@@ -1946,4 +1961,136 @@ describe('LogicalReasoner — validate reads the shape', () => {
 		])
 		expect(validation.errors).toEqual(['Definition does not match the logical definition shape'])
 	})
+})
+
+describe.each(['forward', 'backward'] as const)(
+	'LogicalReasoner — a derived value a read cannot use (%s)',
+	(strategy) => {
+		const seed = createAtom('seed', 'equals', true)
+		const score = createRule('score', [seed], createAtom('score', 'equals', '30'))
+		const ok = createRule(
+			'ok',
+			[createAtom('score', 'above', 18)],
+			createAtom('ok', 'equals', true),
+		)
+		const message =
+			'Rule "ok" reads conclusion "score" with "above", and its value cannot be read that way'
+
+		it('refuses, even with a later rule met', () => {
+			const done = createRule('done', [seed], createAtom('done', 'equals', true))
+			const result = reasonRules({ seed: true }, [score, ok, done], strategy)
+			expect(result.rules.map((rule) => rule.state)).toEqual(['met', 'unread', 'met'])
+			expect(result.success).toBe(false)
+			expect(result.conclusion).toBe('unread')
+			expect(result.errors).toEqual([message])
+		})
+
+		it('refuses when the unread rule is the last', () => {
+			const result = reasonRules({ seed: true }, [score, ok], strategy)
+			expect(result.success).toBe(false)
+			expect(result.errors).toEqual([message])
+		})
+
+		it('names no input, because none is missing', () => {
+			expect(reasonRules({ seed: true }, [score, ok], strategy).faults).toEqual([])
+		})
+
+		it('says a key that closed with no value apart from one that holds an unusable value', () => {
+			const result = reasonRules({ seed: false }, [score, ok], strategy)
+			expect(result.success).toBe(false)
+			expect(result.rules.map((rule) => rule.state)).toEqual(['unmet', 'unread'])
+			expect(result.errors).toEqual([
+				'Rule "ok" reads conclusion "score" with "above", and no rule concluded a value',
+			])
+		})
+	},
+)
+
+describe('LogicalReasoner — one answer from either strategy', () => {
+	it('a depth cap refuses both strategies on the same definition', () => {
+		const rules = [
+			createRule('a', [createAtom('seed', 'equals', true)], createAtom('a', 'equals', true)),
+			createRule('b', [createAtom('a', 'equals', true)], createAtom('b', 'equals', true)),
+		]
+		for (const order of [rules, [...rules].reverse()]) {
+			for (const depth of [0, 1, 2, 3]) {
+				const forward = expectLogical(
+					reasoner.reason({ seed: true }, createLogicalDefinition('d', 'd', order, { depth })),
+				)
+				const backward = expectLogical(
+					reasoner.reason(
+						{ seed: true },
+						createLogicalDefinition('d', 'd', order, { depth, strategy: 'backward' }),
+					),
+				)
+				expect(backward.success).toBe(forward.success)
+				expect(backward.success).toBe(depth >= 2)
+				expect(backward.rules).toEqual(forward.rules)
+				expect(backward.conclusion).toBe(forward.conclusion)
+			}
+		}
+	})
+
+	it('a long concluder ahead of a short one asks no more depth backward than forward', () => {
+		const rules = [
+			createRule('long', [createAtom('b', 'equals', true)], createAtom('goal', 'equals', true), {
+				priority: 0,
+			}),
+			createRule('b', [createAtom('a', 'equals', true)], createAtom('b', 'equals', true)),
+			createRule('a', [createAtom('seed', 'equals', true)], createAtom('a', 'equals', true)),
+			createRule(
+				'short',
+				[createAtom('seed', 'equals', true)],
+				createAtom('goal', 'equals', true),
+				{
+					priority: 1,
+				},
+			),
+		]
+		const definition = { depth: 3 }
+		const forward = expectLogical(
+			reasoner.reason({ seed: true }, createLogicalDefinition('d', 'd', rules, definition)),
+		)
+		const backward = expectLogical(
+			reasoner.reason(
+				{ seed: true },
+				createLogicalDefinition('d', 'd', rules, { ...definition, strategy: 'backward' }),
+			),
+		)
+		expect(forward.success).toBe(true)
+		expect(backward.success).toBe(true)
+		expect(backward.rules).toEqual(forward.rules)
+	})
+
+	it('the generated rule sets are mostly ones validate accepts, so the row below reads something', () => {
+		const valid = sequence(400, 1).filter(
+			(seed) =>
+				reasoner.validate(createLogicalDefinition('d', 'd', generateRuleSet(seededRandom(seed))))
+					.valid,
+		)
+		expect(valid.length).toBeGreaterThan(200)
+	})
+
+	it.each(sequence(400, 1))(
+		'generated rule set %i agrees, and never succeeds beside an unread rule',
+		(seed) => {
+			const random = seededRandom(seed)
+			const rules = generateRuleSet(random)
+			const depth = pickOne(random, [1, 2, 10])
+			const definition = createLogicalDefinition('d', 'd', rules, { depth })
+			if (!reasoner.validate(definition).valid) return
+			for (const subject of GENERATED_SUBJECTS) {
+				const forward = expectLogical(reasoner.reason(subject, definition))
+				const backward = expectLogical(
+					reasoner.reason(subject, { ...definition, strategy: 'backward' }),
+				)
+				expect(backward.rules).toEqual(forward.rules)
+				expect(backward.conclusion).toBe(forward.conclusion)
+				expect(backward.faults).toEqual(forward.faults)
+				expect(backward.success).toBe(forward.success)
+				expect(forward.success && forward.rules.some((rule) => rule.state === 'unread')).toBe(false)
+				expect(forward.success && forward.conclusion === 'unread').toBe(false)
+			}
+		},
+	)
 })

@@ -68,15 +68,17 @@ import { isLogicalDefinition, isRule } from '../validators.js'
  * from one snapshot per pass, in ascending `priority` order. Deriving a key a fired rule read as
  * closed refuses as unstratified, and hitting `depth` refuses.
  *
- * Backward chaining proves each rule goal-first. An atom on an underived conclusion key tries the
- * rules concluding that key, matched by field alone, and the atom re-reads the overlay once one
- * fires, so `score above 5` never proves through `score equals 5`. A key nothing can prove closes
- * as above, and a candidate left `unread` leaves the goal `unread`. A visited rule reads `unread`,
- * which breaks a cycle without answering it, and settling then closes it as forward does.
+ * Backward chaining answers from that same loop, so both strategies reach one model and refuse
+ * the same runs, and `depth` counts the same passes in each. What differs is the trace: backward
+ * also proves each rule goal-first on its own state, to say why. An atom on an underived
+ * conclusion key tries the rules concluding that key, matched by field alone, and re-reads the
+ * overlay once one fires, so `score above 5` never proves through `score equals 5`. Those proofs
+ * answer nothing, and a proof past `depth` stops and says so.
  *
  * A subject may not supply a conclusion key, because that would assert what a rule has to derive.
  * Any rule left `unread` refuses the run: `success` is false, `errors` holds one entry per input
- * field, and `faults` lists those fields. A definition with a `shape` admits its subject through
+ * field, and `faults` lists those fields. A derived value a rule's read cannot use, a string under
+ * `above` for one, refuses too, as an error and not a fault, because no input is missing. A definition with a `shape` admits its subject through
  * the door first. Nothing mutates its inputs; fully deterministic.
  *
  * @example
@@ -423,9 +425,10 @@ export class LogicalReasoner implements ReasonerInterface {
 		return state.concludes(key) && !state.has(key) && !state.closed(key)
 	}
 
-	// Proves every rule, then settles what the proofs left the way forward does, so both
-	// strategies close the same keys. A cycle through negation is refused before any proof,
-	// since a proof of one would depend on visit order.
+	// The answer is the supported model, which both strategies share, so it comes from the one
+	// settle loop: a proof's order can take another value for a key two rules conclude, and a chain
+	// counts differently from the goal down. The proofs run on their own state and say why, for
+	// the trace, and nothing they find refuses the run.
 	#backward(
 		definition: LogicalDefinition,
 		rules: readonly Rule[],
@@ -436,16 +439,10 @@ export class LogicalReasoner implements ReasonerInterface {
 	): void {
 		const depth = definition.depth ?? DEFAULT_DEPTH
 		const sorted = sortByPriority(rules)
-		const cycles = findNegativeCycles(rules)
-		if (cycles.length > 0) {
-			errors.push(`Unstratified: conclusions depend on their own negation: ${cycles.join(', ')}`)
-			return
-		}
+		const proving = new LogicalState(rules)
 		const proofs = new Map<Rule, CheckState>()
-		for (const rule of sorted)
-			this.#proveRule(rule, 0, proofs, subject, state, trace, errors, depth)
-		if (errors.length > 0) return
-		if (this.#settle(sorted, subject, state, trace, errors, 1, depth) === undefined) {
+		for (const rule of sorted) this.#proveRule(rule, 0, proofs, subject, proving, trace, depth)
+		if (this.#settle(sorted, subject, state, [], errors, 1, depth) === undefined) {
 			errors.push(`Backward chaining did not settle within depth ${String(depth)}`)
 		}
 	}
@@ -457,25 +454,23 @@ export class LogicalReasoner implements ReasonerInterface {
 		subject: Subject,
 		state: LogicalState,
 		trace: string[],
-		errors: string[],
 		maxDepth: number,
 	): CheckState {
 		// A rule is proved once per run, which keeps a heavily cross-read definition from going
 		// factorial. While its proof is open it reads unread, which breaks a cycle without answering
 		// it: read as unmet it could settle an `and` over a real unread leaf, and a negation over
-		// that would fire. A settled proof stays true as keys derive, an unread one is only
-		// cautious, and settling afterwards finishes what the proofs left, the way forward does.
+		// that would fire.
 		const known = proofs.get(rule)
 		if (known !== undefined) return known
 		proofs.set(rule, 'unread')
 		const outcome = combineStates(
 			'and',
 			rule.premises.map((premise) =>
-				this.#establish(premise, depth + 1, proofs, subject, state, trace, errors, maxDepth),
+				this.#establish(premise, depth + 1, proofs, subject, state, trace, maxDepth),
 			),
 		)
 		proofs.set(rule, outcome)
-		if (outcome === 'met') this.#derive(rule, state, trace, errors, `backward, depth ${depth}`)
+		if (outcome === 'met') this.#derive(rule, state, trace, [], `backward, depth ${depth}`)
 		else trace.push(`Rule "${rule.id}": does not hold (backward, depth ${depth})`)
 		return outcome
 	}
@@ -487,14 +482,13 @@ export class LogicalReasoner implements ReasonerInterface {
 		subject: Subject,
 		state: LogicalState,
 		trace: string[],
-		errors: string[],
 		maxDepth: number,
 	): CheckState {
 		if (expression.form === 'compound') {
 			return combineStates(
 				expression.operator,
 				expression.operands.map((operand) =>
-					this.#establish(operand, depth, proofs, subject, state, trace, errors, maxDepth),
+					this.#establish(operand, depth, proofs, subject, state, trace, maxDepth),
 				),
 			)
 		}
@@ -502,23 +496,13 @@ export class LogicalReasoner implements ReasonerInterface {
 		const key = formatField(check.field)
 		if (!state.concludes(key) || state.has(key)) return this.#readCheck(check, subject, state).state
 		if (depth > maxDepth) {
-			const message = `Backward chaining hit depth ${String(maxDepth)} proving "${key}"`
-			if (!errors.includes(message)) errors.push(message)
+			trace.push(`Stopped proving "${key}" at depth ${String(maxDepth)}`)
 			return 'unread'
 		}
 		const outcomes: CheckState[] = []
 		// Priority order, as forward fires them, so a key two rules conclude takes the same value.
 		for (const candidate of sortByPriority(state.concluders(key))) {
-			const outcome = this.#proveRule(
-				candidate,
-				depth,
-				proofs,
-				subject,
-				state,
-				trace,
-				errors,
-				maxDepth,
-			)
+			const outcome = this.#proveRule(candidate, depth, proofs, subject, state, trace, maxDepth)
 			// Matched by field alone: the goal re-reads what the candidate actually concluded.
 			if (outcome === 'met') return this.#readCheck(check, subject, state).state
 			outcomes.push(outcome)
@@ -583,8 +567,9 @@ export class LogicalReasoner implements ReasonerInterface {
 
 	// Names why each unread rule refused, and returns the input fields among those reasons. A
 	// rule unread only through an open conclusion adds nothing, because the rule concluding that
-	// key names the input. A rule with no input to name still pushes an error, so `success`
-	// cannot read true beside it.
+	// key names the input. A rule with no input to name still pushes an error, whether its key
+	// closed with no value or holds one the read cannot use, so `success` cannot read true beside
+	// it. A derived key is never a missing input, so it is an error and not a fault.
 	#collectFaults(
 		rules: readonly Rule[],
 		subject: Subject,
@@ -603,6 +588,10 @@ export class LogicalReasoner implements ReasonerInterface {
 					if (state.closed(key)) {
 						errors.push(
 							`Rule "${rule.id}" reads conclusion "${key}" with "${check.operator}", and no rule concluded a value`,
+						)
+					} else if (state.has(key)) {
+						errors.push(
+							`Rule "${rule.id}" reads conclusion "${key}" with "${check.operator}", and its value cannot be read that way`,
 						)
 					}
 					return []

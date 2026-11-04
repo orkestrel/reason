@@ -49,21 +49,23 @@ export class SubjectDoor implements SubjectDoorInterface {
 
 	#read(subject: Subject, shape: ContractShape): SubjectAdmission {
 		const contract = this.#compile(shape)
-		const audited = contract.audit(subject)
 		const explained = contract.explain(subject)
+		const audited = contract.audit(subject)
 		if (explained.length > 0) {
 			return this.#refuse([...explained, ...audited.filter((fault) => fault.reason === 'extra')])
 		}
 		if (audited.length >= FAULT_LIMIT) {
 			return this.#refuse(audited, [`Subject has ${String(FAULT_LIMIT)} faults or more`])
 		}
-		const parsed = contract.parse(subject)
-		if (!isRecord(parsed)) return this.#refuse([], ['Shape does not describe a record'])
-		// A key holding undefined is absent, which `parse` has already answered, so it changes nothing.
+		// A key holding undefined is absent, which `parse` will answer, so it changes nothing.
 		const repairs = audited.filter(
 			(fault) => fault.reason !== 'type' || resolveField(subject, fault.path) !== undefined,
 		)
-		// An undeclared key and a union fault are no repair, so they refuse here with the rest.
+		// An undeclared key and a union fault are no repair, so they refuse before anything parses.
+		const unrepairable = repairs.filter((fault) => fault.reason !== 'type')
+		if (unrepairable.length > 0) return this.#refuse(unrepairable)
+		const parsed = contract.parse(subject)
+		if (!isRecord(parsed)) return this.#refuse([], ['Shape does not describe a record'])
 		const lossy = repairs.filter((fault) => !isLosslessRepair(fault, subject, parsed))
 		if (lossy.length > 0) return this.#refuse(lossy)
 		return {

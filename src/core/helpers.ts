@@ -316,8 +316,9 @@ export function settleComparison(actual: unknown, operator: string, expected: un
 			return actual <= expected ? 'met' : 'unmet'
 		case 'any':
 		case 'none':
-			if (!isComparable(actual) || !isMembership(expected) || isPaddedText(actual)) return 'unread'
+			if (!isComparable(actual) || !isMembership(expected)) return 'unread'
 			if (expected.includes(actual)) return operator === 'any' ? 'met' : 'unmet'
+			if (isPaddedText(actual)) return 'unread'
 			if (expected.some((entry) => typeof entry !== typeof actual)) return 'unread'
 			return operator === 'any' ? 'unmet' : 'met'
 		case 'between':

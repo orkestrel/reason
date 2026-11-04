@@ -1860,3 +1860,53 @@ export function readAdditionLayers(
 	visit(node)
 	return readAdditionLayers(node.left, visit, layers + 1)
 }
+
+/** Holds the subjects a generated rule set is read against. */
+export const GENERATED_SUBJECTS: readonly Subject[] = Object.freeze([
+	{},
+	{ x: 1 },
+	{ x: 2 },
+	{ y: true },
+	{ x: 1, y: true },
+	{ x: 2, y: false },
+	{ x: 'old', y: 1 },
+])
+
+export function pickOne<T>(random: () => number, items: readonly T[]): T {
+	const item = items[Math.floor(random() * items.length)]
+	if (item === undefined) throw new Error('pickOne needs items')
+	return item
+}
+
+function generateAtom(random: () => number): Expression {
+	const field = pickOne(random, ['a', 'b', 'c', 'd', 'x', 'y'])
+	const kind = pickOne(random, ['equals', 'not', 'any', 'above', 'between'] as const)
+	if (kind === 'any') return createAtom(field, 'any', [1, 2])
+	if (kind === 'above') return createAtom(field, 'above', pickOne(random, [0, 1]))
+	if (kind === 'between') return createAtom(field, 'between', [0, 1])
+	return createAtom(field, kind, pickOne(random, [true, 1, 2, '30']))
+}
+
+function generatePremise(random: () => number): Expression {
+	const form = pickOne(random, ['atom', 'atom', 'and', 'or', 'not'] as const)
+	if (form === 'atom') return generateAtom(random)
+	if (form === 'not') return createCompound('not', [generateAtom(random)])
+	return createCompound(form, [generateAtom(random), generateAtom(random)])
+}
+
+/** Generates a small rule set over keys that read and conclude each other, from one source. */
+export function generateRuleSet(random: () => number): readonly Rule[] {
+	const count = 1 + Math.floor(random() * 6)
+	return sequence(count, 1).map((index) =>
+		createRule(
+			`r${String(index)}`,
+			[generatePremise(random)],
+			createAtom(
+				pickOne(random, ['a', 'b', 'c', 'd']),
+				'equals',
+				pickOne(random, [true, 1, 2, '30']),
+			),
+			{ priority: pickOne(random, [-1, 0, 1]) },
+		),
+	)
+}

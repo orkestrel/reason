@@ -364,8 +364,9 @@ export interface Rule {
  * Defines rule-based deduction.
  *
  * @remarks
- * `strategy` picks forward fixpoint chaining or backward goal-driven proving.
- * `depth` caps forward iterations / backward recursion. Default: `10`.
+ * `strategy` picks how the trace reads: forward fixpoint chaining, or the same chaining with
+ * goal-driven proofs beside it. Both give one answer. `depth` caps the passes that derive
+ * something. Default: `10`.
  * `shape` declares the subject, which then passes the {@link SubjectDoorInterface}
  * before any rule reads it.
  */

@@ -433,6 +433,17 @@ describe('Evaluator — a difference of type never settles', () => {
 		['a number against a word list', 'none', 90, ['none']],
 		['a number beside a null in a list', 'none', 5, [null]],
 	] as const
+	it.each<[string, 'any' | 'none', string, readonly string[], string]>([
+		['padded, held exactly', 'any', ' CA ', [' CA '], 'met'],
+		['padded, held exactly, under none', 'none', ' CA ', [' CA '], 'unmet'],
+		['blank, held exactly', 'any', '', [''], 'met'],
+		['blank, held exactly, under none', 'none', '', [''], 'unmet'],
+	])('settles on an exact hit: %s', (_name, operator, actual, expected, state) => {
+		expect(evaluator.evaluate(createCheck('a', operator, expected), { a: actual }).state).toBe(
+			state,
+		)
+	})
+
 	for (const [name, operator, actual, expected] of ROWS) {
 		it(`reads unread: ${name}`, () => {
 			expect(evaluator.evaluate(createCheck('a', operator, expected), { a: actual }).state).toBe(
@@ -462,7 +473,7 @@ describe('Evaluator — a difference of type never settles', () => {
 	}
 })
 
-describe('Evaluator — a blank or padded string reads unread under equality and membership', () => {
+describe('Evaluator — a blank or padded string reads unread unless a list holds it exactly', () => {
 	const ROWS = [
 		['empty against empty', 'equals', '', ''],
 		['spaces against themselves', 'equals', '  ', '  '],
@@ -472,8 +483,8 @@ describe('Evaluator — a blank or padded string reads unread under equality and
 		['empty against null', 'not', '', null],
 		['padded against its trim, in a list', 'any', ' CA ', ['CA']],
 		['padded beside a list', 'none', ' CA ', ['CA']],
-		['padded against itself, in a list', 'any', ' CA ', [' CA ']],
-		['blank in a list', 'any', '', ['']],
+		['blank beside a list', 'any', '', ['CA']],
+		['blank beside a list, under none', 'none', '', ['CA']],
 	] as const
 	for (const [name, operator, actual, expected] of ROWS) {
 		it(`reads unread: ${name}`, () => {
