@@ -118,23 +118,6 @@ export const COMPARISONS = [
 /** Lists the connectives of a compound expression. */
 export const LOGICAL_OPERATORS = ['and', 'or', 'not', 'implies', 'xor'] as const
 
-/** Lists `contract`'s fault kinds, which a result's faults carry. */
-export const FAULT_KINDS = [
-	'string',
-	'number',
-	'integer',
-	'boolean',
-	'null',
-	'literal',
-	'array',
-	'object',
-	'union',
-	'json',
-] as const
-
-/** Lists `contract`'s fault constraints, which a result's faults carry. */
-export const FAULT_CONSTRAINTS = ['min', 'max', 'pattern', 'integer'] as const
-
 /**
  * Holds how many objects and arrays one JSON projection walks before it drops the rest, so a
  * value sharing its sub-objects cannot unfold without end.

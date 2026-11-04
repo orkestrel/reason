@@ -2,6 +2,9 @@ import type { ContractShape } from '@orkestrel/contract'
 import {
 	arrayShape,
 	booleanShape,
+	FAULT_CONSTRAINTS,
+	FAULT_KINDS,
+	integerShape,
 	jsonShape,
 	literalShape,
 	nullableShape,
@@ -18,8 +21,6 @@ import {
 	CHECK_STATES,
 	COMPARISONS,
 	EXPRESSION_SHAPE_DEPTH,
-	FAULT_CONSTRAINTS,
-	FAULT_KINDS,
 	LOGICAL_OPERATORS,
 	MATH_OPERATIONS,
 	SYMBOLIC_SHAPE_DEPTH,
@@ -364,7 +365,7 @@ export function createDefinitionShape(): ContractShape {
 	)
 }
 
-/** Describes an `AuditFault` as a result carries it. */
+/** Describes an `AuditFault` as JSON carries it, agreeing with `isAuditFault` for JSON values. */
 export const faultShape: ContractShape = unionShape(
 	objectShape({
 		reason: literalShape(['type']),
@@ -388,12 +389,26 @@ export const faultShape: ContractShape = unionShape(
 	objectShape({
 		reason: literalShape(['variant']),
 		path: fieldPathShape,
-		variants: numberShape(),
+		variants: integerShape({ min: 0 }),
+	}),
+	objectShape({
+		reason: literalShape(['variant']),
+		path: fieldPathShape,
+		variants: integerShape({ min: 0 }),
+		key: stringShape(),
+		expected: arrayShape(unionShape(stringShape(), numberShape(), booleanShape())),
 	}),
 	objectShape({
 		reason: literalShape(['oneOf']),
 		path: fieldPathShape,
-		matched: numberShape(),
+		matched: integerShape({ min: 0 }),
+	}),
+	objectShape({
+		reason: literalShape(['oneOf']),
+		path: fieldPathShape,
+		matched: integerShape({ min: 0 }),
+		key: stringShape(),
+		expected: arrayShape(unionShape(stringShape(), numberShape(), booleanShape())),
 	}),
 	objectShape({ reason: literalShape(['extra']), path: fieldPathShape }),
 )

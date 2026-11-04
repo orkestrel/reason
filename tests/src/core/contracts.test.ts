@@ -1,4 +1,12 @@
-import { createContract, seededRandom } from '@orkestrel/contract'
+import {
+	createContract,
+	seededRandom,
+	objectShape,
+	unionShape,
+	oneOfShape,
+	literalShape,
+	stringShape,
+} from '@orkestrel/contract'
 import {
 	createAtom,
 	createCheck,
@@ -30,6 +38,10 @@ import {
 	inferentialDefinitionContract,
 	inferentialResultContract,
 	isDefinition,
+	isLogicalResult,
+	isQuantitativeResult,
+	isSymbolicResult,
+	isInferentialResult,
 	isExpression,
 	isReasonResult,
 	isSymbolicExpression,
@@ -77,6 +89,51 @@ const inferential = createInferentialDefinition(
 const definitionContract = createDefinitionContract()
 const logicalDefinitionContract = createLogicalDefinitionContract()
 const symbolicDefinitionContract = createSymbolicDefinitionContract()
+
+describe('hinted engine faults', () => {
+	it.each([
+		[createLogicalReasoner(), logical, logicalResultContract, isLogicalResult],
+		[createQuantitativeReasoner(), quantitative, quantitativeResultContract, isQuantitativeResult],
+		[createSymbolicReasoner(), symbolic, symbolicResultContract, isSymbolicResult],
+		[createInferentialReasoner(), inferential, inferentialResultContract, isInferentialResult],
+	] as const)('accepts the union fault emitted by %s', (reasoner, definition, contract, guard) => {
+		const shape = objectShape({
+			pick: unionShape(
+				objectShape({ kind: literalShape(['a']), a: stringShape() }),
+				objectShape({ kind: literalShape(['b']), b: stringShape() }),
+			),
+		})
+		const result = reasoner.reason({ pick: { kind: 'c' } }, { ...definition, shape })
+		expect(result.faults).toContainEqual({
+			reason: 'variant',
+			path: ['pick'],
+			variants: 2,
+			key: 'kind',
+			expected: ['a', 'b'],
+		})
+		expect(guard(result)).toBe(true)
+		expect(contract.is(result)).toBe(true)
+	})
+
+	it('accepts the oneOf matched count emitted by the logical engine', () => {
+		const shape = objectShape({
+			pick: oneOfShape(
+				objectShape({ kind: literalShape(['a']) }),
+				objectShape({ kind: literalShape(['b']) }),
+			),
+		})
+		const result = createLogicalReasoner().reason({ pick: { kind: 'c' } }, { ...logical, shape })
+		expect(result.faults).toContainEqual({
+			reason: 'oneOf',
+			path: ['pick'],
+			matched: 0,
+			key: 'kind',
+			expected: ['a', 'b'],
+		})
+		expect(isLogicalResult(result)).toBe(true)
+		expect(logicalResultContract.is(result)).toBe(true)
+	})
+})
 
 describe('definition contracts', () => {
 	it('admit what the factories build', () => {

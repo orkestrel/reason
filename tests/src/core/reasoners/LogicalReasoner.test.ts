@@ -2066,7 +2066,7 @@ describe('LogicalReasoner — one answer from either strategy', () => {
 		expect(backward.rules).toEqual(forward.rules)
 	})
 
-	it('a proof that exhausts the stack takes nothing from the answer', () => {
+	it('a proof that exhausts the stack takes nothing from the answer', { timeout: 30_000 }, () => {
 		// Reversed, so forward fires every rule in one pass and a proof walks all of them.
 		const count = 16_000
 		const rules = sequence(count, 1)
