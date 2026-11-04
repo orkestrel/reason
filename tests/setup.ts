@@ -1,5 +1,8 @@
+import type { ContractShape, FieldPath } from '@orkestrel/contract'
 import { isArray, isRecord } from '@orkestrel/contract'
 import type {
+	ChainStrategy,
+	CheckState,
 	EquationManager,
 	FactManager,
 	FactorManager,
@@ -31,6 +34,7 @@ import type {
 	ReasonResult,
 	ReasonerInterface,
 	Reasoning,
+	Rule,
 	RuleManagerEventMap,
 	Subject,
 	SubjectBuilderEventMap,
@@ -564,11 +568,9 @@ export function readSubjectTrace(
 
 export const quantitativeReasoner = createQuantitativeReasoner()
 
-export function createFieldDefinition(fallback?: number) {
+export function createFieldDefinition() {
 	return createQuantitativeDefinition('d', 'd', [
-		createFactorGroup('g1', 'sum', [
-			createFieldFactor('f1', 'value', fallback === undefined ? undefined : { fallback }),
-		]),
+		createFactorGroup('g1', 'sum', [createFieldFactor('f1', 'value')]),
 	])
 }
 
@@ -644,6 +646,68 @@ export function createCompoundDefinition(premise: Expression) {
 	])
 }
 
+export function createFlagAtom(name: FieldPath) {
+	return createAtom(name, 'equals', true)
+}
+
+export function createNegatedFlag(name: FieldPath) {
+	return createCompound('not', [createFlagAtom(name)])
+}
+
+export function createFlagRule(id: string, key: FieldPath, premises?: readonly Expression[]) {
+	return createRule(id, premises ?? [createAtom('x', 'equals', 1)], createFlagAtom(key))
+}
+
+// Two rules where `premise` decides `a` and `a` decides `b`, so a premise reading `b` closes a cycle.
+export function createCycleThrough(premise: Expression) {
+	return [createFlagRule('a', 'a', [premise]), createFlagRule('b', 'b', [createFlagAtom('a')])]
+}
+
+export function readRuleErrors(
+	conclusion: Expression,
+	premises: readonly Expression[] = [createFlagAtom('a')],
+) {
+	const definition = createLogicalDefinition('d', 'd', [createRule('r', premises, conclusion)])
+	return logicalReasoner.validate(definition).errors
+}
+
+// A chain of `depth` single-operand connectives over one atom.
+export function buildCompoundNest(depth: number): Expression {
+	return depth <= 0
+		? createAtom('a', 'equals', 1)
+		: createCompound('and', [buildCompoundNest(depth - 1)])
+}
+
+// A chain of `depth` binary operations over one variable.
+export function buildOperationNest(depth: number): SymbolicExpression {
+	return depth <= 0
+		? createVariable('x')
+		: createOperation('add', buildOperationNest(depth - 1), createConstant(1))
+}
+
+// A definition's `shape` is any JSON value to its published shape and a real one to its guard,
+// so a generated definition drops it before the guard reads it.
+export function dropShapeKey(value: unknown): unknown {
+	if (!isRecord(value)) return value
+	const { shape: _shape, ...rest } = value
+	return rest
+}
+
+export function createShapedDefinition(premise: Expression, shape: ContractShape) {
+	const conclusion = createFlagAtom('ok')
+	return createLogicalDefinition('d', 'd', [createRule('r', [premise], conclusion)], { shape })
+}
+
+export function reasonRules(
+	subject: Subject,
+	rules: readonly Rule[],
+	strategy: ChainStrategy = 'forward',
+) {
+	return expectLogical(
+		logicalReasoner.reason(subject, createLogicalDefinition('d', 'd', rules, { strategy })),
+	)
+}
+
 export function runAtDepth(depth: number) {
 	const definition = createLogicalDefinition('d', 'd', FORWARD_CHAIN, { depth })
 	return expectLogical(logicalReasoner.reason({ k0: true }, definition))
@@ -652,7 +716,7 @@ export function runAtDepth(depth: number) {
 export function computeBackwardConclusion(
 	provablePriority: number,
 	unprovablePriority: number,
-): boolean {
+): CheckState {
 	const definition = createLogicalDefinition(
 		'd',
 		'd',
@@ -671,7 +735,7 @@ export function computeBackwardConclusion(
 		],
 		{ strategy: 'backward' },
 	)
-	return expectLogical(logicalReasoner.reason({ a: true }, definition)).conclusion
+	return expectLogical(logicalReasoner.reason({ a: true, missing: false }, definition)).conclusion
 }
 
 export function buildBackwardChain() {
@@ -686,11 +750,17 @@ export function readRuleApplied(id: string, depth: number | undefined) {
 		...(depth === undefined ? {} : { depth }),
 	})
 	const result = expectLogical(logicalReasoner.reason({ k0: true }, definition))
-	return result.rules.find((entry) => entry.id === id)?.applied
+	return result.rules.find((entry) => entry.id === id)?.state
 }
 
 export function computeDepthBoundary() {
-	return sequence(6, 1).map((hops) => readRuleApplied(`r${hops}`, 3))
+	return sequence(6, 1).map((hops) => {
+		const chain = sequence(hops, 1)
+			.map((index) => createDerivationRule(`r${index}`, `k${index - 1}`, true, `k${index}`))
+			.reverse()
+		const definition = createLogicalDefinition('d', 'd', chain, { strategy: 'backward', depth: 3 })
+		return expectLogical(logicalReasoner.reason({ k0: true }, definition)).success
+	})
 }
 
 export function evaluateDeepCompound(leafValue: boolean) {
@@ -868,6 +938,9 @@ export const conditional: ReasonerInterface = {
 			success: true,
 			trace: [],
 			errors: [],
+			faults: [],
+			repairs: [],
+			defaulted: [],
 		}
 	},
 }
@@ -885,6 +958,9 @@ export const REAL_FAILURE_REASONER: ReasonerInterface = {
 		success: false,
 		trace: ['deliberate failure'],
 		errors: ['deliberate failure'],
+		faults: [],
+		repairs: [],
+		defaulted: [],
 	}),
 }
 
@@ -907,6 +983,9 @@ export function createRecordedReasoner(
 			success: true,
 			trace: [],
 			errors: [],
+			faults: [],
+			repairs: [],
+			defaulted: [],
 		}),
 	}
 }
@@ -952,8 +1031,8 @@ export function evaluateArray(
 	comparison: Comparison,
 	expected: readonly unknown[],
 	actual: unknown,
-): boolean {
-	return evaluator.evaluate(createCheck('a', comparison, expected), { a: actual }).met
+): CheckState {
+	return evaluator.evaluate(createCheck('a', comparison, expected), { a: actual }).state
 }
 
 export const RISK_DEFINITION = createQuantitativeDefinition(
@@ -971,7 +1050,6 @@ export const RISK_DEFINITION = createQuantitativeDefinition(
 			createFieldFactor('income-score', 'income', {
 				transforms: [createTransform('divide', 1000)],
 				bounds: createBounds(0, 40),
-				fallback: 0,
 			}),
 			createLookupFactor('state-score', 'state', { CA: 5, NY: 8, TX: 2 }, { fallback: 1 }),
 		]),
@@ -1021,8 +1099,8 @@ export const RATE_DEFINITION = createSymbolicDefinition(
 export function readApplied(
 	result: ReturnType<typeof expectLogical>,
 	id: string,
-): boolean | undefined {
-	return result.rules.find((rule) => rule.id === id)?.applied
+): CheckState | undefined {
+	return result.rules.find((rule) => rule.id === id)?.state
 }
 
 export function runReasonScenarios(
@@ -1649,16 +1727,22 @@ export const QUANTITATIVE_RESULT: QuantitativeResult = {
 	success: true,
 	trace: [],
 	errors: [],
+	faults: [],
+	repairs: [],
+	defaulted: [],
 }
 
 export const LOGICAL_RESULT: LogicalResult = {
 	reasoning: 'logical',
-	conclusion: true,
+	conclusion: 'met',
 	rules: [],
 	count: 0,
 	success: true,
 	trace: [],
 	errors: [],
+	faults: [],
+	repairs: [],
+	defaulted: [],
 }
 
 export const SYMBOLIC_RESULT: SymbolicResult = {
@@ -1667,6 +1751,9 @@ export const SYMBOLIC_RESULT: SymbolicResult = {
 	success: true,
 	trace: [],
 	errors: [],
+	faults: [],
+	repairs: [],
+	defaulted: [],
 }
 
 export const INFERENTIAL_RESULT: InferentialResult = {
@@ -1675,6 +1762,9 @@ export const INFERENTIAL_RESULT: InferentialResult = {
 	success: true,
 	trace: [],
 	errors: [],
+	faults: [],
+	repairs: [],
+	defaulted: [],
 }
 
 export const NARROWERS: ReadonlyArray<{

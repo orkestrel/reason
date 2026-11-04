@@ -98,12 +98,12 @@ describe('QuantitativeReasoner — validate', () => {
 		expect(validation.errors).toContain('Factor must have an id')
 	})
 
-	it('a factorless group is a WARNING, not an error', () => {
+	it('a factorless group is an ERROR', () => {
 		const validation = reasoner.validate(
 			createQuantitativeDefinition('d', 'd', [createFactorGroup('g1', 'sum', [])]),
 		)
-		expect(validation.valid).toBe(true)
-		expect(validation.warnings).toContain('Group "g1" has no factors')
+		expect(validation.valid).toBe(false)
+		expect(validation.errors).toContain('Group "g1" has no factors')
 	})
 
 	it('a factor without a source is an error (malformed shape past the types)', () => {
@@ -116,10 +116,13 @@ describe('QuantitativeReasoner — validate', () => {
 			},
 		])
 		expect(validation.valid).toBe(false)
-		expect(validation.errors).toContain('Factor "f1" must have a source')
+		expect(validation.errors).toEqual([
+			'Definition does not match the quantitative definition shape',
+			'Group at index 0 is malformed',
+		])
 	})
 
-	it('duplicate group and factor ids are WARNINGS, once per duplicated id', () => {
+	it('duplicate group and factor ids are ERRORS, once per duplicated id', () => {
 		const validation = reasoner.validate(
 			createQuantitativeDefinition('d', 'd', [
 				createFactorGroup('g', 'sum', [
@@ -131,13 +134,9 @@ describe('QuantitativeReasoner — validate', () => {
 				createFactorGroup('g', 'sum', []),
 			]),
 		)
-		expect(validation.valid).toBe(true)
-		expect(
-			validation.warnings.filter((warning) => warning === 'Duplicate group id "g"'),
-		).toHaveLength(1)
-		expect(
-			validation.warnings.filter((warning) => warning === 'Duplicate factor id "f"'),
-		).toHaveLength(1)
+		expect(validation.valid).toBe(false)
+		expect(validation.errors.filter((error) => error === 'Duplicate group id "g"')).toHaveLength(1)
+		expect(validation.errors.filter((error) => error === 'Duplicate factor id "f"')).toHaveLength(1)
 	})
 
 	it('the same factor id in DIFFERENT groups does not warn (uniqueness is per group)', () => {
@@ -243,11 +242,18 @@ describe('QuantitativeReasoner — reason (core pipeline)', () => {
 		expect(expectQuantitative(reasoner.reason({}, definition)).value).toBe(50)
 	})
 
-	it('uses the fallback when a field is missing', () => {
+	it('refuses a missing field and names it, and a field source cannot use a fallback', () => {
 		const definition = createQuantitativeDefinition('d', 'd', [
 			createFactorGroup('g1', 'sum', [createFieldFactor('f1', 'missing', { fallback: 25 })]),
 		])
-		expect(expectQuantitative(reasoner.reason({}, definition)).value).toBe(25)
+		const result = expectQuantitative(reasoner.reason({}, definition))
+		expect(result.value).toBe(0)
+		expect(result.success).toBe(false)
+		expect(result.errors).toEqual(['Field "missing" is missing'])
+		expect(result.faults.map((fault) => fault.path)).toEqual(['missing'])
+		expect(reasoner.validate(definition).errors).toEqual([
+			'Factor "f1": a "field" source cannot use a fallback',
+		])
 	})
 
 	it('produces a non-empty trace with the pipeline formats', () => {
@@ -307,10 +313,15 @@ describe('QuantitativeReasoner — lookup & range sources', () => {
 		]),
 	])
 
-	it('a lookup hit maps through the table; a miss and a missing field take the fallback', () => {
+	it('a lookup hit maps through the table; a miss takes the fallback; a missing field refuses', () => {
 		expect(expectQuantitative(reasoner.reason({ state: 'CA' }, stateLookup)).value).toBe(1.2)
-		expect(expectQuantitative(reasoner.reason({ state: 'FL' }, stateLookup)).value).toBe(1)
-		expect(expectQuantitative(reasoner.reason({}, stateLookup)).value).toBe(1)
+		const missed = expectQuantitative(reasoner.reason({ state: 'FL' }, stateLookup))
+		expect(missed.value).toBe(1)
+		expect(missed.success).toBe(true)
+		expect(missed.trace).toContain('Factor "f1": took its fallback, 1')
+		const absent = expectQuantitative(reasoner.reason({}, stateLookup))
+		expect(absent.success).toBe(false)
+		expect(absent.faults.map((fault) => fault.path)).toEqual(['state'])
 	})
 
 	it('a numeric field value coerces to a string table key', () => {
@@ -320,15 +331,21 @@ describe('QuantitativeReasoner — lookup & range sources', () => {
 		expect(expectQuantitative(reasoner.reason({ code: 42 }, definition)).value).toBe(99)
 	})
 
-	it('a missing or null field takes the FALLBACK — an "" table key never intercepts it', () => {
+	it('a missing or null field refuses — neither the fallback nor an "" table key answers it', () => {
 		const definition = createQuantitativeDefinition('d', 'd', [
 			createFactorGroup('g1', 'sum', [
 				createLookupFactor('f1', 'missing', { '': 9 }, { fallback: 3 }),
 			]),
 		])
-		// Absent field and explicit null both bypass the '' key.
-		expect(expectQuantitative(reasoner.reason({}, definition)).value).toBe(3)
-		expect(expectQuantitative(reasoner.reason({ missing: null }, definition)).value).toBe(3)
+		// Absent field and explicit null both bypass the '' key and the fallback.
+		expect(
+			expectQuantitative(reasoner.reason({}, definition)).faults.map((fault) => fault.path),
+		).toEqual(['missing'])
+		expect(
+			expectQuantitative(reasoner.reason({ missing: null }, definition)).faults.map(
+				(fault) => fault.path,
+			),
+		).toEqual(['missing'])
 		// A PRESENT empty-string value still stringifies and hits the '' key.
 		expect(expectQuantitative(reasoner.reason({ missing: '' }, definition)).value).toBe(9)
 	})
@@ -416,13 +433,13 @@ describe('QuantitativeReasoner — strict groups & required factors', () => {
 		expect(expectQuantitative(reasoner.reason({}, definition)).value).toBe(30)
 	})
 
-	it('a required factor with an unresolvable source fails the run (renamed error)', () => {
+	it('an unresolvable source fails the run, required or not', () => {
 		const definition = createQuantitativeDefinition('d', 'd', [
 			createFactorGroup('g1', 'sum', [createFieldFactor('f1', 'missing', { required: true })]),
 		])
 		const result = expectQuantitative(reasoner.reason({}, definition))
 		expect(result.success).toBe(false)
-		expect(result.errors).toContain('Required factor "f1" could not resolve source')
+		expect(result.errors).toEqual(['Field "missing" is missing'])
 		expect(result.trace).toContain('Factor "f1": could not resolve source')
 	})
 
@@ -637,49 +654,44 @@ describe('QuantitativeReasoner — field paths (FieldPath semantics)', () => {
 
 	it('a dotted STRING is ONE key — it reads the flat key, never the nested shape', () => {
 		const definition = createQuantitativeDefinition('d', 'd', [
-			createFactorGroup('g1', 'sum', [createFieldFactor('f1', 'data.score', { fallback: 0 })]),
+			createFactorGroup('g1', 'sum', [createFieldFactor('f1', 'data.score')]),
 		])
 		expect(expectQuantitative(reasoner.reason({ 'data.score': 95 }, definition)).value).toBe(95)
-		expect(expectQuantitative(reasoner.reason({ data: { score: 95 } }, definition)).value).toBe(0)
+		const nested = expectQuantitative(reasoner.reason({ data: { score: 95 } }, definition))
+		expect(nested.success).toBe(false)
+		expect(nested.faults.map((fault) => fault.path)).toEqual(['data.score'])
 	})
 })
 
-describe('QuantitativeReasoner — parseNumber coercion (contracts semantics)', () => {
-	it('parses numeric strings, whitespace-padded and hex included', () => {
-		expect(
-			expectQuantitative(reasoner.reason({ value: '42' }, createFieldDefinition())).value,
-		).toBe(42)
-		expect(
-			expectQuantitative(reasoner.reason({ value: '  42  ' }, createFieldDefinition())).value,
-		).toBe(42)
-		expect(
-			expectQuantitative(reasoner.reason({ value: '0x10' }, createFieldDefinition())).value,
-		).toBe(16)
+describe('QuantitativeReasoner — a field source reads a finite number and nothing else', () => {
+	it('refuses numeric strings, whitespace-padded and hex included', () => {
+		for (const value of ['42', '  42  ', '0x10']) {
+			const result = expectQuantitative(reasoner.reason({ value }, createFieldDefinition()))
+			expect(result.value).toBe(0)
+			expect(result.success).toBe(false)
+			expect(result.faults.map((fault) => fault.path)).toEqual(['value'])
+		}
 	})
 
-	it('a non-numeric string takes the fallback', () => {
-		expect(
-			expectQuantitative(reasoner.reason({ value: 'abc' }, createFieldDefinition(0))).value,
-		).toBe(0)
+	it('refuses a non-numeric string', () => {
+		const result = expectQuantitative(reasoner.reason({ value: 'abc' }, createFieldDefinition()))
+		expect(result.success).toBe(false)
+		expect(result.faults.map((fault) => fault.path)).toEqual(['value'])
 	})
 
-	it('a prefix-numeric string like "12px" is UNRESOLVABLE — no prefix parse', () => {
-		expect(
-			expectQuantitative(reasoner.reason({ value: '12px' }, createFieldDefinition(7))).value,
-		).toBe(7)
+	it('refuses a prefix-numeric string like "12px"', () => {
+		const result = expectQuantitative(reasoner.reason({ value: '12px' }, createFieldDefinition()))
+		expect(result.success).toBe(false)
+		expect(result.faults.map((fault) => fault.path)).toEqual(['value'])
 	})
 
-	it('a NaN subject number takes the fallback path, not the non-finite error path', () => {
+	it('refuses a NaN subject number as unread, not as a non-finite value', () => {
 		const result = expectQuantitative(
-			reasoner.reason({ value: Number.NaN }, createFieldDefinition(5)),
+			reasoner.reason({ value: Number.NaN }, createFieldDefinition()),
 		)
-		expect(result.value).toBe(5)
-		expect(result.success).toBe(true)
-
-		// Without a fallback the factor is unresolvable — still no error.
-		const bare = expectQuantitative(reasoner.reason({ value: Number.NaN }, createFieldDefinition()))
-		expect(bare.success).toBe(true)
-		expect(bare.trace).toContain('Factor "f1": could not resolve source')
+		expect(result.success).toBe(false)
+		expect(result.errors).toEqual(['Field "value" expected number, received NaN'])
+		expect(result.trace).toContain('Factor "f1": could not resolve source')
 	})
 })
 
@@ -739,10 +751,10 @@ describe('QuantitativeReasoner — non-finite guard', () => {
 	it('a NaN fallback feeds the non-finite error path (it IS the resolved value)', () => {
 		const definition = createQuantitativeDefinition('d', 'd', [
 			createFactorGroup('g1', 'sum', [
-				createFieldFactor('f1', 'missing', { fallback: Number.NaN }),
+				createLookupFactor('f1', 'code', {}, { fallback: Number.NaN }),
 			]),
 		])
-		const result = expectQuantitative(reasoner.reason({}, definition))
+		const result = expectQuantitative(reasoner.reason({ code: 'x' }, definition))
 		expect(result.success).toBe(false)
 		expect(result.errors[0]).toBe('Factor "f1" produced non-finite value: NaN')
 		expect(result.value).toBe(0)
@@ -767,10 +779,10 @@ describe('QuantitativeReasoner — non-finite guard', () => {
 		// base 0 + NaN. The group is unapplied, so the definition (sum) ignores it.
 		const definition = createQuantitativeDefinition('d', 'd', [
 			createFactorGroup('g1', 'minimum', [
-				createStaticFactor('gated', 5, { checks: [createCheck('missing', 'equals', true)] }),
+				createStaticFactor('gated', 5, { checks: [createCheck('flag', 'equals', true)] }),
 			]),
 		])
-		const result = expectQuantitative(reasoner.reason({}, definition))
+		const result = expectQuantitative(reasoner.reason({ flag: false }, definition))
 		expect(Number.isNaN(result.groups[0]?.value)).toBe(true)
 		expect(result.groups[0]?.applied).toBe(false)
 		expect(result.value).toBe(0)
@@ -903,11 +915,12 @@ describe('QuantitativeReasoner — mismatch vs malformed shape', () => {
 		const result = expectQuantitative(
 			invokeUnchecked<ReasonResult>(reasoner, reasoner.reason, [{}, malformed]),
 		)
-		expect(result.success).toBe(true)
+		expect(result.success).toBe(false)
+		expect(result.errors).toEqual(['Factor "f1" has no readable source'])
 		expect(result.trace).toContain('Factor "f1": could not resolve source')
 		expect(result.groups[0]?.factors[0]).toEqual({ id: 'f1', applied: false, value: 0 })
 
-		// A required factor promotes the same path to an error, still no crash.
+		// A required factor takes the same path, still no crash.
 		const required = {
 			...malformed,
 			groups: [
@@ -923,7 +936,7 @@ describe('QuantitativeReasoner — mismatch vs malformed shape', () => {
 			invokeUnchecked<ReasonResult>(reasoner, reasoner.reason, [{}, required]),
 		)
 		expect(requiredResult.success).toBe(false)
-		expect(requiredResult.errors).toContain('Required factor "f1" could not resolve source')
+		expect(requiredResult.errors).toEqual(['Factor "f1" has no readable source'])
 	})
 
 	it('an unresolved-source factor result OMITS the raw key entirely', () => {
@@ -1170,10 +1183,10 @@ describe('QuantitativeReasoner — deep & adversarial field paths', () => {
 	it('a dotted STRING key "a.b" reads flat and NEVER equals the array path ["a", "b"]', () => {
 		const subject: Record<string, unknown> = { 'a.b': 11, a: { b: 22 } }
 		const flat = createQuantitativeDefinition('d', 'd', [
-			createFactorGroup('g1', 'sum', [createFieldFactor('f1', 'a.b', { fallback: -1 })]),
+			createFactorGroup('g1', 'sum', [createFieldFactor('f1', 'a.b')]),
 		])
 		const nested = createQuantitativeDefinition('d', 'd', [
-			createFactorGroup('g1', 'sum', [createFieldFactor('f1', ['a', 'b'], { fallback: -1 })]),
+			createFactorGroup('g1', 'sum', [createFieldFactor('f1', ['a', 'b'])]),
 		])
 		expect(expectQuantitative(reasoner.reason(subject, flat)).value).toBe(11)
 		expect(expectQuantitative(reasoner.reason(subject, nested)).value).toBe(22)
@@ -1187,7 +1200,7 @@ describe('QuantitativeReasoner — deep & adversarial field paths', () => {
 		)
 		TRICKY_KEYS.forEach((key, index) => {
 			const definition = createQuantitativeDefinition('d', 'd', [
-				createFactorGroup('g1', 'sum', [createFieldFactor('f1', key, { fallback: -1 })]),
+				createFactorGroup('g1', 'sum', [createFieldFactor('f1', key)]),
 			])
 			expect(expectQuantitative(reasoner.reason(subject, definition)).value).toBe(index)
 		})
@@ -1391,47 +1404,57 @@ describe('QuantitativeReasoner — sparse groups & factors arrays', () => {
 	})
 })
 
-describe('QuantitativeReasoner — field-source coercion divergences', () => {
-	it('a Date field value does not coerce to a timestamp — the factor falls back', () => {
-		const definition = createQuantitativeDefinition('d', 'd', [
-			createFactorGroup('g1', 'sum', [createFieldFactor('f1', 'when', { fallback: -1 })]),
-		])
-		expect(
-			expectQuantitative(reasoner.reason({ when: new Date(2020, 0, 1) }, definition)).value,
-		).toBe(-1)
+describe('QuantitativeReasoner — a field source refuses what it cannot read', () => {
+	const definition = createQuantitativeDefinition('d', 'd', [
+		createFactorGroup('g1', 'sum', [createFieldFactor('f1', 'when')]),
+	])
+
+	it('a Date field value does not coerce to a timestamp', () => {
+		const result = expectQuantitative(reasoner.reason({ when: new Date(2020, 0, 1) }, definition))
+		expect(result.success).toBe(false)
+		expect(result.faults.map((fault) => fault.path)).toEqual(['when'])
 	})
 
-	it('a non-numeric string field value takes the fallback', () => {
-		const definition = createQuantitativeDefinition('d', 'd', [
-			createFactorGroup('g1', 'sum', [createFieldFactor('f1', 'when', { fallback: -1 })]),
-		])
-		expect(expectQuantitative(reasoner.reason({ when: 'not-a-number' }, definition)).value).toBe(-1)
+	it('a non-numeric string field value refuses', () => {
+		const result = expectQuantitative(reasoner.reason({ when: 'not-a-number' }, definition))
+		expect(result.success).toBe(false)
+		expect(result.faults.map((fault) => fault.path)).toEqual(['when'])
 	})
 })
 
-describe('QuantitativeReasoner — lookup-site stringification of non-record field values', () => {
-	it('an array field value stringifies by using String() to the joined key', () => {
+describe('QuantitativeReasoner — a lookup key is a string, a finite number, or a boolean', () => {
+	it('an array field value refuses, even with a table key its text would hit', () => {
 		const definition = createQuantitativeDefinition('d', 'd', [
 			createFactorGroup('g1', 'sum', [
 				createLookupFactor('f1', 'code', { '1,2': 77 }, { fallback: -1 }),
 			]),
 		])
-		expect(expectQuantitative(reasoner.reason({ code: [1, 2] }, definition)).value).toBe(77)
+		const result = expectQuantitative(reasoner.reason({ code: [1, 2] }, definition))
+		expect(result.success).toBe(false)
+		expect(result.faults.map((fault) => fault.path)).toEqual(['code'])
 	})
 
-	it('a plain-object field value stringifies to "[object Object]" — pin both the hit and the miss', () => {
+	it('a plain-object field value refuses — pin both the table hit and the miss', () => {
 		const hitTable = { '[object Object]': 88 }
 		const hitDefinition = createQuantitativeDefinition('d', 'd', [
 			createFactorGroup('g1', 'sum', [
 				createLookupFactor('f1', 'code', hitTable, { fallback: -1 }),
 			]),
 		])
-		expect(expectQuantitative(reasoner.reason({ code: {} }, hitDefinition)).value).toBe(88)
+		expect(
+			expectQuantitative(reasoner.reason({ code: {} }, hitDefinition)).faults.map(
+				(fault) => fault.path,
+			),
+		).toEqual(['code'])
 
 		const missDefinition = createQuantitativeDefinition('d', 'd', [
 			createFactorGroup('g1', 'sum', [createLookupFactor('f1', 'code', {}, { fallback: -1 })]),
 		])
-		expect(expectQuantitative(reasoner.reason({ code: {} }, missDefinition)).value).toBe(-1)
+		expect(
+			expectQuantitative(reasoner.reason({ code: {} }, missDefinition)).faults.map(
+				(fault) => fault.path,
+			),
+		).toEqual(['code'])
 	})
 })
 

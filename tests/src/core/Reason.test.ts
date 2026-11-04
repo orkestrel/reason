@@ -37,7 +37,13 @@ import {
 	ReasonError,
 } from '@src/core'
 import { describe, expect, it } from 'vitest'
-import { captureError, createRecorder, createRecorders, roundTripJSON } from '@orkestrel/test'
+import {
+	captureError,
+	createRecorder,
+	createRecorders,
+	invokeUnchecked,
+	roundTripJSON,
+} from '@orkestrel/test'
 
 // `Reason` orchestrator behavior — the registry (one reasoner per reasoning,
 // re-registration replaces, fresh-array snapshots), dispatch by
@@ -131,7 +137,7 @@ describe('Reason — reason (dispatch)', () => {
 		const reason = createReason({ reasoners: [createLogicalReasoner()] })
 		const result = expectLogical(reason.reason({ active: true }, LOGICAL_DEFINITION))
 		expect(result.success).toBe(true)
-		expect(result.conclusion).toBe(true)
+		expect(result.conclusion).toBe('met')
 	})
 
 	it('a batch subject array maps to an equal-length, order-preserving result array', () => {
@@ -174,11 +180,31 @@ describe('Reason — options (validate / bail)', () => {
 		expect(error.context).toEqual({ definition: 'invalid', reasoning: 'quantitative' })
 	})
 
-	it('validate defaults to false — the same invalid definition still runs', () => {
+	it('validate defaults to true — the same invalid definition refuses', () => {
 		const reason = createReason({ reasoners: [createQuantitativeReasoner()] })
+		const error = captureError(() => reason.reason({}, invalid))
+		if (!isReasonError(error)) throw new Error('expected a ReasonError')
+		expect(error.code).toBe('INVALID')
+	})
+
+	it('validate false runs the invalid definition, and the reasoner still refuses it', () => {
+		const reason = createReason({ reasoners: [createQuantitativeReasoner()], validate: false })
 		const result = expectQuantitative(reason.reason({}, invalid))
-		expect(result.reasoning).toBe('quantitative')
-		expect(result.success).toBe(true)
+		expect(result.success).toBe(false)
+		expect(result.errors).toEqual(['Definition must have at least one group'])
+	})
+
+	it('a definition holding a null rule refuses as INVALID, never a raw TypeError', () => {
+		const reason = createReason({ reasoners: [createLogicalReasoner()] })
+		const error = captureError(() =>
+			invokeUnchecked<unknown>(reason, reason.reason, [
+				{},
+				{ reasoning: 'logical', id: 'd', name: 'd', strategy: 'forward', rules: [null] },
+			]),
+		)
+		if (!isReasonError(error)) throw new Error('expected a ReasonError')
+		expect(error.code).toBe('INVALID')
+		expect(error.message).toContain('Rule at index 0 is malformed')
 	})
 
 	it('default bail (true) rethrows the reasoner throw untouched (not a ReasonError)', () => {
@@ -208,12 +234,15 @@ describe('Reason — options (validate / bail)', () => {
 		})
 		expect(logical.reason({}, createLogicalDefinition('d', 'd', []))).toEqual({
 			reasoning: 'logical',
-			conclusion: false,
+			conclusion: 'unread',
 			rules: [],
 			count: 0,
 			success: false,
 			trace: [],
 			errors: ['boom'],
+			faults: [],
+			repairs: [],
+			defaulted: [],
 		})
 
 		const symbolic = createReason({
@@ -226,6 +255,9 @@ describe('Reason — options (validate / bail)', () => {
 			success: false,
 			trace: [],
 			errors: ['boom'],
+			faults: [],
+			repairs: [],
+			defaulted: [],
 		})
 
 		const inferential = createReason({
@@ -239,6 +271,9 @@ describe('Reason — options (validate / bail)', () => {
 			success: false,
 			trace: [],
 			errors: ['boom'],
+			faults: [],
+			repairs: [],
+			defaulted: [],
 		})
 		// The proof key is genuinely ABSENT, not undefined.
 		expect('proof' in result).toBe(false)
@@ -253,7 +288,7 @@ describe('Reason — options (validate / bail)', () => {
 		expect(events.error.calls[0]?.[0]).toBe('string-throw')
 	})
 
-	it('validate: true repeats validation once per batch subject', () => {
+	it('validate: true validates one definition once, remembering it by identity', () => {
 		const validations = createRecorder<[Definition]>()
 		// A REAL counting reasoner (recorder-style, not a mock) — its validate
 		// tallies calls, its reason returns a fixed real result.
@@ -261,8 +296,27 @@ describe('Reason — options (validate / bail)', () => {
 		const reason = createReason({ reasoners: [counting], validate: true })
 		const definition = buildStaticDefinition()
 		reason.reason([{}, {}, {}], definition)
-		expect(validations.count).toBe(3)
-		expect(validations.calls).toEqual([[definition], [definition], [definition]])
+		reason.reason({}, definition)
+		expect(validations.count).toBe(1)
+		expect(validations.calls).toEqual([[definition]])
+		// An equal definition that is another object is another definition.
+		reason.reason({}, { ...definition })
+		expect(validations.count).toBe(2)
+	})
+
+	it('validate: true remembers per engine, and never remembers an invalid definition', () => {
+		const validations = createRecorder<[Definition]>()
+		const definition = buildStaticDefinition()
+		const first = createReason({ reasoners: [createRecordedReasoner(validations)] })
+		const second = createReason({ reasoners: [createRecordedReasoner(validations)] })
+		first.reason({}, definition)
+		second.reason({}, definition)
+		expect(validations.count).toBe(2)
+
+		const reason = createReason({ reasoners: [createQuantitativeReasoner()] })
+		const broken = createQuantitativeDefinition('invalid', 'Invalid', [])
+		expect(captureError(() => reason.reason({}, broken))).toBeDefined()
+		expect(captureError(() => reason.reason({}, broken))).toBeDefined()
 	})
 })
 

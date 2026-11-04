@@ -41,8 +41,9 @@ export class Aggregator implements AggregatorInterface {
 		weights?: readonly number[],
 	): number {
 		if (values.length === 0) return emptyAggregate(aggregation)
-		// Weights apply only on an exact length match — anything else is unweighted.
-		const scaled = weights !== undefined && weights.length === values.length ? weights : undefined
+		// Weights of another length belong to other values, so there is no answer to give.
+		if (weights !== undefined && weights.length !== values.length) return Number.NaN
+		const scaled = weights
 		switch (aggregation) {
 			case 'sum':
 				return scaled
@@ -61,7 +62,8 @@ export class Aggregator implements AggregatorInterface {
 			case 'average': {
 				if (scaled) {
 					const totalWeight = scaled.reduce((total, weight) => total + weight, 0)
-					if (totalWeight === 0) return 0
+					// No weight is no data, as `minimum` and `maximum` over nothing are.
+					if (totalWeight === 0) return Number.NaN
 					const weightedSum = values.reduce(
 						(total, value, index) => total + value * (scaled[index] ?? DEFAULT_WEIGHT),
 						0,
@@ -79,8 +81,8 @@ export class Aggregator implements AggregatorInterface {
 			case 'maximum':
 				return values.reduce((maximum, value) => Math.max(maximum, value))
 			default:
-				// An unknown aggregation from an untrusted definition yields 0.
-				return 0
+				// An unknown aggregation from an untrusted definition has no answer.
+				return Number.NaN
 		}
 	}
 }

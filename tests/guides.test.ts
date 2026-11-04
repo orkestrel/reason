@@ -39,7 +39,8 @@ await new GuideCommand({
 	reader: readInventory,
 	runner: createVitest,
 }).execute(async ({ files, report, rows }) => {
-	const { isRecord, parseJSON } = await import('@orkestrel/contract')
+	const { booleanShape, isRecord, numberShape, objectShape, optionalShape, parseJSON } =
+		await import('@orkestrel/contract')
 	const { computeSymbolKey, findMissingSymbols } = await import('@orkestrel/guide')
 	const { requireValue } = await import('@orkestrel/test')
 	const {
@@ -70,14 +71,18 @@ await new GuideCommand({
 		createRule,
 		createStaticFactor,
 		createSubjectBuilder,
+		createSubjectDoor,
 		createSymbolicDefinition,
 		createSymbolicReasoner,
 		createTransform,
 		createTransformer,
 		createVariable,
+		definitionContract,
 		mergeQuantitativeDefinition,
 		parseDefinition,
+		projectResult,
 		replaceGroup,
+		resultContract,
 		roundTo,
 	} = await import('@src/core')
 	const { expectInferential, expectLogical, expectQuantitative, expectSymbolic } =
@@ -243,7 +248,7 @@ await new GuideCommand({
 			const evaluator = createEvaluator()
 			expect(evaluator.evaluate(createCheck('age', 'above', 18), { age: 25 })).toEqual({
 				field: 'age',
-				met: true,
+				state: 'met',
 				actual: 25,
 			})
 			expect(evaluator.batch([createCheck('age', 'above', 18)], { age: 25 })).toHaveLength(1)
@@ -296,14 +301,65 @@ await new GuideCommand({
 					createLogicalDefinition('e', 'Eligibility', rules),
 				),
 			)
-			expect(forward.conclusion).toBe(true)
+			expect(forward.conclusion).toBe('met')
 
 			const goal = createLogicalDefinition('e', 'Eligibility', rules, {
 				strategy: 'backward',
 				depth: 5,
 			})
-			expect(expectLogical(reason.reason({ age: 25, accidents: 0 }, goal)).conclusion).toBe(true)
+			expect(expectLogical(reason.reason({ age: 25, accidents: 0 }, goal)).conclusion).toBe('met')
 			reason.destroy()
+		})
+
+		it('§ Reading what is there — refusing a missing field', () => {
+			const reason = createReason({ reasoners: [createLogicalReasoner()] })
+			const definition = createLogicalDefinition('credit', 'Credit', [
+				createRule('low', [createAtom('credit', 'below', 600)], createAtom('low', 'equals', true)),
+			])
+
+			const result = expectLogical(reason.reason({}, definition))
+			expect(result.conclusion).toBe('unread')
+			expect(result.success).toBe(false)
+			expect(result.errors).toEqual(['Field "credit" is missing'])
+			expect(result.faults).toEqual([{ reason: 'missing', path: 'credit', expected: 'number' }])
+			reason.destroy()
+		})
+
+		it('§ The subject door — admitting, repairing, and refusing a subject', () => {
+			const definition = createLogicalDefinition(
+				'adult',
+				'Adult',
+				[createRule('adult', [createAtom('age', 'from', 18)], createAtom('adult', 'equals', true))],
+				{ shape: objectShape({ age: numberShape(), licensed: optionalShape(booleanShape()) }) },
+			)
+			const reasoner = createLogicalReasoner()
+
+			const repaired = reasoner.reason({ age: '30' }, definition)
+			expect(repaired.success).toBe(true)
+			expect(repaired.repairs).toEqual([
+				{ reason: 'type', path: ['age'], expected: 'number', received: '"30"' },
+			])
+			expect(reasoner.reason({ age: 30, agee: 1 }, definition).errors).toEqual([
+				'Field "agee" is not declared',
+			])
+			expect(reasoner.reason({ age: '30.0' }, definition).errors).toEqual([
+				'Field "age" expected number, received "30.0"',
+			])
+		})
+
+		it('§ The subject door — the door on its own', () => {
+			const door = createSubjectDoor()
+			const shape = objectShape({ age: numberShape() })
+			expect(door.admit({ age: '30' }, shape).subject).toEqual({ age: 30 })
+			expect(door.admit({}, shape).errors).toEqual(['Field "age" is missing'])
+		})
+
+		it('§ Publishing definitions and results — the contracts', () => {
+			const definition = createLogicalDefinition('e', 'Eligibility', [])
+			expect(definitionContract.is(definition)).toBe(true)
+			expect(definitionContract.schema).toBeDefined()
+			const result = createLogicalReasoner().reason({}, definition)
+			expect(resultContract.is(projectResult(result))).toBe(true)
 		})
 
 		it('§ Symbolic solving — isolation and rounded feed-forward', () => {

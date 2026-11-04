@@ -1,3 +1,4 @@
+import type { AuditFault } from '@orkestrel/contract'
 import type {
 	Definition,
 	Equation,
@@ -9,26 +10,36 @@ import type {
 	SymbolicExpression,
 	SymbolicReasonerOptions,
 } from '../types.js'
-import { isArray, isError, isFiniteNumber, isObject, parseNumber } from '@orkestrel/contract'
+import { isArray, isError, isFiniteNumber, isObject, resolveField } from '@orkestrel/contract'
 import {
 	applyOperation,
+	buildRefusedResult,
+	collectVariables,
 	containsVariable,
+	describeFault,
+	filterUniqueFaults,
 	findDuplicates,
 	invertLeft,
 	invertRight,
 	roundTo,
+	scanShape,
+	scanShapeReads,
+	scanSymbolicExpression,
+	valueToFault,
 } from '../helpers.js'
 import { DEFAULT_PRECISION, INVERTIBLE_OPERATIONS, SYMBOLIC_ID } from '../constants.js'
 import { ReasonError } from '../errors.js'
+import { SubjectDoor } from '../SubjectDoor.js'
 import { SymbolicState } from '../SymbolicState.js'
+import { isEquation, isSymbolicDefinition } from '../validators.js'
 
 /**
  * Solves algebraic equations by variable isolation.
  *
  * @remarks
- * Bindings seed from `definition.variables`, then numeric subject fields (a
- * finite number or a numeric string, coerced through the contracts
- * `parseNumber`) override same-named variables — the `id` field is skipped.
+ * A definition with a `shape` admits its subject through the door first. Bindings
+ * seed from `definition.variables`, then subject fields holding a finite number,
+ * and nothing else, override same-named variables — the `id` field is skipped.
  * Equations solve strictly in order: when the `target` is unbound and appears
  * on exactly one side, it is isolated by peeling invertible operations (`add` /
  * `subtract` / `multiply` / `divide`); a non-invertible operation, a target on
@@ -63,6 +74,7 @@ import { SymbolicState } from '../SymbolicState.js'
  */
 export class SymbolicReasoner implements ReasonerInterface {
 	readonly #id: string
+	readonly #door = new SubjectDoor()
 
 	constructor(options?: SymbolicReasonerOptions) {
 		this.#id = options?.id ?? SYMBOLIC_ID
@@ -81,31 +93,58 @@ export class SymbolicReasoner implements ReasonerInterface {
 	}
 
 	validate(definition: Definition): ReasonValidationResult {
-		const errors: string[] = []
-		const warnings: string[] = []
-
 		if (definition.reasoning !== 'symbolic') {
-			errors.push(`Expected reasoning "symbolic", got "${definition.reasoning}"`)
-			return { valid: false, errors, warnings }
+			return {
+				valid: false,
+				errors: [`Expected reasoning "symbolic", got "${definition.reasoning}"`],
+				warnings: [],
+			}
 		}
-
-		if (!definition.id) errors.push('Definition must have an id')
-		if (!definition.name) errors.push('Definition must have a name')
-		if (!definition.equations || definition.equations.length === 0) {
-			errors.push('Definition must have at least one equation')
+		const equations: unknown = definition.equations
+		if (!isSymbolicDefinition(definition)) {
+			const entries: readonly unknown[] = isArray(equations) ? equations : []
+			return {
+				valid: false,
+				errors: [
+					'Definition does not match the symbolic definition shape',
+					...entries.flatMap((equation, index) =>
+						isEquation(equation) ? [] : [`Equation at index ${String(index)} is malformed`],
+					),
+				],
+				warnings: [],
+			}
 		}
-
-		// Duplicate ids are warnings — the runtime stays permissive about them.
-		for (const id of findDuplicates(definition.equations ?? [])) {
-			warnings.push(`Duplicate equation id "${id}"`)
-		}
-
-		for (const equation of definition.equations ?? []) {
-			if (!equation.id) errors.push('Equation must have an id')
-			if (!equation.target) errors.push(`Equation "${equation.id}" must have a target variable`)
-		}
-
-		return { valid: errors.length === 0, errors, warnings }
+		const shape = definition.shape
+		const scan =
+			shape === undefined
+				? { errors: [], warnings: [] }
+				: scanShapeReads(
+						shape,
+						[],
+						definition.equations.flatMap((equation) => [
+							...collectVariables(equation.left),
+							...collectVariables(equation.right),
+						]),
+						new Set([
+							...Object.keys(definition.variables),
+							...definition.equations.map((equation) => equation.target),
+						]),
+					)
+		const errors = [
+			...(definition.id ? [] : ['Definition must have an id']),
+			...(definition.name ? [] : ['Definition must have a name']),
+			...(definition.equations.length === 0 ? ['Definition must have at least one equation'] : []),
+			...findDuplicates(definition.equations).map((id) => `Duplicate equation id "${id}"`),
+			...definition.equations.flatMap((equation) => [
+				...(equation.id ? [] : ['Equation must have an id']),
+				...(equation.target ? [] : [`Equation "${equation.id}" must have a target variable`]),
+				...scanSymbolicExpression(equation.left),
+				...scanSymbolicExpression(equation.right),
+			]),
+			...(shape === undefined ? [] : scanShape(shape)),
+			...scan.errors,
+		]
+		return { valid: errors.length === 0, errors, warnings: scan.warnings }
 	}
 
 	reason(subject: Subject, definition: Definition): ReasonResult {
@@ -126,18 +165,25 @@ export class SymbolicReasoner implements ReasonerInterface {
 				success: false,
 				trace: [],
 				errors: ['Definition must have an "equations" array'],
+				faults: [],
+				repairs: [],
+				defaulted: [],
 			}
 		}
+
+		const admission = this.#door.admit(subject, definition.shape)
+		const admitted = admission.subject
+		if (admitted === undefined) return buildRefusedResult(definition, admission)
 
 		const trace: string[] = []
 		const errors: string[] = []
 		const precision = definition.precision ?? DEFAULT_PRECISION
 
 		const state = new SymbolicState(definition.variables)
-		const bound = Object.keys(subject).reduce((count, key) => {
+		const bound = Object.keys(admitted).reduce((count, key) => {
 			if (key === 'id') return count
-			const value = parseNumber(subject[key])
-			if (value !== undefined) {
+			const value = admitted[key]
+			if (isFiniteNumber(value)) {
 				state.set(key, value)
 				trace.push(`Subject field "${key}" bound as ${key} = ${value}`)
 				return count + 1
@@ -148,11 +194,27 @@ export class SymbolicReasoner implements ReasonerInterface {
 
 		if (definition.equations.length === 0) {
 			trace.push('No equations to solve')
-			return { reasoning: 'symbolic', solutions: {}, success: true, trace, errors }
+			return {
+				reasoning: 'symbolic',
+				solutions: {},
+				success: true,
+				trace,
+				errors,
+				faults: [],
+				repairs: admission.repairs,
+				defaulted: admission.defaulted,
+			}
 		}
 
-		for (const equation of definition.equations) {
-			if (!isObject(equation)) continue
+		const targets = new Set(
+			definition.equations.flatMap((equation) => (isObject(equation) ? [equation.target] : [])),
+		)
+		const leaves: AuditFault[] = []
+		for (const [index, equation] of definition.equations.entries()) {
+			if (!isObject(equation)) {
+				errors.push(`Equation at index ${String(index)} is malformed`)
+				continue
+			}
 			try {
 				const value = this.#solve(equation, state.values)
 				const rounded = roundTo(value, precision)
@@ -178,8 +240,15 @@ export class SymbolicReasoner implements ReasonerInterface {
 				const message = isError(error) ? error.message : String(error)
 				errors.push(`Equation "${equation.id}": ${message}`)
 				trace.push(`Equation "${equation.id}": FAILED — ${message}`)
+				leaves.push(
+					...[...collectVariables(equation.left), ...collectVariables(equation.right)]
+						.filter((name) => state.values[name] === undefined && !targets.has(name))
+						.map((name) => valueToFault(name, 'number', resolveField(admitted, name))),
+				)
 			}
 		}
+		const faults = filterUniqueFaults(leaves)
+		errors.push(...faults.map((fault) => describeFault(fault)))
 
 		const solutions = new SymbolicState()
 		for (const equation of definition.equations) {
@@ -194,6 +263,9 @@ export class SymbolicReasoner implements ReasonerInterface {
 			success: errors.length === 0,
 			trace,
 			errors,
+			faults,
+			repairs: admission.repairs,
+			defaulted: admission.defaulted,
 		}
 	}
 
@@ -245,7 +317,10 @@ export class SymbolicReasoner implements ReasonerInterface {
 		}
 
 		if (leftHas) {
-			const rightValue = rightExpression ? this.#evaluate(rightExpression, bindings) : 0
+			if (rightExpression === undefined) {
+				throw new Error(`Operation "${operator}" has no right side`)
+			}
+			const rightValue = this.#evaluate(rightExpression, bindings)
 			return this.#isolate(
 				expression.left,
 				target,
@@ -267,8 +342,8 @@ export class SymbolicReasoner implements ReasonerInterface {
 		throw new Error(`Cannot isolate "${target}" — variable not found in expression`)
 	}
 
-	// Unary operations ignore `right`; a binary operation with no right operand
-	// treats it as 0; an unbound variable throws (caught per equation).
+	// Unary operations ignore `right`; a binary operation with no right operand and an
+	// unbound variable both throw (caught per equation).
 	#evaluate(expression: SymbolicExpression, bindings: Readonly<Record<string, number>>): number {
 		switch (expression.form) {
 			case 'constant':
@@ -289,8 +364,10 @@ export class SymbolicReasoner implements ReasonerInterface {
 				) {
 					return applyOperation(operator, left, 0)
 				}
-				const right = expression.right ? this.#evaluate(expression.right, bindings) : 0
-				return applyOperation(operator, left, right)
+				if (expression.right === undefined) {
+					throw new Error(`Operation "${operator}" has no right side`)
+				}
+				return applyOperation(operator, left, this.#evaluate(expression.right, bindings))
 			}
 			default:
 				throw new Error('Unknown expression form')

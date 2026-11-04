@@ -92,7 +92,7 @@ describe('reasons — quantitative → logical → symbolic pipeline', () => {
 			reason.reason({ ...subject, riskScore: risk.value }, ELIGIBILITY_DEFINITION),
 		)
 		expect(eligibility.success).toBe(true)
-		expect(eligibility.conclusion).toBe(true)
+		expect(eligibility.conclusion).toBe('met')
 
 		// Stage 3 — the rate solves from the same risk value (15 − 70/10 = 8 ≥ the 3 floor).
 		const rate = expectSymbolic(reason.reason({ riskScore: risk.value }, RATE_DEFINITION))
@@ -323,13 +323,13 @@ describe('reasons — complex multi-step end-to-end problem', () => {
 			),
 		)
 		expect(tier.success).toBe(true)
-		expect(tier.conclusion).toBe(true)
+		expect(tier.conclusion).toBe('met')
 		expect(tier.count).toBe(9)
-		expect(readApplied(tier, 'senior')).toBe(false)
-		expect(readApplied(tier, 'scoreMid')).toBe(false)
-		expect(readApplied(tier, 'preferred')).toBe(true)
-		expect(readApplied(tier, 'vip')).toBe(true)
-		expect(readApplied(tier, 'finalTier')).toBe(true)
+		expect(readApplied(tier, 'senior')).toBe('unmet')
+		expect(readApplied(tier, 'scoreMid')).toBe('unmet')
+		expect(readApplied(tier, 'preferred')).toBe('met')
+		expect(readApplied(tier, 'vip')).toBe('met')
+		expect(readApplied(tier, 'finalTier')).toBe('met')
 
 		// Stage C — the equation chain seeds from the score and the applied-rule count.
 		const rate = expectSymbolic(
@@ -381,17 +381,17 @@ describe('reasons — mixed pipeline failure-recovery', () => {
 		expect(Number.isNaN(quantitative.value)).toBe(true)
 		expect(quantitative.count).toBe(0)
 
-		// Stage 2 — logical still runs on the failed NaN value without crashing.
+		// Stage 2 — logical still runs on the failed NaN value without crashing, and refuses it.
 		const gate = createLogicalDefinition('gate', 'Gate', [
 			createRule('ok', [createAtom('risk', 'above', 0)], createAtom('ok', 'equals', true)),
 		])
 		const logical = expectLogical(reason.reason({ risk: quantitative.value }, gate))
 		expect(logical.reasoning).toBe('logical')
-		expect(logical.success).toBe(true)
-		expect(logical.conclusion).toBe(false)
+		expect(logical.success).toBe(false)
+		expect(logical.conclusion).toBe('unread')
+		expect(logical.faults.map((fault) => fault.path)).toEqual(['risk'])
 
-		// Stage 3 — symbolic copes with the NaN input (dropped by parseNumber) and
-		// solves from its own seed: y = x × 2 = 10.
+		// Stage 3 — symbolic binds no NaN from the subject and solves from its own seed: y = x × 2 = 10.
 		const rate = createSymbolicDefinition(
 			'rate',
 			'Rate',
@@ -510,7 +510,7 @@ describe('reasons — broad-definition breadth stress', () => {
 		const logical = expectLogical(reason.reason({ n: 100 }, wide))
 		expect(logical.success).toBe(true)
 		expect(logical.count).toBe(15)
-		expect(logical.conclusion).toBe(true)
+		expect(logical.conclusion).toBe('met')
 
 		reason.destroy()
 	})
@@ -642,7 +642,7 @@ describe('reasons — deep-frozen inputs across all four reasoner kinds', () => 
 
 		const logical = expectLogical(reason.reason(frozenLogicalSubject, frozenLogicalDefinition))
 		expect(logical.success).toBe(true)
-		expect(logical.conclusion).toBe(true)
+		expect(logical.conclusion).toBe('met')
 
 		const symbolic = expectSymbolic(reason.reason(frozenSymbolicSubject, frozenSymbolicDefinition))
 		expect(symbolic.success).toBe(true)
@@ -689,11 +689,11 @@ describe('reasons — mixed pipeline at scale (5000 subjects, quantitative feedi
 		// THRESHOLD+1..4999 — computed here, not hard-coded.
 		const expectedPassCount = 4999 - THRESHOLD
 		const expectedFailCount = 5000 - expectedPassCount
-		const passCount = first.conclusions.filter((conclusion) => conclusion === true).length
-		const failCount = first.conclusions.filter((conclusion) => conclusion === false).length
+		const passCount = first.conclusions.filter((conclusion) => conclusion === 'met').length
+		const failCount = first.conclusions.filter((conclusion) => conclusion === 'unmet').length
 		expect(passCount).toBe(expectedPassCount)
 		expect(failCount).toBe(expectedFailCount)
-		expect(first.conclusions[0]).toBe(false)
-		expect(first.conclusions[4999]).toBe(true)
+		expect(first.conclusions[0]).toBe('unmet')
+		expect(first.conclusions[4999]).toBe('met')
 	})
 })

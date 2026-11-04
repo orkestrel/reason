@@ -45,6 +45,7 @@ import type {
 	Subject,
 	SubjectBuilderInterface,
 	SubjectBuilderOptions,
+	SubjectDoorInterface,
 	SymbolicDefinition,
 	SymbolicExpression,
 	SymbolicReasonerOptions,
@@ -57,6 +58,7 @@ import type {
 import type { FieldPath } from '@orkestrel/contract'
 import { DEFAULT_CONFIDENCE } from './constants.js'
 import { Reason } from './Reason.js'
+import { SubjectDoor } from './SubjectDoor.js'
 import { Evaluator } from './operators/Evaluator.js'
 import { Transformer } from './operators/Transformer.js'
 import { Aggregator } from './operators/Aggregator.js'
@@ -89,7 +91,7 @@ import { InferenceManager } from './builders/managers/InferenceManager.js'
  *
  * const evaluator = createEvaluator()
  * evaluator.evaluate({ field: 'age', operator: 'above', value: 18 }, { age: 25 })
- * // { field: 'age', met: true, actual: 25 }
+ * // { field: 'age', state: 'met', actual: 25 }
  * ```
  */
 export function createEvaluator(options?: EvaluatorOptions): EvaluatorInterface {
@@ -164,6 +166,27 @@ export function createQuantitativeReasoner(
 	options?: QuantitativeReasonerOptions,
 ): ReasonerInterface {
 	return new QuantitativeReasoner(options)
+}
+
+/**
+ * Creates a door that admits subjects through a shape before a reasoner reads them.
+ *
+ * @remarks
+ * Every reasoner holds its own. A package reading a shape at its own root makes one here.
+ *
+ * @returns A {@link SubjectDoorInterface}
+ *
+ * @example
+ * ```ts
+ * import { numberShape, objectShape } from '@orkestrel/contract'
+ * import { createSubjectDoor } from '@orkestrel/reason'
+ *
+ * const door = createSubjectDoor()
+ * door.admit({ age: 30 }, objectShape({ age: numberShape() })).subject // { age: 30 }
+ * ```
+ */
+export function createSubjectDoor(): SubjectDoorInterface {
+	return new SubjectDoor()
 }
 
 /**
@@ -273,7 +296,7 @@ export function createInferentialReasoner(options?: InferentialReasonerOptions):
  *
  * const definition = createQuantitativeDefinition('risk', 'Risk score', [
  * 	createFactorGroup('drivers', 'sum', [
- * 		createFieldFactor('age', 'age'), // reads subject.age, parseNumber-coerced
+ * 		createFieldFactor('age', 'age'), // reads subject.age, a finite number or the run refuses
  * 		createStaticFactor('floor', 10), // a fixed contribution
  * 	]),
  * ])

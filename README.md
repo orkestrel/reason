@@ -37,7 +37,7 @@ const reason = createReason({ reasoners: [createQuantitativeReasoner()] })
 
 const definition = createQuantitativeDefinition('risk', 'Risk score', [
 	createFactorGroup('drivers', 'sum', [
-		createFieldFactor('age', 'age'), // reads subject.age, parseNumber-coerced
+		createFieldFactor('age', 'age'), // reads subject.age, a finite number or the run refuses
 		createStaticFactor('floor', 10), // a fixed contribution
 	]),
 ])

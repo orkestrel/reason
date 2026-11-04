@@ -47,6 +47,13 @@ import {
 	isChainStrategy,
 	isCheck,
 	isCheckResult,
+	isAuditFault,
+	isCheckState,
+	isComparable,
+	isContractShape,
+	isLookupKey,
+	isMembership,
+	isRange,
 	isComparison,
 	isDefinition,
 	isDefinitionBuilder,
@@ -210,11 +217,17 @@ describe('isFieldPath / isNumberRecord', () => {
 })
 
 describe('isCheck', () => {
-	it('accepts the builder output and any value type — but the value key must be PRESENT', () => {
+	it('accepts the builder output and any JSON value, and the value key must be PRESENT', () => {
 		expect(isCheck(createCheck('age', 'above', 18))).toBe(true)
 		expect(isCheck(createCheck('a', 'equals', null))).toBe(true)
-		expect(isCheck({ field: 'a', operator: 'equals', value: undefined })).toBe(true)
+		expect(isCheck(createCheck('a', 'any', ['x', 1, null]))).toBe(true)
 		expect(isCheck({ field: 'a', operator: 'equals' })).toBe(false)
+	})
+
+	it('refuses an expected value that is no JSON value', () => {
+		expect(isCheck({ field: 'a', operator: 'equals', value: undefined })).toBe(false)
+		expect(isCheck({ field: 'a', operator: 'above', value: Number.NaN })).toBe(false)
+		expect(isCheck({ field: 'a', operator: 'equals', value: 1n })).toBe(false)
 	})
 
 	it('rejects unknown operators, bad field paths, extra keys, and junk', () => {
@@ -731,7 +744,7 @@ describe('isResultFact', () => {
 })
 
 describe('isCheckResult', () => {
-	const sound = { field: 'age', met: true, actual: 42 }
+	const sound = { field: 'age', state: 'met', actual: 42 }
 
 	it('accepts a class instance satisfying CheckResult', () => {
 		expect(isCheckResult(new ResultGuardFixture(sound))).toBe(true)
@@ -741,11 +754,12 @@ describe('isCheckResult', () => {
 		expect(isCheckResult(sound)).toBe(true)
 		expect(isCheckResult({ ...sound, note: 'richer' })).toBe(true)
 		expect(isCheckResult(Object.assign(Object.create({ inherited: true }), sound))).toBe(true)
-		expect(isCheckResult({ met: true, actual: 42 })).toBe(false)
+		expect(isCheckResult({ state: 'met', actual: 42 })).toBe(false)
 		expect(isCheckResult({ field: 'age', actual: 42 })).toBe(false)
-		expect(isCheckResult({ field: 'age', met: true })).toBe(false)
+		expect(isCheckResult({ field: 'age', state: 'met' })).toBe(false)
 		expect(isCheckResult({ ...sound, field: 1 })).toBe(false)
-		expect(isCheckResult({ ...sound, met: 'yes' })).toBe(false)
+		expect(isCheckResult({ ...sound, state: 'yes' })).toBe(false)
+		expect(isCheckResult({ ...sound, state: true })).toBe(false)
 		expect(isCheckResult(Object.assign([], sound))).toBe(false)
 	})
 
@@ -792,7 +806,7 @@ describe('isFactorResult', () => {
 		expect(
 			isFactorResult({
 				...sound,
-				checks: [{ field: 'age', met: true, actual: 42, note: 'nested-extra' }],
+				checks: [{ field: 'age', state: 'met', actual: 42, note: 'nested-extra' }],
 			}),
 		).toBe(true)
 	})
@@ -833,7 +847,7 @@ describe('isGroupResult', () => {
 })
 
 describe('isRuleResult', () => {
-	const sound = { id: 'rule', applied: true, premises: [true, false] }
+	const sound = { id: 'rule', state: 'unmet', premises: ['met', 'unmet'], checks: [] }
 
 	it('accepts a class instance satisfying RuleResult', () => {
 		expect(isRuleResult(new ResultGuardFixture(sound))).toBe(true)
@@ -847,13 +861,13 @@ describe('isRuleResult', () => {
 		expect(isRuleResult(sound)).toBe(true)
 		expect(isRuleResult({ ...sound, note: 'richer' })).toBe(true)
 		expect(isRuleResult(Object.assign(Object.create({ inherited: true }), sound))).toBe(true)
-		expect(isRuleResult({ applied: true, premises: [] })).toBe(false)
-		expect(isRuleResult({ id: 'rule', premises: [] })).toBe(false)
-		expect(isRuleResult({ id: 'rule', applied: true })).toBe(false)
-		// `applied` is the only "all premises held" member, so a result carrying
-		// no `conclusion` is sound rather than incomplete.
-		expect(isRuleResult({ id: 'rule', applied: true, premises: [] })).toBe(true)
-		expect(isRuleResult({ ...sound, premises: [true, 1] })).toBe(false)
+		expect(isRuleResult({ state: 'met', premises: [], checks: [] })).toBe(false)
+		expect(isRuleResult({ id: 'rule', premises: [], checks: [] })).toBe(false)
+		expect(isRuleResult({ id: 'rule', state: 'met', checks: [] })).toBe(false)
+		expect(isRuleResult({ id: 'rule', state: 'met', premises: [] })).toBe(false)
+		expect(isRuleResult({ ...sound, state: true })).toBe(false)
+		expect(isRuleResult({ ...sound, premises: [true] })).toBe(false)
+		expect(isRuleResult({ ...sound, checks: [{ field: 'age' }] })).toBe(false)
 		expect(isRuleResult(Object.assign([], sound))).toBe(false)
 	})
 })
@@ -980,6 +994,9 @@ describe('isQuantitativeResult', () => {
 		success: true,
 		trace: ['factor'],
 		errors: [],
+		faults: [],
+		repairs: [],
+		defaulted: [],
 	}
 
 	it('accepts a class instance satisfying QuantitativeResult', () => {
@@ -1037,12 +1054,15 @@ describe('isQuantitativeResult', () => {
 describe('isLogicalResult', () => {
 	const sound = {
 		reasoning: 'logical',
-		conclusion: true,
-		rules: [{ id: 'adult', applied: true, premises: [true] }],
+		conclusion: 'met',
+		rules: [{ id: 'adult', state: 'met', premises: ['met'], checks: [] }],
 		count: 1,
 		success: true,
 		trace: ['adult'],
 		errors: [],
+		faults: [],
+		repairs: [],
+		defaulted: [],
 	}
 
 	it('accepts a class instance satisfying LogicalResult', () => {
@@ -1072,6 +1092,10 @@ describe('isLogicalResult', () => {
 		expect(isLogicalResult(Object.assign(Object.create({ inherited: true }), sound))).toBe(true)
 		expect(isLogicalResult({ ...sound, reasoning: undefined })).toBe(false)
 		expect(isLogicalResult({ ...sound, conclusion: undefined })).toBe(false)
+		expect(isLogicalResult({ ...sound, conclusion: true })).toBe(false)
+		expect(isLogicalResult({ ...sound, repairs: undefined })).toBe(false)
+		expect(isLogicalResult({ ...sound, defaulted: undefined })).toBe(false)
+		expect(isLogicalResult({ ...sound, faults: undefined })).toBe(false)
 		expect(isLogicalResult({ ...sound, rules: undefined })).toBe(false)
 		expect(isLogicalResult({ ...sound, count: undefined })).toBe(false)
 		expect(isLogicalResult({ ...sound, success: undefined })).toBe(false)
@@ -1094,6 +1118,9 @@ describe('isSymbolicResult', () => {
 		success: true,
 		trace: ['x'],
 		errors: [],
+		faults: [],
+		repairs: [],
+		defaulted: [],
 	}
 
 	it('accepts a class instance satisfying SymbolicResult', () => {
@@ -1126,6 +1153,7 @@ describe('isSymbolicResult', () => {
 		expect(isSymbolicResult({ ...sound, success: undefined })).toBe(false)
 		expect(isSymbolicResult({ ...sound, trace: undefined })).toBe(false)
 		expect(isSymbolicResult({ ...sound, errors: undefined })).toBe(false)
+		expect(isSymbolicResult({ ...sound, faults: undefined })).toBe(false)
 		expect(isSymbolicResult({ ...sound, solutions: { x: '4' } })).toBe(false)
 		expect(isSymbolicResult({ ...sound, solutions: Object.assign([], { x: 4 }) })).toBe(false)
 		expect(isSymbolicResult(Object.assign([], sound))).toBe(false)
@@ -1144,6 +1172,9 @@ describe('isInferentialResult', () => {
 		success: true,
 		trace: ['bird'],
 		errors: [],
+		faults: [],
+		repairs: [],
+		defaulted: [],
 	}
 
 	it('accepts a class instance satisfying InferentialResult', () => {
@@ -1195,6 +1226,7 @@ describe('isInferentialResult', () => {
 		expect(isInferentialResult({ ...sound, success: undefined })).toBe(false)
 		expect(isInferentialResult({ ...sound, trace: undefined })).toBe(false)
 		expect(isInferentialResult({ ...sound, errors: undefined })).toBe(false)
+		expect(isInferentialResult({ ...sound, faults: undefined })).toBe(false)
 		expect(isInferentialResult({ ...sound, proof: { fact: 'goal' } })).toBe(false)
 		expect(isInferentialResult(Object.assign([], sound))).toBe(false)
 	})
@@ -1210,6 +1242,9 @@ describe('isReasonResult', () => {
 					success: true,
 					trace: [],
 					errors: [],
+					faults: [],
+					repairs: [],
+					defaulted: [],
 				}),
 			),
 		).toBe(true)
@@ -1225,18 +1260,24 @@ describe('isReasonResult', () => {
 				success: true,
 				trace: [],
 				errors: [],
+				faults: [],
+				repairs: [],
+				defaulted: [],
 				note: 'richer',
 			}),
 		).toBe(true)
 		expect(
 			isReasonResult({
 				reasoning: 'logical',
-				conclusion: false,
+				conclusion: 'unmet',
 				rules: [],
 				count: 0,
 				success: true,
 				trace: [],
 				errors: [],
+				faults: [],
+				repairs: [],
+				defaulted: [],
 			}),
 		).toBe(true)
 		expect(
@@ -1246,6 +1287,9 @@ describe('isReasonResult', () => {
 				success: true,
 				trace: [],
 				errors: [],
+				faults: [],
+				repairs: [],
+				defaulted: [],
 			}),
 		).toBe(true)
 		expect(
@@ -1255,6 +1299,9 @@ describe('isReasonResult', () => {
 				success: true,
 				trace: [],
 				errors: [],
+				faults: [],
+				repairs: [],
+				defaulted: [],
 			}),
 		).toBe(true)
 		expect(isReasonResult({ reasoning: 'logical' })).toBe(false)
@@ -1538,5 +1585,102 @@ describe('isFieldPath — long arrays & adversarial segments', () => {
 
 	it('accepts adversarial / unicode strings as path segments', () => {
 		expect(isFieldPath([...TRICKY_KEYS])).toBe(true)
+	})
+})
+
+describe('isCheckState', () => {
+	it('accepts the three states and nothing else', () => {
+		expect(isCheckState('met')).toBe(true)
+		expect(isCheckState('unmet')).toBe(true)
+		expect(isCheckState('unread')).toBe(true)
+		expect(isCheckState(true)).toBe(false)
+		expect(isCheckState('MET')).toBe(false)
+		expect(isCheckState(undefined)).toBe(false)
+	})
+})
+
+describe('isLookupKey', () => {
+	it('accepts a finite number, a string, or a boolean', () => {
+		expect(isLookupKey(0)).toBe(true)
+		expect(isLookupKey('')).toBe(true)
+		expect(isLookupKey(false)).toBe(true)
+	})
+
+	it('refuses everything else, null and the non-finite numbers included', () => {
+		expect(isLookupKey(null)).toBe(false)
+		expect(isLookupKey(Number.NaN)).toBe(false)
+		expect(isLookupKey(Number.POSITIVE_INFINITY)).toBe(false)
+		expect(isLookupKey(undefined)).toBe(false)
+		expect(isLookupKey({})).toBe(false)
+	})
+})
+
+describe('isComparable', () => {
+	it('accepts a lookup key or null', () => {
+		expect(isComparable(0)).toBe(true)
+		expect(isComparable(-1.5)).toBe(true)
+		expect(isComparable('')).toBe(true)
+		expect(isComparable(false)).toBe(true)
+		expect(isComparable(null)).toBe(true)
+	})
+
+	it('refuses everything else, the non-finite numbers included', () => {
+		expect(isComparable(Number.NaN)).toBe(false)
+		expect(isComparable(Number.POSITIVE_INFINITY)).toBe(false)
+		expect(isComparable(undefined)).toBe(false)
+		expect(isComparable({})).toBe(false)
+		expect(isComparable([1])).toBe(false)
+	})
+})
+
+describe('isContractShape', () => {
+	it('asks contract, and never throws', () => {
+		expect(isContractShape({ category: 'number' })).toBe(true)
+		expect(isContractShape({ category: 'nope' })).toBe(false)
+		expect(isContractShape(null)).toBe(false)
+		expect(isContractShape('number')).toBe(false)
+	})
+
+	it('a pattern that has been through JSON refuses', () => {
+		expect(isContractShape({ category: 'string', pattern: {} })).toBe(false)
+	})
+})
+
+describe('isAuditFault', () => {
+	it('reads a reason and a path, openly', () => {
+		expect(isAuditFault({ reason: 'extra', path: ['x'] })).toBe(true)
+		expect(isAuditFault({ reason: 'missing', path: 'x', expected: 'number' })).toBe(true)
+		expect(isAuditFault({ path: ['x'] })).toBe(false)
+		expect(isAuditFault({ reason: 'extra' })).toBe(false)
+		expect(isAuditFault(null)).toBe(false)
+	})
+})
+
+describe('isMembership', () => {
+	it('accepts a non-empty list of comparable values', () => {
+		expect(isMembership(['a', 1, true, null])).toBe(true)
+	})
+
+	it('refuses an empty list, a non-list, and a list holding anything else', () => {
+		expect(isMembership([])).toBe(false)
+		expect(isMembership('a')).toBe(false)
+		expect(isMembership(['a', {}])).toBe(false)
+		expect(isMembership([Number.NaN])).toBe(false)
+	})
+})
+
+describe('isRange', () => {
+	it('accepts two finite numbers in order, equal ends included', () => {
+		expect(isRange([1, 2])).toBe(true)
+		expect(isRange([2, 2])).toBe(true)
+	})
+
+	it('refuses reversed ends, the wrong length, and anything not finite', () => {
+		expect(isRange([2, 1])).toBe(false)
+		expect(isRange([1])).toBe(false)
+		expect(isRange([1, 2, 3])).toBe(false)
+		expect(isRange([1, Number.NaN])).toBe(false)
+		expect(isRange(['1', '2'])).toBe(false)
+		expect(isRange(1)).toBe(false)
 	})
 })

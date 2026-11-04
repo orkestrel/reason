@@ -1,8 +1,11 @@
+import type { AuditFault } from '@orkestrel/contract'
 import type {
+	Check,
+	CheckResult,
+	CheckState,
 	Definition,
 	EvaluatorInterface,
 	Expression,
-	LogicalChainResult,
 	LogicalDefinition,
 	LogicalReasonerOptions,
 	Reasoning,
@@ -12,43 +15,67 @@ import type {
 	Rule,
 	RuleResult,
 	Subject,
+	SubjectAdmission,
 } from '../types.js'
-import { isArray, isObject, iterateIndices } from '@orkestrel/contract'
+import { isArray, isObject } from '@orkestrel/contract'
 import {
+	buildRefusedResult,
+	collectConcluders,
+	collectReachable,
+	combineStates,
+	describeFault,
 	equalValues,
+	extractAtoms,
 	extractConclusions,
+	filterUniqueFaults,
 	findDuplicates,
-	findOverlayMismatches,
+	findNegativeCycles,
+	findSuppliedConclusions,
 	formatField,
+	readClosedState,
+	readExpectedKind,
+	scanConclusion,
+	scanExpression,
+	scanShape,
+	scanShapeConclusions,
+	scanShapeReads,
 	sortByPriority,
+	valueToFault,
 } from '../helpers.js'
 import { DEFAULT_DEPTH, LOGICAL_ID } from '../constants.js'
 import { LogicalState } from '../LogicalState.js'
 import { ReasonError } from '../errors.js'
+import { SubjectDoor } from '../SubjectDoor.js'
 import { Evaluator } from '../operators/Evaluator.js'
+import { isLogicalDefinition, isRule } from '../validators.js'
 
 /**
- * Deduces booleans from rules with forward or backward chaining.
+ * Deduces states from rules with forward or backward chaining, refusing what it cannot read.
  *
  * @remarks
- * Forward chaining is a naive fixpoint capped at `depth` iterations: rules run
- * in ascending `priority` order each pass, and a firing rule's conclusion atoms
- * become a derived overlay that shadows same-named subject fields on later
- * passes (derived keys are `formatField(check.field)` strings). Convergence —
- * one full pass with no new derivation — appends a trace containing
- * `converged`. Final rule results re-evaluate against the settled overlay in
- * original rule order (forward) / priority-sorted order (backward), and the
- * overall `conclusion` is whether the last result applied. Backward chaining
- * proves every rule goal-first: an unmet premise triggers sub-goal search
- * through rules whose conclusion atoms assert the needed `field = value` pair,
- * guarded by a visited-rule set (cycle-safe) plus the depth cap; `not` succeeds
- * when its operand cannot be established (negation-as-failure) and `implies` is
- * vacuously true on an unprovable antecedent. Expression evaluation is eager
- * (no short-circuit); conclusion extraction ignores connectives — every atom
- * inside a conclusion is asserted, even under `not` / `or`. Overlay bookkeeping
- * compares with SameValueZero (`equalValues`), so a NaN-valued conclusion
- * derives once and the fixpoint converges. Nothing mutates its inputs; fully
- * deterministic.
+ * An atom on an input field reads through the evaluator, and a field it cannot read is
+ * `unread`. A connective combines its operands in strong Kleene logic, so `unread` survives
+ * only where the answer could still change. Closed-world covers one thing: a key an enabled
+ * rule of the same definition concludes.
+ *
+ * Forward chaining runs in two phases. An atom on a conclusion key no rule has derived reads
+ * `unread`, so a rule reading it holds, and rules fire to convergence. Then every such key whose
+ * concluding rules have all settled unmet closes (`equals` and `any` unmet, `not` and `none` met,
+ * ordering and range unread), and held rules run again. A key no rule can settle because it
+ * only waits on itself closes too, so a positive cycle is unmet rather than stuck. Rules fire
+ * from one snapshot per pass, in ascending `priority` order. Deriving a key a fired rule read as
+ * closed refuses as unstratified, and hitting `depth` refuses.
+ *
+ * Backward chaining proves each rule goal-first. An atom on an underived conclusion key tries the
+ * rules concluding that key, matched by field alone, and the atom re-reads the overlay once one
+ * fires, so `score above 5` never proves through `score equals 5`. A key nothing can prove closes
+ * as above, and a candidate left `unread` leaves the goal `unread`. A visited rule reads `unread`,
+ * which breaks a cycle without answering it, and settling then closes it as forward does.
+ *
+ * A subject may not supply a conclusion key, because that would assert what a rule has to derive.
+ * Any rule left `unread` refuses the run: `success` is false, `errors` holds one entry per input
+ * field, and `faults` lists those fields. A definition with a `shape` admits its subject through
+ * the door first. Nothing mutates its inputs; fully deterministic.
  *
  * @example
  * ```ts
@@ -66,12 +93,13 @@ import { Evaluator } from '../operators/Evaluator.js'
  * reasoner.supports(definition) // true
  * reasoner.validate(definition).valid // true
  * const result = reasoner.reason({ age: 25 }, definition)
- * if (result.reasoning === 'logical') result.conclusion // true
+ * if (result.reasoning === 'logical') result.conclusion // 'met'
  * ```
  */
 export class LogicalReasoner implements ReasonerInterface {
 	readonly #id: string
 	readonly #evaluator: EvaluatorInterface
+	readonly #door = new SubjectDoor()
 
 	constructor(options?: LogicalReasonerOptions) {
 		this.#id = options?.id ?? LOGICAL_ID
@@ -91,45 +119,57 @@ export class LogicalReasoner implements ReasonerInterface {
 	}
 
 	validate(definition: Definition): ReasonValidationResult {
-		const errors: string[] = []
-		const warnings: string[] = []
-
 		if (definition.reasoning !== 'logical') {
-			errors.push(`Expected reasoning "logical", got "${definition.reasoning}"`)
-			return { valid: false, errors, warnings }
-		}
-
-		if (!definition.id) errors.push('Definition must have an id')
-		if (!definition.name) errors.push('Definition must have a name')
-		if (!definition.rules || definition.rules.length === 0) {
-			errors.push('Definition must have at least one rule')
-		}
-
-		// Duplicate ids are warnings (runtime stays permissive: a degenerate rule
-		// id-poisons its same-id twin in the forward exclusion set).
-		for (const id of findDuplicates(definition.rules ?? [])) {
-			warnings.push(`Duplicate rule id "${id}"`)
-		}
-
-		for (const rule of definition.rules ?? []) {
-			if (!rule.id) errors.push('Rule must have an id')
-			if (!rule.premises || rule.premises.length === 0) {
-				warnings.push(`Rule "${rule.id}" has no premises`)
-			}
-			if (!rule.conclusion) {
-				errors.push(`Rule "${rule.id}" must have a conclusion`)
+			return {
+				valid: false,
+				errors: [`Expected reasoning "logical", got "${definition.reasoning}"`],
+				warnings: [],
 			}
 		}
-
-		// Cross-rule overlay-key mismatch: an array-path conclusion write whose
-		// flat overlay key is also read through an array-path premise elsewhere.
-		for (const key of findOverlayMismatches(definition.rules ?? [])) {
-			warnings.push(
-				`Overlay key "${key}" is written through an array path AND also read through an array path — the flat overlay key will not resolve`,
-			)
+		const rules: unknown = definition.rules
+		if (!isLogicalDefinition(definition)) {
+			const entries: readonly unknown[] = isArray(rules) ? rules : []
+			return {
+				valid: false,
+				errors: [
+					'Definition does not match the logical definition shape',
+					...entries.flatMap((rule, index) =>
+						isRule(rule) ? [] : [`Rule at index ${String(index)} is malformed`],
+					),
+				],
+				warnings: [],
+			}
 		}
-
-		return { valid: errors.length === 0, errors, warnings }
+		const enabled = definition.rules.filter((rule) => rule.enabled !== false)
+		const cycles = findNegativeCycles(enabled)
+		const shape = definition.shape
+		const reads = enabled.flatMap((rule) =>
+			rule.premises.flatMap((premise) => extractAtoms(premise)).map((atom) => atom.check),
+		)
+		const scan =
+			shape === undefined
+				? { errors: [], warnings: [] }
+				: scanShapeReads(shape, reads, [], new Set(collectConcluders(enabled).keys()))
+		const errors = [
+			...(definition.id ? [] : ['Definition must have an id']),
+			...(definition.name ? [] : ['Definition must have a name']),
+			...(definition.rules.length === 0 ? ['Definition must have at least one rule'] : []),
+			...findDuplicates(definition.rules).map((id) => `Duplicate rule id "${id}"`),
+			...definition.rules.flatMap((rule) => [
+				...(rule.id ? [] : ['Rule must have an id']),
+				...(rule.premises.length === 0 ? [`Rule "${rule.id}" has no premises`] : []),
+				...rule.premises.flatMap((premise) => scanExpression(premise)),
+				...scanConclusion(rule.conclusion),
+			]),
+			...(cycles.length === 0
+				? []
+				: [`Conclusions depend on their own negation: ${cycles.join(', ')}`]),
+			...(shape === undefined
+				? []
+				: [...scanShape(shape), ...scanShapeConclusions(shape, enabled)]),
+			...scan.errors,
+		]
+		return { valid: errors.length === 0, errors, warnings: scan.warnings }
 	}
 
 	reason(subject: Subject, definition: Definition): ReasonResult {
@@ -146,458 +186,414 @@ export class LogicalReasoner implements ReasonerInterface {
 		if (!isArray(definition.rules)) {
 			return {
 				reasoning: 'logical',
-				conclusion: false,
+				conclusion: 'unread',
 				rules: [],
 				count: 0,
 				success: false,
 				trace: [],
 				errors: ['Definition must have a "rules" array'],
+				faults: [],
+				repairs: [],
+				defaulted: [],
 			}
 		}
+
+		const admission = this.#door.admit(subject, definition.shape)
+		const admitted = admission.subject
+		if (admitted === undefined) return buildRefusedResult(definition, admission)
 
 		const trace: string[] = []
 		const errors: string[] = []
+		if (definition.rules.length === 0) trace.push('No rules defined')
+		const rules = this.#selectRules(definition.rules, trace, errors)
+		const state = new LogicalState(rules)
+		const supplied = findSuppliedConclusions(rules, admitted)
+		errors.push(...supplied.map((key) => `Subject supplies conclusion "${key}"`))
+		if (supplied.length > 0) return this.#buildResult([], [], trace, errors, admission)
 
-		const result =
-			definition.strategy === 'backward'
-				? this.#backward(definition, subject, trace, errors)
-				: this.#forward(definition, subject, trace, errors)
+		if (definition.strategy === 'backward') {
+			this.#backward(definition, rules, admitted, state, trace, errors)
+		} else this.#forward(definition, rules, admitted, state, trace, errors)
+		const faults = this.#collectFaults(rules, admitted, state, errors)
+		const results = rules.map((rule) => this.#buildRuleResult(rule, admitted, state))
+		return this.#buildResult(results, faults, trace, errors, admission)
+	}
 
+	// Keeps the rules that can run, in authored order: a disabled rule is skipped and traced, and
+	// a malformed one refuses the run instead of quietly dropping what it would have decided.
+	#selectRules(rules: readonly Rule[], trace: string[], errors: string[]): readonly Rule[] {
+		return rules.flatMap((rule, index) => {
+			if (!isObject(rule)) {
+				errors.push(`Rule at index ${String(index)} is malformed`)
+				return []
+			}
+			if (rule.enabled === false) {
+				trace.push(`Skipped rule "${rule.id}" (disabled)`)
+				return []
+			}
+			if (!isArray(rule.premises) || rule.premises.length === 0) {
+				errors.push(`Rule "${rule.id}" has no premises`)
+				return []
+			}
+			if (!rule.conclusion) {
+				errors.push(`Rule "${rule.id}" has no conclusion`)
+				return []
+			}
+			return [rule]
+		})
+	}
+
+	#buildResult(
+		rules: readonly RuleResult[],
+		faults: readonly AuditFault[],
+		trace: readonly string[],
+		errors: readonly string[],
+		admission: SubjectAdmission,
+	): ReasonResult {
 		return {
 			reasoning: 'logical',
-			conclusion: result.conclusion,
-			rules: result.rules,
-			count: result.rules.filter((rule) => rule.applied).length,
+			conclusion: errors.length > 0 ? 'unread' : (rules.at(-1)?.state ?? 'unmet'),
+			rules,
+			count: rules.filter((rule) => rule.state === 'met').length,
 			success: errors.length === 0,
 			trace,
 			errors,
+			faults,
+			repairs: admission.repairs,
+			defaulted: admission.defaulted,
 		}
 	}
 
-	// Data-driven fixpoint: derive until a pass adds nothing new (or depth caps),
-	// then re-evaluate every runnable rule in original order for the results.
+	// Phase A fires what the overlay supports, phase B closes what has settled, and each runs
+	// until the other has nothing to add.
 	#forward(
 		definition: LogicalDefinition,
+		rules: readonly Rule[],
 		subject: Subject,
+		state: LogicalState,
 		trace: string[],
 		errors: string[],
-	): LogicalChainResult {
-		const maxDepth = definition.depth ?? DEFAULT_DEPTH
-		const state = new LogicalState()
+	): void {
+		const depth = definition.depth ?? DEFAULT_DEPTH
+		const pass = this.#settle(sortByPriority(rules), subject, state, trace, errors, 1, depth)
+		if (pass === undefined) {
+			errors.push(`Forward chaining did not settle within depth ${String(depth)}`)
+		} else if (errors.length === 0) trace.push(`Forward chaining converged at iteration ${pass}`)
+	}
 
-		if (definition.rules.length === 0) trace.push('No rules defined')
+	// One pass fires from one snapshot, and `depth` counts the passes that derive something.
+	// Closing and observing convergence cost nothing, so a chain of exactly `depth` hops
+	// settles. Every pass derives a key or closes one, so the keys bound the recursion. Returns
+	// the pass that found nothing left to do, or undefined when `depth` ran out first; an error
+	// ends the walk too, having refused the run.
+	#settle(
+		rules: readonly Rule[],
+		subject: Subject,
+		state: LogicalState,
+		trace: string[],
+		errors: string[],
+		pass: number,
+		depth: number,
+	): number | undefined {
+		const fired = rules.filter((rule) => this.#evaluateRule(rule, subject, state) === 'met')
+		for (const rule of fired) this.#markClosedReads(rule, state)
+		const fresh = fired.filter((rule) =>
+			Object.entries(extractConclusions(rule.conclusion)).some(
+				([key, value]) => !state.has(key) || !equalValues(state.field(key), value),
+			),
+		)
+		if (fresh.length === 0) {
+			return this.#close(rules, subject, state)
+				? this.#settle(rules, subject, state, trace, errors, pass, depth)
+				: pass
+		}
+		if (pass > depth) return undefined
+		for (const rule of fresh) this.#derive(rule, state, trace, errors, `iteration ${pass}`)
+		if (errors.length > 0) return pass
+		return this.#settle(rules, subject, state, trace, errors, pass + 1, depth)
+	}
 
-		const sortedRules = sortByPriority(definition.rules)
+	#markClosedReads(rule: Rule, state: LogicalState): void {
+		for (const atom of rule.premises.flatMap((premise) => extractAtoms(premise))) {
+			const key = formatField(atom.check.field)
+			if (state.closed(key)) state.mark(key)
+		}
+	}
 
-		// Pre-pass: a premise-less or conclusion-less rule errors once and is
-		// excluded from every later pass.
-		const reportedErrors = new Set(
-			sortedRules.flatMap((rule) => {
-				if (!isObject(rule)) return []
-				if (rule.enabled === false) return []
-				if (!rule.premises || rule.premises.length === 0) {
-					errors.push(`Rule "${rule.id}" has no premises — skipped`)
-					return [rule.id]
-				} else if (!rule.conclusion) {
-					errors.push(`Rule "${rule.id}" has no conclusion — skipped`)
-					return [rule.id]
+	// Writes a met rule's conclusions. A second value for a derived key and a key a fired rule
+	// read as closed both refuse, because either would retract what is already settled.
+	#derive(rule: Rule, state: LogicalState, trace: string[], errors: string[], place: string): void {
+		for (const [key, value] of Object.entries(extractConclusions(rule.conclusion))) {
+			if (state.has(key)) {
+				if (!equalValues(state.field(key), value)) {
+					errors.push(`Rule "${rule.id}" concludes a second value for "${key}"`)
 				}
-				return []
+				continue
+			}
+			if (state.marked(key)) {
+				errors.push(
+					`Unstratified: rule "${rule.id}" concludes "${key}", which a fired rule read as closed`,
+				)
+				continue
+			}
+			state.set(key, value)
+			trace.push(`Rule "${rule.id}" derived: ${key}=${String(value)} (${place})`)
+		}
+	}
+
+	// Closes every open key whose concluding rules have all settled unmet. Runs only once nothing
+	// fires, and the caller fires again after it, since closing a key can make a rule met. When
+	// nothing settles and nothing waits on a real input, what remains only waits on itself, and
+	// it closes too. True if anything closed.
+	#close(rules: readonly Rule[], subject: Subject, state: LogicalState): boolean {
+		const open = state.keys.filter((key) => !state.has(key) && !state.closed(key))
+		const settled = open.filter((key) =>
+			state.concluders(key).every((rule) => this.#evaluateRule(rule, subject, state) === 'unmet'),
+		)
+		const closing = settled.length > 0 ? settled : this.#findFreeKeys(rules, open, subject, state)
+		for (const key of closing) state.close(key)
+		return closing.length > 0
+	}
+
+	// An unread rule is blocked when it reads something no closing can supply: an input, a closed
+	// key an ordering cannot use, a malformed atom. Blocking spreads to the rules that read what
+	// a blocked rule concludes. An open key no blocked rule concludes is free to close once all
+	// it waits on waits on it too, so a cycle closes alone and what reads it settles afterwards.
+	#findFreeKeys(
+		rules: readonly Rule[],
+		open: readonly string[],
+		subject: Subject,
+		state: LogicalState,
+	): readonly string[] {
+		const unread = rules.filter((rule) => this.#evaluateRule(rule, subject, state) === 'unread')
+		const held = new Map(
+			unread.map((rule) => [
+				rule,
+				rule.premises.flatMap((premise) => this.#findUnreadChecks(premise, subject, state)),
+			]),
+		)
+		const blocked = new Set(
+			unread.filter((rule) => {
+				const checks = held.get(rule) ?? []
+				return checks.length === 0 || checks.some((check) => !this.#isOpen(check, state))
 			}),
 		)
-
-		for (const iteration of iterateIndices(() => maxDepth)) {
-			const currentSubject: Subject = { ...subject, ...state.fields }
-
-			const changed = sortedRules.reduce((previous, rule) => {
-				if (rule.enabled === false) {
-					trace.push(`Skipped rule "${rule.id}" (disabled)`)
-					return previous
-				}
-				if (reportedErrors.has(rule.id)) return previous
-
-				const ruleResult = this.#evaluateRule(rule, currentSubject)
-
-				if (ruleResult.applied) {
-					const conclusions = extractConclusions(rule.conclusion)
-					return Object.entries(conclusions).reduce((updated, [key, value]) => {
-						// SameValueZero — a NaN conclusion must not re-derive forever.
-						if (!equalValues(state.field(key), value)) {
-							state.set(key, value)
-							trace.push(
-								`Rule "${rule.id}" derived: ${key}=${String(value)} (iteration ${iteration + 1})`,
-							)
-							return true
-						}
-						return updated
-					}, previous)
-				}
-				return previous
-			}, false)
-
-			if (!changed) {
-				trace.push(`Forward chaining converged at iteration ${iteration + 1}`)
-				break
+		for (const rule of blocked) {
+			const written = Object.keys(extractConclusions(rule.conclusion))
+			for (const reader of unread) {
+				const reads = (held.get(reader) ?? []).map((check) => formatField(check.field))
+				if (reads.some((key) => written.includes(key))) blocked.add(reader)
 			}
 		}
-
-		const finalSubject: Subject = { ...subject, ...state.fields }
-		const finalResults = Iterator.from(definition.rules)
-			.flatMap((rule) => {
-				if (!isObject(rule)) return []
-				if (rule.enabled === false) return []
-				if (reportedErrors.has(rule.id)) return []
-				return [this.#evaluateRule(rule, finalSubject)]
-			})
-			.toArray()
-
-		const conclusion =
-			finalResults.length > 0 ? (finalResults[finalResults.length - 1]?.applied ?? false) : false
-
-		return { conclusion, rules: finalResults }
+		const waits = unread.flatMap((rule) =>
+			Object.keys(extractConclusions(rule.conclusion)).flatMap((key) =>
+				(held.get(rule) ?? []).map((check): readonly [string, string] => [
+					key,
+					formatField(check.field),
+				]),
+			),
+		)
+		return open
+			.filter((key) => !state.concluders(key).some((rule) => blocked.has(rule)))
+			.filter((key) =>
+				[...collectReachable(key, waits)].every((other) => collectReachable(other, waits).has(key)),
+			)
 	}
 
-	// Goal-driven proving over every rule in priority order, sharing a growing
-	// derived overlay; the visited-rule set plus the depth cap keep cycles safe.
+	#isOpen(check: Check, state: LogicalState): boolean {
+		const key = formatField(check.field)
+		return state.concludes(key) && !state.has(key) && !state.closed(key)
+	}
+
+	// Proves every rule, then settles what the proofs left the way forward does, so both
+	// strategies close the same keys. A cycle through negation is refused before any proof,
+	// since a proof of one would depend on visit order.
 	#backward(
 		definition: LogicalDefinition,
+		rules: readonly Rule[],
 		subject: Subject,
+		state: LogicalState,
 		trace: string[],
 		errors: string[],
-	): LogicalChainResult {
-		const maxDepth = definition.depth ?? DEFAULT_DEPTH
-		const state = new LogicalState()
-
-		if (definition.rules.length === 0) trace.push('No rules defined')
-
-		const sortedRules = sortByPriority(
-			definition.rules.filter((rule) => {
-				if (!isObject(rule)) return false
-				if (rule.enabled === false) return false
-				// A missing / non-array premises cannot be walked — errored and
-				// excluded. An empty premises array is kept: backward applies it
-				// vacuously (forward reports it instead).
-				if (!isArray(rule.premises)) {
-					errors.push(`Rule "${rule.id}" has no premises — skipped`)
-					return false
-				}
-				if (!rule.conclusion) {
-					errors.push(`Rule "${rule.id}" has no conclusion — skipped`)
-					return false
-				}
-				return true
-			}),
-		)
-
-		for (const rule of definition.rules) {
-			if (!isObject(rule)) continue
-			if (rule.enabled === false) trace.push(`Skipped rule "${rule.id}" (disabled)`)
+	): void {
+		const depth = definition.depth ?? DEFAULT_DEPTH
+		const sorted = sortByPriority(rules)
+		const cycles = findNegativeCycles(rules)
+		if (cycles.length > 0) {
+			errors.push(`Unstratified: conclusions depend on their own negation: ${cycles.join(', ')}`)
+			return
 		}
-
-		for (const rule of sortedRules) {
-			this.#proveRule(rule, 0, new Set(), sortedRules, state, subject, trace, maxDepth)
+		for (const rule of sorted) {
+			this.#proveRule(rule, 0, new Set(), subject, state, trace, errors, depth)
 		}
-
-		const finalResults = sortedRules.map(
-			(rule) => state.rule(rule.id) ?? this.#evaluateRule(rule, { ...subject, ...state.fields }),
-		)
-
-		const conclusion =
-			finalResults.length > 0 ? (finalResults[finalResults.length - 1]?.applied ?? false) : false
-
-		return { conclusion, rules: finalResults }
+		if (errors.length > 0) return
+		if (this.#settle(sorted, subject, state, trace, errors, 1, depth) === undefined) {
+			errors.push(`Backward chaining did not settle within depth ${String(depth)}`)
+		}
 	}
 
-	// Prove one rule against the shared backward-chaining overlay.
 	#proveRule(
 		rule: Rule,
 		depth: number,
 		visited: ReadonlySet<string>,
-		rules: readonly Rule[],
-		state: LogicalState,
 		subject: Subject,
+		state: LogicalState,
 		trace: string[],
+		errors: string[],
 		maxDepth: number,
-	): boolean {
-		if (depth > maxDepth) return false
-		if (visited.has(rule.id)) return false
-
-		const nextVisited = new Set([...visited, rule.id])
-
-		const currentSubject: Subject = { ...subject, ...state.fields }
-		const premiseResults = Iterator.from(rule.premises)
-			.map((premise) =>
-				this.#establish(
-					premise,
-					currentSubject,
-					rules,
-					depth + 1,
-					nextVisited,
-					state,
-					subject,
-					trace,
-					maxDepth,
-				),
-			)
-			.toArray()
-
-		const allMet = premiseResults.every(Boolean)
-
-		state.record({ id: rule.id, applied: allMet, premises: premiseResults })
-
-		if (allMet) {
-			const conclusions = extractConclusions(rule.conclusion)
-			for (const [key, value] of Object.entries(conclusions)) {
-				// SameValueZero — a NaN conclusion derives (and traces) once.
-				if (!equalValues(state.field(key), value)) {
-					state.set(key, value)
-					trace.push(
-						`Rule "${rule.id}" derived: ${key}=${String(value)} (backward, depth ${depth})`,
-					)
-				}
-			}
-		} else {
-			trace.push(`Rule "${rule.id}": does not hold (backward, depth ${depth})`)
-		}
-
-		return allMet
+	): CheckState {
+		// The visited cut reads unread, which breaks the cycle without answering it: read as unmet
+		// it could settle an `and` over a real unread leaf, and a negation over that would fire.
+		// Settling closes the cycle afterwards, the way forward does.
+		if (visited.has(rule.id)) return 'unread'
+		const next = new Set([...visited, rule.id])
+		const outcome = combineStates(
+			'and',
+			rule.premises.map((premise) =>
+				this.#establish(premise, depth + 1, next, subject, state, trace, errors, maxDepth),
+			),
+		)
+		if (outcome === 'met') this.#derive(rule, state, trace, errors, `backward, depth ${depth}`)
+		else trace.push(`Rule "${rule.id}": does not hold (backward, depth ${depth})`)
+		return outcome
 	}
 
-	// Evaluate an expression against a settled overlay, then fall back to
-	// sub-goal proving — the shared establish step of every backward branch.
 	#establish(
 		expression: Expression,
-		currentSubject: Subject,
-		rules: readonly Rule[],
 		depth: number,
 		visited: ReadonlySet<string>,
-		state: LogicalState,
 		subject: Subject,
-		trace: string[],
-		maxDepth: number,
-	): boolean {
-		if (this.#evaluateExpression(expression, currentSubject)) return true
-		return this.#proveExpression(expression, rules, depth, visited, state, subject, trace, maxDepth)
-	}
-
-	// Sub-goal search: establish an atom by firing rules whose conclusion atoms
-	// assert the needed field = value pair; compounds get connective-aware proving.
-	// The depth cap mirrors the top-level `prove` guard — a sub-goal past
-	// `maxDepth` fails (unproven), never throws.
-	#proveExpression(
-		expression: Expression,
-		rules: readonly Rule[],
-		depth: number,
-		visited: ReadonlySet<string>,
 		state: LogicalState,
-		subject: Subject,
 		trace: string[],
+		errors: string[],
 		maxDepth: number,
-	): boolean {
-		if (depth > maxDepth) return false
-
-		if (expression.form === 'atom') {
-			for (const rule of rules) {
-				if (!isObject(rule)) continue
-				if (visited.has(rule.id)) continue
-				const conclusionFacts = extractConclusions(rule.conclusion)
-				const field = formatField(expression.check.field)
-				const value = expression.check.value
-
-				if (field in conclusionFacts && conclusionFacts[field] === value) {
-					const nextVisited = new Set([...visited, rule.id])
-
-					const currentSubject: Subject = { ...subject, ...state.fields }
-					const premiseResults: boolean[] = []
-					const allMet = Iterator.from(rule.premises).every((premise) => {
-						const met = this.#establish(
-							premise,
-							currentSubject,
-							rules,
-							depth + 1,
-							nextVisited,
-							state,
-							subject,
-							trace,
-							maxDepth,
-						)
-						premiseResults.push(met)
-						return met
-					})
-
-					state.record({ id: rule.id, applied: allMet, premises: premiseResults })
-
-					if (allMet) {
-						for (const [key, entry] of Object.entries(conclusionFacts)) {
-							// SameValueZero — a NaN conclusion derives (and traces) once.
-							if (!equalValues(state.field(key), entry)) {
-								state.set(key, entry)
-								trace.push(
-									`Rule "${rule.id}" derived: ${key}=${String(entry)} (backward, depth ${depth})`,
-								)
-							}
-						}
-						return true
-					}
-				}
-			}
-		}
-
+	): CheckState {
 		if (expression.form === 'compound') {
-			const currentSubject: Subject = { ...subject, ...state.fields }
-
-			switch (expression.operator) {
-				case 'and':
-					return expression.operands.every((operand) =>
-						this.#establish(
-							operand,
-							currentSubject,
-							rules,
-							depth,
-							visited,
-							state,
-							subject,
-							trace,
-							maxDepth,
-						),
-					)
-				case 'or':
-					return expression.operands.some((operand) =>
-						this.#establish(
-							operand,
-							currentSubject,
-							rules,
-							depth,
-							visited,
-							state,
-							subject,
-							trace,
-							maxDepth,
-						),
-					)
-				case 'not': {
-					// Negation-as-failure: succeeds when the operand cannot be established.
-					if (expression.operands.length === 0) return true
-					const first = expression.operands[0]
-					if (!first) return true
-					return !this.#establish(
-						first,
-						currentSubject,
-						rules,
-						depth,
-						visited,
-						state,
-						subject,
-						trace,
-						maxDepth,
-					)
-				}
-				case 'implies': {
-					// Vacuously true when the antecedent cannot be established.
-					if (expression.operands.length < 2) return true
-					const antecedent = expression.operands[0]
-					const consequent = expression.operands[1]
-					if (!antecedent || !consequent) return true
-					const antecedentMet = this.#establish(
-						antecedent,
-						currentSubject,
-						rules,
-						depth,
-						visited,
-						state,
-						subject,
-						trace,
-						maxDepth,
-					)
-					if (!antecedentMet) return true
-					return this.#establish(
-						consequent,
-						currentSubject,
-						rules,
-						depth,
-						visited,
-						state,
-						subject,
-						trace,
-						maxDepth,
-					)
-				}
-				case 'xor': {
-					if (expression.operands.length < 2) return false
-					const left = expression.operands[0]
-					const right = expression.operands[1]
-					if (!left || !right) return false
-					const leftMet = this.#establish(
-						left,
-						currentSubject,
-						rules,
-						depth,
-						visited,
-						state,
-						subject,
-						trace,
-						maxDepth,
-					)
-					const rightMet = this.#establish(
-						right,
-						currentSubject,
-						rules,
-						depth,
-						visited,
-						state,
-						subject,
-						trace,
-						maxDepth,
-					)
-					return leftMet !== rightMet
-				}
-				default:
-					return false
-			}
+			return combineStates(
+				expression.operator,
+				expression.operands.map((operand) =>
+					this.#establish(operand, depth, visited, subject, state, trace, errors, maxDepth),
+				),
+			)
 		}
-
-		return false
+		const { check } = expression
+		const key = formatField(check.field)
+		if (!state.concludes(key) || state.has(key)) return this.#readCheck(check, subject, state).state
+		if (depth > maxDepth) {
+			const message = `Backward chaining hit depth ${String(maxDepth)} proving "${key}"`
+			if (!errors.includes(message)) errors.push(message)
+			return 'unread'
+		}
+		const outcomes: CheckState[] = []
+		for (const candidate of state.concluders(key)) {
+			const outcome = this.#proveRule(
+				candidate,
+				depth,
+				visited,
+				subject,
+				state,
+				trace,
+				errors,
+				maxDepth,
+			)
+			// Matched by field alone: the goal re-reads what the candidate actually concluded.
+			if (outcome === 'met') return this.#readCheck(check, subject, state).state
+			outcomes.push(outcome)
+		}
+		return outcomes.includes('unread') ? 'unread' : readClosedState(check.operator)
 	}
 
-	// A rule applies exactly when every premise holds; a premise-less or
-	// conclusion-less rule never applies.
-	#evaluateRule(rule: Rule, subject: Subject): RuleResult {
-		if (!rule.premises || rule.premises.length === 0) {
-			return { id: rule.id, applied: false, premises: [] }
+	#readCheck(check: Check, subject: Subject, state: LogicalState): CheckResult {
+		const key = formatField(check.field)
+		if (!state.concludes(key)) return this.#evaluator.evaluate(check, subject)
+		if (state.has(key)) {
+			const result = this.#evaluator.evaluate({ ...check, field: key }, state.fields)
+			return { ...result, field: check.field }
 		}
-		if (!rule.conclusion) {
-			return { id: rule.id, applied: false, premises: [] }
+		return {
+			field: check.field,
+			state: state.closed(key) ? readClosedState(check.operator) : 'unread',
+			actual: undefined,
 		}
+	}
 
-		const premiseResults = rule.premises.map((premise) =>
-			this.#evaluateExpression(premise, subject),
+	#evaluateExpression(expression: Expression, subject: Subject, state: LogicalState): CheckState {
+		if (expression.form === 'atom') return this.#readCheck(expression.check, subject, state).state
+		return combineStates(
+			expression.operator,
+			expression.operands.map((operand) => this.#evaluateExpression(operand, subject, state)),
 		)
-
-		return { id: rule.id, applied: premiseResults.every(Boolean), premises: premiseResults }
 	}
 
-	// Eager evaluation (no short-circuit): `not` reads only its first operand
-	// (empty → vacuously true); `implies` / `xor` read their first two.
-	#evaluateExpression(expression: Expression, subject: Subject): boolean {
-		if (expression.form === 'atom') {
-			return this.#evaluator.evaluate(expression.check, subject).met
-		}
+	#evaluateRule(rule: Rule, subject: Subject, state: LogicalState): CheckState {
+		return combineStates(
+			'and',
+			rule.premises.map((premise) => this.#evaluateExpression(premise, subject, state)),
+		)
+	}
 
-		const results = expression.operands.map((operand) => this.#evaluateExpression(operand, subject))
-
-		switch (expression.operator) {
-			case 'and':
-				return results.every(Boolean)
-			case 'or':
-				return results.some(Boolean)
-			case 'not':
-				return results.length > 0 ? !results[0] : true
-			case 'implies':
-				return results.length < 2 ? true : !results[0] || (results[1] ?? false)
-			case 'xor':
-				return results.length < 2 ? false : results[0] !== results[1]
-			default:
-				return false
+	#buildRuleResult(rule: Rule, subject: Subject, state: LogicalState): RuleResult {
+		const premises = rule.premises.map((premise) =>
+			this.#evaluateExpression(premise, subject, state),
+		)
+		return {
+			id: rule.id,
+			state: combineStates('and', premises),
+			premises,
+			checks: rule.premises
+				.flatMap((premise) => extractAtoms(premise))
+				.map((atom) => this.#readCheck(atom.check, subject, state)),
 		}
+	}
+
+	// The atoms the answer still depends on. A settled branch is skipped, so a false `and` never
+	// asks about its other operand and a true `or` never asks about its own.
+	#findUnreadChecks(
+		expression: Expression,
+		subject: Subject,
+		state: LogicalState,
+	): readonly Check[] {
+		if (this.#evaluateExpression(expression, subject, state) !== 'unread') return []
+		if (expression.form === 'atom') return [expression.check]
+		return expression.operands.flatMap((operand) => this.#findUnreadChecks(operand, subject, state))
+	}
+
+	// Names why each unread rule refused, and returns the input fields among those reasons. A
+	// rule unread only through an open conclusion adds nothing, because the rule concluding that
+	// key names the input. A rule with no input to name still pushes an error, so `success`
+	// cannot read true beside it.
+	#collectFaults(
+		rules: readonly Rule[],
+		subject: Subject,
+		state: LogicalState,
+		errors: string[],
+	): readonly AuditFault[] {
+		const leaves = rules.flatMap((rule) => {
+			if (this.#evaluateRule(rule, subject, state) !== 'unread') return []
+			const checks = rule.premises.flatMap((premise) =>
+				this.#findUnreadChecks(premise, subject, state),
+			)
+			if (checks.length === 0) errors.push(`Rule "${rule.id}" has a malformed premise`)
+			return checks.flatMap((check) => {
+				const key = formatField(check.field)
+				if (state.concludes(key)) {
+					if (state.closed(key)) {
+						errors.push(
+							`Rule "${rule.id}" reads conclusion "${key}" with "${check.operator}", and no rule concluded a value`,
+						)
+					}
+					return []
+				}
+				const read = this.#readCheck(check, subject, state)
+				if (read.error !== undefined) {
+					errors.push(`Rule "${rule.id}": ${read.error}`)
+					return []
+				}
+				return [valueToFault(check.field, readExpectedKind(check), read.actual)]
+			})
+		})
+		const faults = filterUniqueFaults(leaves)
+		errors.push(...faults.map((fault) => describeFault(fault)))
+		return faults
 	}
 }

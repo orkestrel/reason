@@ -18,7 +18,7 @@ export const DEFAULT_REASON_BAIL = true
  * Holds the default `validate` for the `Reason` orchestrator — per-call validation is
  * skipped. Default: `false`.
  */
-export const DEFAULT_VALIDATE = false
+export const DEFAULT_VALIDATE = true
 
 /**
  * Holds the default `depth` for chaining definitions — the forward-iteration /
@@ -71,6 +71,86 @@ export const CONFIDENCE_PRECISION = 4
 export const INVERTIBLE_OPERATIONS: ReadonlySet<MathOperation> = Object.freeze(
 	new Set<MathOperation>(['add', 'subtract', 'multiply', 'divide']),
 )
+
+/** Lists the states a check, a rule, and a conclusion settle on. */
+export const CHECK_STATES = ['met', 'unmet', 'unread'] as const
+
+/** Lists the reasoning strategies. */
+export const REASONINGS = ['quantitative', 'logical', 'symbolic', 'inferential'] as const
+
+/** Lists how a chaining reasoner walks its rules. */
+export const CHAIN_STRATEGIES = ['forward', 'backward'] as const
+
+/** Lists the math operations a transform or a symbolic operation applies. */
+export const MATH_OPERATIONS = [
+	'add',
+	'subtract',
+	'multiply',
+	'divide',
+	'percentage',
+	'minimum',
+	'maximum',
+	'average',
+	'power',
+	'round',
+	'ceil',
+	'floor',
+	'abs',
+] as const
+
+/** Lists how an aggregator reduces a list of numbers to one. */
+export const AGGREGATIONS = ['sum', 'product', 'average', 'minimum', 'maximum'] as const
+
+/** Lists the comparisons a check applies. */
+export const COMPARISONS = [
+	'equals',
+	'not',
+	'above',
+	'below',
+	'from',
+	'to',
+	'any',
+	'none',
+	'between',
+	'outside',
+] as const
+
+/** Lists the connectives of a compound expression. */
+export const LOGICAL_OPERATORS = ['and', 'or', 'not', 'implies', 'xor'] as const
+
+/** Lists `contract`'s fault kinds, which a result's faults carry. */
+export const FAULT_KINDS = [
+	'string',
+	'number',
+	'integer',
+	'boolean',
+	'null',
+	'literal',
+	'array',
+	'object',
+	'union',
+	'json',
+] as const
+
+/** Lists `contract`'s fault constraints, which a result's faults carry. */
+export const FAULT_CONSTRAINTS = ['min', 'max', 'pattern', 'integer'] as const
+
+/**
+ * Holds how many connectives the published `Expression` shape may nest.
+ *
+ * @remarks
+ * A shape refuses cycles, so the recursive guard stays the authority and this bounds what a
+ * schema can say. The schema grows linearly with it.
+ */
+export const EXPRESSION_SHAPE_DEPTH = 8
+
+/**
+ * Holds how many operations the published `SymbolicExpression` shape may nest.
+ *
+ * @remarks
+ * An operation has two sides, so the schema doubles with each level.
+ */
+export const SYMBOLIC_SHAPE_DEPTH = 6
 
 /** Names the default `id` for an `Evaluator`. */
 export const EVALUATOR_ID = 'evaluator'

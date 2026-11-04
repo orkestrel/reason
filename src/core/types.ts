@@ -1,4 +1,4 @@
-import type { FieldPath } from '@orkestrel/contract'
+import type { AuditFault, ContractShape, FieldPath } from '@orkestrel/contract'
 import type { EmitterErrorHandler, EmitterHooks, EmitterInterface } from '@orkestrel/emitter'
 import type { DEFINITION_BUILDER_BRAND, SUBJECT_BUILDER_BRAND } from './constants.js'
 
@@ -8,8 +8,9 @@ import type { DEFINITION_BUILDER_BRAND, SUBJECT_BUILDER_BRAND } from './constant
 // orchestrator (registry + dispatch + events), the quantitative, logical,
 // symbolic, and inferential reasoners, and the injectable Evaluator,
 // Transformer, and Aggregator operators. Nothing mutates its inputs; every
-// result is a fresh object carrying `success`, a human-readable `trace`, and
-// `errors`. Types are the source of truth; every discriminant names its axis,
+// result is a fresh object carrying `success`, a human-readable `trace`,
+// `errors`, and `faults`. An input that cannot be read is never a value: the
+// engine refuses and names it. Types are the source of truth; every discriminant names its axis,
 // never `kind` / `type`: `reasoning` splits definitions and results, `form`
 // splits expression nodes, `origin` splits factor sources.
 
@@ -71,13 +72,15 @@ export type Aggregation = 'sum' | 'product' | 'average' | 'minimum' | 'maximum'
  * its expected value.
  *
  * @remarks
- * `equals` / `not` — strict `===` / `!==` (no coercion). `above` / `below` /
- * `from` / `to` — `>` / `<` / `>=` / `<=`, requiring a number on each side
- * (anything else is not met). `any` / `none` — array membership / non-membership
- * (a non-array expected value is met by neither — `none` is not the raw
- * complement of `any` on malformed input). `between` / `outside` — inclusive
- * range test on the first two numeric elements of the expected array; `outside`
- * is the pure negation of `between`, so a malformed range is `outside`.
+ * `above` / `below` / `from` / `to` — `>` / `<` / `>=` / `<=` over finite numbers.
+ * `between` / `outside` — inclusive test against a two-element `[minimum, maximum]` of
+ * finite numbers. `equals` / `not` — `===` / `!==` over two values of one primitive type,
+ * where a string that is blank or padded reads `unread` and any other difference of type
+ * reads `unread`, so `x not 'none'` over 90 is `unread` and the author writes `x not null`.
+ * `null` is a value: `equals null` and `not null` settle on a present field. `any` / `none`
+ * — an exact hit settles, otherwise an element of another type reads `unread`, otherwise
+ * settled. An absent field, an object, an array, `NaN`, `±Infinity`, or a bigint reads
+ * `unread` for every comparison, and so does a malformed expected value.
  */
 export type Comparison =
 	| 'equals'
@@ -95,11 +98,22 @@ export type Comparison =
  * Names a logical connective inside a compound {@link Expression}.
  *
  * @remarks
- * `not` reads only its first operand (empty operands are vacuously true);
- * `implies` and `xor` read their first two (`implies` is vacuously true below
- * two operands, `xor` is false).
+ * Evaluated in strong Kleene logic over {@link CheckState}: `and` is `unmet` when
+ * any operand is, `or` is `met` when any operand is, and otherwise an `unread`
+ * operand leaves the connective `unread`. `not` takes one operand, `implies` and
+ * `xor` take two, and `and` and `or` take at least one; any other arity is
+ * invalid and reads `unread`.
  */
 export type LogicalOperator = 'and' | 'or' | 'not' | 'implies' | 'xor'
+
+/**
+ * Names what a {@link Check}, a {@link RuleResult}, or a {@link LogicalResult} settled on.
+ *
+ * @remarks
+ * `met` and `unmet` are settled answers. `unread` means the engine could not read
+ * an input the answer depends on, so there is no answer, and the run refuses.
+ */
+export type CheckState = 'met' | 'unmet' | 'unread'
 
 /**
  * Represents the data record being reasoned about — a plain readonly bag of fields, read
@@ -128,15 +142,25 @@ export interface Check {
  * Represents the outcome of one {@link Check} evaluation.
  *
  * @remarks
- * `actual` is the resolved subject value (possibly `undefined`); `error` is set
- * only when evaluation itself failed (an unknown operator) — a merely-unmet
- * check carries no `error`.
+ * `actual` is the resolved subject value (possibly `undefined`); `state` is
+ * `unread` when the field or the expected value cannot be compared, which
+ * {@link Comparison} spells out. `error` is set only when evaluation itself failed
+ * (an unknown operator) — an unmet or unread check carries no `error`.
  */
 export interface CheckResult {
 	readonly field: FieldPath
-	readonly met: boolean
+	readonly state: CheckState
 	readonly actual: unknown
 	readonly error?: string
+}
+
+/**
+ * Represents one key an expression reads, with whether that read sits under an odd number
+ * of negations.
+ */
+export interface PolarRead {
+	readonly key: string
+	readonly negated: boolean
 }
 
 /**
@@ -172,10 +196,8 @@ export interface StaticSource {
  * Represents a factor source reading a subject field as a number.
  *
  * @remarks
- * The field is coerced with the contracts `parseNumber` — a finite number
- * passes through, a numeric string coerces, and everything else (including
- * `NaN` / `±Infinity`) is unresolvable, falling back to the factor's
- * `fallback`.
+ * The field must hold a finite number. Anything else, a numeric string, `NaN`,
+ * and absence included, leaves the source unread, and the run refuses.
  */
 export interface FieldSource {
 	readonly origin: 'field'
@@ -186,10 +208,10 @@ export interface FieldSource {
  * Represents a factor source mapping a subject field through a lookup table.
  *
  * @remarks
- * A missing or `null` field takes the factor's `fallback` directly (never the
- * `''` table key); a present value is stringified into a `table` key (a numeric
- * `42` finds the key `'42'`, a real `''` value may hit a `''` key). Only the
- * table's own keys hit — an absent or inherited key falls back.
+ * The field must hold a string, a finite number, or a boolean, stringified into a
+ * `table` key (a numeric `42` finds the key `'42'`), and anything else leaves the
+ * source unread. Only the table's own keys hit; a readable key the table does not
+ * hold takes the factor's `fallback`, and with none the source is unread.
  */
 export interface LookupSource {
 	readonly origin: 'lookup'
@@ -201,9 +223,10 @@ export interface LookupSource {
  * Represents a factor source banding a numeric subject field through ordered ranges.
  *
  * @remarks
- * Ranges are scanned in order and the first match wins. A range without
- * `bounds` matches anything (a catch-all); an absent bound side is open. No
- * match falls back to the factor's `fallback`.
+ * The field must hold a finite number, and anything else leaves the source unread.
+ * Ranges are scanned in order and the first match wins. A range without `bounds`
+ * matches anything (a catch-all); an absent bound side is open. No match takes the
+ * factor's `fallback`, and with none the source is unread.
  */
 export interface RangeSource {
 	readonly origin: 'range'
@@ -224,13 +247,15 @@ export interface FactorRange {
  * Represents one scored input of a quantitative group.
  *
  * @remarks
- * Evaluated as a pipeline: `checks` gate (every check must be met) →
- * `source` resolve (`fallback` when unresolvable) → finite check →
- * `transforms` chain → `bounds` clamp → finite recheck. `weight` participates
- * only at group aggregation. Default: `1`. `priority` orders evaluation
- * ascending, stable. Default: `0`. `enabled: false` skips the factor entirely
- * (omitted from results); `required: true` promotes a gate / resolution failure
- * to a result error (making `success` false) without aborting the run.
+ * Evaluated as a pipeline: `checks` gate (an unmet check leaves the factor
+ * unapplied, otherwise an unread check refuses) → `source` resolve (an unread source
+ * refuses) → finite check → `transforms` chain → `bounds` clamp → finite recheck.
+ * `fallback` serves a lookup's unknown key and a range's missing band, and
+ * `validate` refuses it on any other source. `weight` participates only at group
+ * aggregation. Default: `1`. `priority` orders evaluation ascending, stable.
+ * Default: `0`. `enabled: false` skips the factor entirely (omitted from results);
+ * `required: true` means the factor must apply, so an unmet check is a result error
+ * (making `success` false) without aborting the run.
  */
 export interface Factor {
 	readonly id: string
@@ -257,7 +282,7 @@ export interface Factor {
  * rounded. `strict: true` makes the group all-or-nothing: if any evaluated
  * factor did not apply, the group contributes only its `base` and reports
  * `applied: false`. A group with zero applied factors is excluded from the
- * definition-level aggregation.
+ * definition-level aggregation. A group needs at least one factor.
  */
 export interface FactorGroup {
 	readonly id: string
@@ -278,7 +303,11 @@ export interface FactorGroup {
  * `base` is added before aggregation. Default: `0`.
  * The final value is `base` plus the aggregation of the applied
  * groups' values (no weights at this level), clamped to `bounds`, then rounded
- * to `precision` decimal places. Default: `4`.
+ * to `precision` decimal places. Default: `4`. Needs at least one group. When
+ * every group settled as unapplied the value is `base` plus the aggregation's
+ * identity and `success` is true, because that is authored; `minimum` and `maximum`
+ * have no identity and refuse. `shape` declares the subject, which then passes the
+ * {@link SubjectDoorInterface} before any factor reads it.
  */
 export interface QuantitativeDefinition {
 	readonly reasoning: 'quantitative'
@@ -290,6 +319,7 @@ export interface QuantitativeDefinition {
 	readonly base?: number
 	readonly bounds?: Bounds
 	readonly precision?: number
+	readonly shape?: ContractShape
 }
 
 // === Logical definitions
@@ -336,6 +366,8 @@ export interface Rule {
  * @remarks
  * `strategy` picks forward fixpoint chaining or backward goal-driven proving.
  * `depth` caps forward iterations / backward recursion. Default: `10`.
+ * `shape` declares the subject, which then passes the {@link SubjectDoorInterface}
+ * before any rule reads it.
  */
 export interface LogicalDefinition {
 	readonly reasoning: 'logical'
@@ -345,6 +377,7 @@ export interface LogicalDefinition {
 	readonly rules: readonly Rule[]
 	readonly strategy: ChainStrategy
 	readonly depth?: number
+	readonly shape?: ContractShape
 }
 
 // === Symbolic definitions
@@ -402,7 +435,8 @@ export interface Equation {
  * `variables` seeds the bindings; numeric subject fields override same-named
  * variables. Equations solve strictly in order, each solution rounded to
  * `precision` decimal places before feeding forward into later equations.
- * Default: `4`.
+ * Default: `4`. `shape` declares the subject, which then passes the
+ * {@link SubjectDoorInterface} before any field binds.
  */
 export interface SymbolicDefinition {
 	readonly reasoning: 'symbolic'
@@ -412,6 +446,7 @@ export interface SymbolicDefinition {
 	readonly equations: readonly Equation[]
 	readonly variables: Readonly<Record<string, number>>
 	readonly precision?: number
+	readonly shape?: ContractShape
 }
 
 // === Inferential definitions
@@ -459,6 +494,8 @@ export interface Inference {
  * injected as `has(key, value)` facts. `strategy` picks a forward fixpoint
  * (derive everything) or backward proving (first provable conclusion wins,
  * returning a proof tree). `depth` caps iterations / recursion. Default: `10`.
+ * `shape` declares the subject, which then passes the {@link SubjectDoorInterface}
+ * before any field becomes a fact.
  */
 export interface InferentialDefinition {
 	readonly reasoning: 'inferential'
@@ -469,6 +506,7 @@ export interface InferentialDefinition {
 	readonly facts: readonly Fact[]
 	readonly strategy: ChainStrategy
 	readonly depth?: number
+	readonly shape?: ContractShape
 }
 
 /** Represents any reasoning definition, discriminated by `reasoning`. */
@@ -518,9 +556,11 @@ export interface GroupResult {
  * Represents the outcome of quantitative reasoning.
  *
  * @remarks
- * `count` tallies the applied groups. `success` is `false` whenever any error
- * accumulated (a required-factor failure, a non-finite value) — the numeric
- * `value` is still computed.
+ * `count` tallies the applied groups. `success` is `false` exactly when `errors`
+ * holds an entry (a required factor that did not apply, a non-finite value, an
+ * unread field) — the numeric `value` is still computed, and is no answer then.
+ * `faults` names the input fields the run could not read, one `errors` entry each.
+ * `repairs` and `defaulted` report what the {@link SubjectDoorInterface} changed.
  */
 export interface QuantitativeResult {
 	readonly reasoning: 'quantitative'
@@ -530,42 +570,61 @@ export interface QuantitativeResult {
 	readonly success: boolean
 	readonly trace: readonly string[]
 	readonly errors: readonly string[]
+	readonly faults: readonly AuditFault[]
+	readonly repairs: readonly AuditFault[]
+	readonly defaulted: readonly FieldPath[]
 }
 
 /**
  * Represents one rule's evaluation outcome.
  *
  * @remarks
- * `premises` carries the per-premise truth values; `applied` is true exactly
- * when every premise held.
+ * `premises` carries each premise's state and `state` is their conjunction, so a
+ * rule is `met` when every premise is, `unmet` when any is, and otherwise `unread`.
+ * `checks` carries every atom of the premises, in extraction order, as the final
+ * evaluation read it.
  */
 export interface RuleResult {
 	readonly id: string
-	readonly applied: boolean
-	readonly premises: readonly boolean[]
+	readonly state: CheckState
+	readonly premises: readonly CheckState[]
+	readonly checks: readonly CheckResult[]
 }
 
 /**
  * Represents the outcome of logical reasoning.
  *
  * @remarks
- * `conclusion` is the last evaluated rule's `applied` (`false` when no rule
- * was evaluated); `count` tallies the applied rules; disabled rules are
- * omitted from `rules` entirely.
+ * `conclusion` is `unread` when the run refused, else the last evaluated rule's state
+ * (`unmet` when no rule was evaluated); `count` tallies the `met` rules; disabled
+ * rules are omitted from `rules` entirely. `success` is `false` exactly when `errors`
+ * holds an entry. `faults` names the input fields left unread, transitively through
+ * conclusions and never a conclusion key, one `errors` entry each. A rule can refuse
+ * with no input field to name (an ordering read on a settled conclusion, an unknown
+ * operator); its entry in `errors` names it, and `faults` stays empty. `repairs` and
+ * `defaulted` report what the {@link SubjectDoorInterface} changed.
  */
 export interface LogicalResult {
 	readonly reasoning: 'logical'
-	readonly conclusion: boolean
+	readonly conclusion: CheckState
 	readonly rules: readonly RuleResult[]
 	readonly count: number
 	readonly success: boolean
 	readonly trace: readonly string[]
 	readonly errors: readonly string[]
+	readonly faults: readonly AuditFault[]
+	readonly repairs: readonly AuditFault[]
+	readonly defaulted: readonly FieldPath[]
 }
 
 /**
  * Represents the outcome of symbolic reasoning — final bindings keyed by each equation's
  * `target` (a failed equation's target still appears when bound elsewhere).
+ *
+ * @remarks
+ * `faults` names each variable no subject field, `variables` seed, or equation
+ * binds, one `errors` entry each. `repairs` and `defaulted` report what the
+ * {@link SubjectDoorInterface} changed.
  */
 export interface SymbolicResult {
 	readonly reasoning: 'symbolic'
@@ -573,6 +632,9 @@ export interface SymbolicResult {
 	readonly success: boolean
 	readonly trace: readonly string[]
 	readonly errors: readonly string[]
+	readonly faults: readonly AuditFault[]
+	readonly repairs: readonly AuditFault[]
+	readonly defaulted: readonly FieldPath[]
 }
 
 /**
@@ -597,7 +659,10 @@ export interface ProofNode {
  * @remarks
  * `derived` lists the newly derived facts (deriving nothing is still success);
  * `proof` is produced only by the backward strategy, and only when a
- * conclusion was proved.
+ * conclusion was proved. Hitting the depth cap is an error, because an unfinished
+ * derivation is no answer. `faults` holds only what the {@link SubjectDoorInterface}
+ * refused, because a fact that is absent is no read. `repairs` and `defaulted` report
+ * what that door changed.
  */
 export interface InferentialResult {
 	readonly reasoning: 'inferential'
@@ -606,10 +671,67 @@ export interface InferentialResult {
 	readonly success: boolean
 	readonly trace: readonly string[]
 	readonly errors: readonly string[]
+	readonly faults: readonly AuditFault[]
+	readonly repairs: readonly AuditFault[]
+	readonly defaulted: readonly FieldPath[]
 }
 
 /** Represents any reasoning result, discriminated by `reasoning`. */
 export type ReasonResult = QuantitativeResult | LogicalResult | SymbolicResult | InferentialResult
+
+/**
+ * Represents what resolving a {@link FactorSource} found.
+ *
+ * @remarks
+ * `value` is absent when the source is unread. `fallback` is true when the factor's
+ * `fallback` supplied the value, which the reasoner traces.
+ */
+export interface SourceResult {
+	readonly value?: number
+	readonly fallback: boolean
+}
+
+/**
+ * Represents what the {@link SubjectDoorInterface} made of one subject.
+ *
+ * @remarks
+ * `subject` is present exactly when the door admitted it, parsed. On a refusal, `faults`
+ * names each cause and `errors` holds one string per fault plus what no fault can say. On
+ * admission, `repairs` lists the lossless coercions `parse` made and `defaulted` the paths
+ * `parse` filled.
+ */
+export interface SubjectAdmission {
+	readonly subject?: Subject
+	readonly faults: readonly AuditFault[]
+	readonly repairs: readonly AuditFault[]
+	readonly defaulted: readonly FieldPath[]
+	readonly errors: readonly string[]
+}
+
+/** Declares the door a subject passes before a reasoner reads it. */
+export interface SubjectDoorInterface {
+	/** Admits a subject through a shape, or refuses it and says why; no shape admits it unchanged. */
+	admit(subject: Subject, shape?: ContractShape): SubjectAdmission
+}
+
+/**
+ * Represents what a shape says about one field path.
+ *
+ * @remarks
+ * `declared` is false when the shape leaves no room for the path. `shape` is the field's
+ * own shape, its `optional` wrapper removed, and is absent when the path runs into an open
+ * object, a union, or a `raw` or `json` node, which say nothing about what lies under them.
+ */
+export interface ShapeRead {
+	readonly declared: boolean
+	readonly shape?: ContractShape
+}
+
+/** Represents what scanning a definition's shape against its reads found. */
+export interface ShapeScan {
+	readonly errors: readonly string[]
+	readonly warnings: readonly string[]
+}
 
 /**
  * Represents the outcome of validating a definition — hard `errors` (definition unusable)
@@ -617,12 +739,14 @@ export type ReasonResult = QuantitativeResult | LogicalResult | SymbolicResult |
  * `errors` is empty.
  *
  * @remarks
- * Warnings cover empty collections, duplicate ids (`Duplicate <noun> id`),
- * inferential confidences outside `[0, 1]`, a logical conclusion's array-path
- * overlay key also read through an array-path premise elsewhere (the flat overlay
- * key will not resolve), and an inferential conclusion carrying a `?variable`
- * unbound by all of its inference's premises — the runtime stays permissive
- * about all of them.
+ * Errors cover a definition its exact guard refuses, connective arity, a malformed
+ * expected value, a conclusion that is not `equals` atoms under `and` or that asserts
+ * `false`, a cycle through negation among conclusion keys, duplicate ids, a
+ * conclusion's array-path overlay key also read through an array path, empty rules,
+ * groups, and factors, a rule with no premises, a `fallback` on a source that cannot
+ * use it, a binary operation with no right side, and a confidence outside `[0, 1]`. Warnings cover an
+ * empty inference set, an inference with no premises, and an inferential conclusion
+ * carrying a `?variable` unbound by all of its inference's premises.
  */
 export interface ReasonValidationResult {
 	readonly valid: boolean
@@ -721,7 +845,7 @@ export interface InferentialReasonerOptions {
  *
  * @remarks
  * Total: `evaluate` never throws — an unknown operator surfaces as
- * `CheckResult.error` with `met: false`, and errors are isolated per item in
+ * `CheckResult.error` with `state: 'unread'`, and errors are isolated per item in
  * `batch`.
  */
 export interface EvaluatorInterface {
@@ -864,10 +988,10 @@ export type ReasonEventMap = {
  * `reasoners` — the initial registry (a later entry of the same reasoning
  * replaces an earlier one). `bail` — if `true`, a reasoner throw is rethrown
  * after the `error` emit; if `false`, it becomes a failure result. Default:
- * `true`. `validate` — if `true`, every `reason` call validates the definition
- * first and throws `INVALID` on failure; if `false`, no call validates.
- * Default: `false`. `on` — initial event listeners. `error` — the emitter's
- * listener-error handler.
+ * `true`. `validate` — if `true`, a `reason` call validates a definition it has not
+ * yet seen and throws `INVALID` on failure, remembering a valid definition by its
+ * identity; if `false`, no call validates. Default: `true`. `on` — initial event
+ * listeners. `error` — the emitter's listener-error handler.
  */
 export interface ReasonOptions {
 	readonly reasoners?: readonly ReasonerInterface[]
@@ -1542,39 +1666,26 @@ export type DefinitionEnvelope =
  * Names the optional {@link QuantitativeDefinition} fields `clearQuantitativeDefinition`
  * (and a quantitative {@link DefinitionBuilderInterface}'s `clear`) can delete.
  */
-export type QuantitativeClearKey = 'description' | 'base' | 'bounds' | 'precision'
+export type QuantitativeClearKey = 'description' | 'base' | 'bounds' | 'precision' | 'shape'
 
 /**
  * Names the optional {@link LogicalDefinition} fields `clearLogicalDefinition` (and a
  * logical {@link DefinitionBuilderInterface}'s `clear`) can delete.
  */
-export type LogicalClearKey = 'description' | 'depth'
+export type LogicalClearKey = 'description' | 'depth' | 'shape'
 
 /**
  * Names the optional {@link SymbolicDefinition} fields `clearSymbolicDefinition` (and
  * a symbolic {@link DefinitionBuilderInterface}'s `clear`) can delete.
  */
-export type SymbolicClearKey = 'description' | 'precision'
+export type SymbolicClearKey = 'description' | 'precision' | 'shape'
 
 /**
  * Names the optional {@link InferentialDefinition} fields
  * `clearInferentialDefinition` (and an inferential
  * {@link DefinitionBuilderInterface}'s `clear`) can delete.
  */
-export type InferentialClearKey = 'description' | 'depth'
-
-/**
- * Represents one chaining pass of the `LogicalReasoner` — the overall `conclusion` plus
- * the per-rule results the pass produced.
- *
- * @remarks
- * The shared return shape of the forward-fixpoint and backward-proving passes;
- * `LogicalResult.count` is derived from `rules` rather than carried here.
- */
-export interface LogicalChainResult {
-	readonly conclusion: boolean
-	readonly rules: readonly RuleResult[]
-}
+export type InferentialClearKey = 'description' | 'depth' | 'shape'
 
 /**
  * Represents one chaining pass of the `InferentialReasoner` — the facts the pass derived

@@ -14,6 +14,7 @@ import type {
 } from '../types.js'
 import { isArray, isObject, iterateIndices } from '@orkestrel/contract'
 import {
+	buildRefusedResult,
 	computePremiseConfidence,
 	factToArityKey,
 	factToKey,
@@ -23,6 +24,7 @@ import {
 	instantiateFact,
 	matchFacts,
 	roundTo,
+	scanShape,
 	subjectToFacts,
 } from '../helpers.js'
 import {
@@ -32,7 +34,9 @@ import {
 	INFERENTIAL_ID,
 } from '../constants.js'
 import { ReasonError } from '../errors.js'
+import { SubjectDoor } from '../SubjectDoor.js'
 import { InferenceJoin } from '../InferenceJoin.js'
+import { isFact, isInference, isInferentialDefinition } from '../validators.js'
 
 /**
  * Derives facts with unification variables and proof trees.
@@ -87,6 +91,8 @@ import { InferenceJoin } from '../InferenceJoin.js'
 export class InferentialReasoner implements ReasonerInterface {
 	readonly #id: string
 
+	readonly #door = new SubjectDoor()
+
 	constructor(options?: InferentialReasonerOptions) {
 		this.#id = options?.id ?? INFERENTIAL_ID
 	}
@@ -104,63 +110,66 @@ export class InferentialReasoner implements ReasonerInterface {
 	}
 
 	validate(definition: Definition): ReasonValidationResult {
-		const errors: string[] = []
-		const warnings: string[] = []
-
 		if (definition.reasoning !== 'inferential') {
-			errors.push(`Expected reasoning "inferential", got "${definition.reasoning}"`)
-			return { valid: false, errors, warnings }
-		}
-
-		if (!definition.id) errors.push('Definition must have an id')
-		if (!definition.name) errors.push('Definition must have a name')
-
-		// An empty inference set is suspicious but runnable — a warning, not an
-		// error (unlike the other reasoners' empty collections).
-		if (!definition.inferences || definition.inferences.length === 0) {
-			warnings.push('Definition has no inference rules')
-		}
-
-		// Duplicate ids are warnings — the runtime stays permissive about them.
-		for (const id of findDuplicates(definition.inferences ?? [])) {
-			warnings.push(`Duplicate inference id "${id}"`)
-		}
-
-		// Confidence is a 0–1 multiplicative weight; anything outside is
-		// suspicious but runnable — a warning, never an error.
-		for (const fact of definition.facts ?? []) {
-			if (!isObject(fact)) continue
-			if (fact.confidence !== undefined && !(fact.confidence >= 0 && fact.confidence <= 1)) {
-				warnings.push(`Fact "${fact.id}" confidence outside [0, 1]`)
+			return {
+				valid: false,
+				errors: [`Expected reasoning "inferential", got "${definition.reasoning}"`],
+				warnings: [],
 			}
 		}
-
-		for (const inference of definition.inferences ?? []) {
-			if (!isObject(inference)) continue
-			if (!inference.id) errors.push('Inference must have an id')
-			if (!inference.premises || inference.premises.length === 0) {
-				warnings.push(`Inference "${inference.id}" has no premises`)
+		const facts: unknown = definition.facts
+		const inferences: unknown = definition.inferences
+		if (!isInferentialDefinition(definition)) {
+			const factEntries: readonly unknown[] = isArray(facts) ? facts : []
+			const inferenceEntries: readonly unknown[] = isArray(inferences) ? inferences : []
+			return {
+				valid: false,
+				errors: [
+					'Definition does not match the inferential definition shape',
+					...factEntries.flatMap((fact, index) =>
+						isFact(fact) ? [] : [`Fact at index ${String(index)} is malformed`],
+					),
+					...inferenceEntries.flatMap((inference, index) =>
+						isInference(inference) ? [] : [`Inference at index ${String(index)} is malformed`],
+					),
+				],
+				warnings: [],
 			}
-			if (!inference.conclusion) {
-				errors.push(`Inference "${inference.id}" must have a conclusion`)
-			}
-			if (
-				inference.confidence !== undefined &&
+		}
+		const errors = [
+			...(definition.id ? [] : ['Definition must have an id']),
+			...(definition.name ? [] : ['Definition must have a name']),
+			...findDuplicates(definition.inferences).map((id) => `Duplicate inference id "${id}"`),
+			...findDuplicates(definition.facts).map((id) => `Duplicate fact id "${id}"`),
+			// Confidence is a 0–1 multiplicative weight; a value outside it means nothing.
+			...definition.facts.flatMap((fact) =>
+				fact.confidence !== undefined && !(fact.confidence >= 0 && fact.confidence <= 1)
+					? [`Fact "${fact.id}" confidence outside [0, 1]`]
+					: [],
+			),
+			...definition.inferences.flatMap((inference) => [
+				...(inference.id ? [] : ['Inference must have an id']),
+				...(inference.confidence !== undefined &&
 				!(inference.confidence >= 0 && inference.confidence <= 1)
-			) {
-				warnings.push(`Inference "${inference.id}" confidence outside [0, 1]`)
-			}
-			// Unbound-variable footgun: only meaningful for an enabled,
-			// conclusion-bearing inference (a missing conclusion has nothing to check).
-			if (inference.enabled !== false && inference.conclusion) {
-				for (const name of findUnboundVariables(inference)) {
-					warnings.push(
-						`Inference "${inference.id}" conclusion variable "${name}" is unbound by all premises`,
-					)
-				}
-			}
-		}
-
+					? [`Inference "${inference.id}" confidence outside [0, 1]`]
+					: []),
+			]),
+			...(definition.shape === undefined ? [] : scanShape(definition.shape)),
+		]
+		const warnings = [
+			// An empty inference set is suspicious but runnable, and deriving nothing claims nothing.
+			...(definition.inferences.length === 0 ? ['Definition has no inference rules'] : []),
+			...definition.inferences.flatMap((inference) => [
+				...(inference.premises.length === 0 ? [`Inference "${inference.id}" has no premises`] : []),
+				// Unbound-variable footgun: only meaningful for an enabled inference.
+				...(inference.enabled === false
+					? []
+					: findUnboundVariables(inference).map(
+							(name) =>
+								`Inference "${inference.id}" conclusion variable "${name}" is unbound by all premises`,
+						)),
+			]),
+		]
 		return { valid: errors.length === 0, errors, warnings }
 	}
 
@@ -187,12 +196,19 @@ export class InferentialReasoner implements ReasonerInterface {
 				success: false,
 				trace: [],
 				errors: ['Definition must have "facts" and "inferences" arrays'],
+				faults: [],
+				repairs: [],
+				defaulted: [],
 			}
 		}
 
+		const admission = this.#door.admit(subject, definition.shape)
+		const admitted = admission.subject
+		if (admitted === undefined) return buildRefusedResult(definition, admission)
+
 		const trace: string[] = []
 		const errors: string[] = []
-		const injected = subjectToFacts(subject)
+		const injected = subjectToFacts(admitted)
 		trace.push(...injected.trace)
 
 		const result =
@@ -207,6 +223,9 @@ export class InferentialReasoner implements ReasonerInterface {
 			success: errors.length === 0,
 			trace,
 			errors,
+			faults: [],
+			repairs: admission.repairs,
+			defaulted: admission.defaulted,
 		}
 	}
 
@@ -220,8 +239,11 @@ export class InferentialReasoner implements ReasonerInterface {
 	): InferentialChainResult {
 		const maxDepth = definition.depth ?? DEFAULT_DEPTH
 		const knownFacts: Fact[] = []
-		for (const known of [...definition.facts, ...subjectFacts]) {
-			if (!isObject(known)) continue
+		for (const [index, known] of [...definition.facts, ...subjectFacts].entries()) {
+			if (!isObject(known)) {
+				errors.push(`Fact at index ${String(index)} is malformed`)
+				continue
+			}
 			knownFacts.push(known)
 		}
 		const derived: Fact[] = []
@@ -254,8 +276,11 @@ export class InferentialReasoner implements ReasonerInterface {
 		// Pre-filter: disabled inferences skip silently; a premise-less or
 		// conclusion-less inference errors once and is excluded.
 		const validInferences: Inference[] = []
-		for (const inference of definition.inferences) {
-			if (!isObject(inference)) continue
+		for (const [index, inference] of definition.inferences.entries()) {
+			if (!isObject(inference)) {
+				errors.push(`Inference at index ${String(index)} is malformed`)
+				continue
+			}
 			if (inference.enabled === false) continue
 			if (!inference.premises || inference.premises.length === 0) {
 				errors.push(`Inference "${inference.id}" has no premises — skipped`)
@@ -306,10 +331,11 @@ export class InferentialReasoner implements ReasonerInterface {
 
 			if (!changed) {
 				trace.push(`Forward chaining converged at iteration ${iteration + 1}`)
-				break
+				return { derived }
 			}
 		}
 
+		errors.push(`Forward chaining did not settle within depth ${String(maxDepth)}`)
 		return { derived }
 	}
 
@@ -323,9 +349,13 @@ export class InferentialReasoner implements ReasonerInterface {
 	): InferentialChainResult {
 		const maxDepth = definition.depth ?? DEFAULT_DEPTH
 		const derived: Fact[] = []
+		const capped: string[] = []
 		const allBaseFacts: Fact[] = []
-		for (const known of [...definition.facts, ...subjectFacts]) {
-			if (!isObject(known)) continue
+		for (const [index, known] of [...definition.facts, ...subjectFacts].entries()) {
+			if (!isObject(known)) {
+				errors.push(`Fact at index ${String(index)} is malformed`)
+				continue
+			}
 			allBaseFacts.push(known)
 		}
 
@@ -334,8 +364,11 @@ export class InferentialReasoner implements ReasonerInterface {
 			return { derived }
 		}
 
-		for (const inference of definition.inferences) {
-			if (!isObject(inference)) continue
+		for (const [index, inference] of definition.inferences.entries()) {
+			if (!isObject(inference)) {
+				errors.push(`Inference at index ${String(index)} is malformed`)
+				continue
+			}
 			if (inference.enabled === false) continue
 
 			if (!inference.conclusion) {
@@ -349,6 +382,7 @@ export class InferentialReasoner implements ReasonerInterface {
 				allBaseFacts,
 				0,
 				maxDepth,
+				capped,
 			)
 
 			if (proof) {
@@ -366,6 +400,8 @@ export class InferentialReasoner implements ReasonerInterface {
 			}
 		}
 
+		// A search the cap cut short has no answer, unless another path already proved the goal.
+		errors.push(...capped)
 		return { derived }
 	}
 
@@ -378,8 +414,13 @@ export class InferentialReasoner implements ReasonerInterface {
 		baseFacts: readonly Fact[],
 		depth: number,
 		maxDepth: number,
+		capped: string[],
 	): ProofNode | undefined {
-		if (depth > maxDepth) return undefined
+		if (depth > maxDepth) {
+			const message = `Backward proving hit depth ${String(maxDepth)}`
+			if (!capped.includes(message)) capped.push(message)
+			return undefined
+		}
 
 		for (const fact of baseFacts) {
 			if (matchFacts(goal, fact)) {
@@ -403,7 +444,7 @@ export class InferentialReasoner implements ReasonerInterface {
 			const children: ProofNode[] = []
 			const allProved = Iterator.from(inference.premises).every((premise) => {
 				const instantiated = instantiateFact(premise, conclusionBindings)
-				const child = this.#prove(instantiated, inferences, baseFacts, depth + 1, maxDepth)
+				const child = this.#prove(instantiated, inferences, baseFacts, depth + 1, maxDepth, capped)
 				if (child) {
 					children.push(child)
 					return true

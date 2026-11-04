@@ -1,10 +1,11 @@
-import type { FieldPath, Guard } from '@orkestrel/contract'
+import type { AuditFault, ContractShape, FieldPath, Guard, LiteralValue } from '@orkestrel/contract'
 import type {
 	Aggregation,
 	Bounds,
 	ChainStrategy,
 	Check,
 	CheckResult,
+	CheckState,
 	Comparison,
 	Definition,
 	DefinitionBuilderInterface,
@@ -44,25 +45,41 @@ import type {
 } from './types.js'
 import {
 	arrayOf,
+	attempt,
 	GUARD_DEPTH_LIMIT,
 	holds,
 	isArray,
 	isBoolean,
 	isFiniteNumber,
+	isJSONValue,
+	isLiteralValue,
+	isNull,
 	isNumber,
 	isObject,
 	isRecord,
 	isString,
+	isSuccess,
 	lazyOf,
 	literalOf,
-	notOf,
 	orOf,
 	readArrayEntries,
 	recordOf,
+	tupleOf,
 	unionOf,
+	validateShape,
 	whereOf,
 } from '@orkestrel/contract'
-import { DEFINITION_BUILDER_BRAND, SUBJECT_BUILDER_BRAND } from './constants.js'
+import {
+	AGGREGATIONS,
+	CHAIN_STRATEGIES,
+	CHECK_STATES,
+	COMPARISONS,
+	DEFINITION_BUILDER_BRAND,
+	LOGICAL_OPERATORS,
+	MATH_OPERATIONS,
+	REASONINGS,
+	SUBJECT_BUILDER_BRAND,
+} from './constants.js'
 
 // Every guard here is a total function — adversarial input (junk,
 // hostile prototypes, deep nesting) returns `false`, never throws. Input
@@ -86,6 +103,146 @@ import { DEFINITION_BUILDER_BRAND, SUBJECT_BUILDER_BRAND } from './constants.js'
 // call so no non-exported member lingers.
 
 /**
+ * Determines whether a value is a {@link CheckState} literal.
+ *
+ * @param value - The value to test
+ * @returns True if `value` is `'met'`, `'unmet'`, or `'unread'`; false otherwise
+ *
+ * @example
+ * ```ts
+ * import { isCheckState } from '@src/core'
+ *
+ * isCheckState('unread') // true
+ * isCheckState(true)     // false
+ * ```
+ */
+export const isCheckState: Guard<CheckState> = literalOf(...CHECK_STATES)
+
+/**
+ * Determines whether a value can key a lookup table — a finite number, a string, or a
+ * boolean.
+ *
+ * @param value - The value to test
+ * @returns True if `value` is a finite number, a string, or a boolean; false otherwise
+ *
+ * @example
+ * ```ts
+ * import { isLookupKey } from '@src/core'
+ *
+ * isLookupKey('CA')       // true
+ * isLookupKey(Number.NaN) // false
+ * isLookupKey(null)       // false
+ * ```
+ */
+export const isLookupKey: Guard<LiteralValue> = whereOf(
+	isLiteralValue,
+	(value) => !isNumber(value) || isFiniteNumber(value),
+)
+
+/**
+ * Determines whether a value is one a comparison can settle — a lookup key or `null`, which
+ * is a value of its own.
+ *
+ * @param value - The value to test
+ * @returns True if `value` is a finite number, a string, a boolean, or `null`; false otherwise
+ *
+ * @example
+ * ```ts
+ * import { isComparable } from '@src/core'
+ *
+ * isComparable('CA')       // true
+ * isComparable(null)       // true
+ * isComparable(Number.NaN) // false
+ * isComparable({})         // false
+ * ```
+ */
+export const isComparable: Guard<LiteralValue | null> = unionOf(isLookupKey, isNull)
+
+/**
+ * Determines whether a value is a well-formed `ContractShape`, by asking `contract`.
+ *
+ * @param value - The value to test
+ * @returns True if `validateShape` accepts `value`; false otherwise
+ *
+ * @example
+ * ```ts
+ * import { numberShape } from '@orkestrel/contract'
+ * import { isContractShape } from '@src/core'
+ *
+ * isContractShape(numberShape())       // true
+ * isContractShape({ category: 'nope' }) // false
+ * ```
+ */
+export function isContractShape(value: unknown): value is ContractShape {
+	return isSuccess(attempt(() => Reflect.apply(validateShape, undefined, [value])))
+}
+
+/**
+ * Determines whether a value is a fault a result can carry, read openly because a result
+ * is the package's own output.
+ *
+ * @param value - The value to test
+ * @returns True if `value` carries a string `reason` and a `FieldPath`; false otherwise
+ *
+ * @example
+ * ```ts
+ * import { isAuditFault } from '@src/core'
+ *
+ * isAuditFault({ reason: 'extra', path: ['x'] }) // true
+ * isAuditFault({ path: ['x'] })                  // false
+ * ```
+ */
+export function isAuditFault(value: unknown): value is AuditFault {
+	return (
+		isObject(value) &&
+		isString(Reflect.get(value, 'reason')) &&
+		isFieldPath(Reflect.get(value, 'path'))
+	)
+}
+
+/**
+ * Determines whether a value is a well-formed range for `between` and `outside` — two
+ * finite numbers, the first no greater than the second.
+ *
+ * @param value - The value to test
+ * @returns True if `value` is a two-element ordered numeric range; false otherwise
+ *
+ * @example
+ * ```ts
+ * import { isRange } from '@src/core'
+ *
+ * isRange([1, 10])  // true
+ * isRange([10, 1])  // false — reversed
+ * isRange([1])      // false
+ * ```
+ */
+export const isRange: Guard<readonly [number, number]> = whereOf(
+	tupleOf(isFiniteNumber, isFiniteNumber),
+	(range) => range[0] <= range[1],
+)
+
+/**
+ * Determines whether a value is a well-formed membership list for `any` and `none` —
+ * a non-empty array of comparable values.
+ *
+ * @param value - The value to test
+ * @returns True if `value` is a non-empty array of comparable values; false otherwise
+ *
+ * @example
+ * ```ts
+ * import { isMembership } from '@src/core'
+ *
+ * isMembership(['CA', 'NY']) // true
+ * isMembership([])           // false
+ * isMembership([null])       // false
+ * ```
+ */
+export const isMembership: Guard<ReadonlyArray<LiteralValue | null>> = whereOf(
+	arrayOf(isComparable),
+	(values) => values.length > 0,
+)
+
+/**
  * Determines whether a value is a {@link Reasoning} literal.
  *
  * @param value - The value to test
@@ -99,12 +256,7 @@ import { DEFINITION_BUILDER_BRAND, SUBJECT_BUILDER_BRAND } from './constants.js'
  * isReasoning('fuzzy')   // false
  * ```
  */
-export const isReasoning: Guard<Reasoning> = literalOf(
-	'quantitative',
-	'logical',
-	'symbolic',
-	'inferential',
-)
+export const isReasoning: Guard<Reasoning> = literalOf(...REASONINGS)
 
 /**
  * Determines whether a value is a {@link ChainStrategy} literal.
@@ -120,7 +272,7 @@ export const isReasoning: Guard<Reasoning> = literalOf(
  * isChainStrategy('upward')  // false
  * ```
  */
-export const isChainStrategy: Guard<ChainStrategy> = literalOf('forward', 'backward')
+export const isChainStrategy: Guard<ChainStrategy> = literalOf(...CHAIN_STRATEGIES)
 
 /**
  * Determines whether a value is a {@link MathOperation} literal.
@@ -136,21 +288,7 @@ export const isChainStrategy: Guard<ChainStrategy> = literalOf('forward', 'backw
  * isMathOperation('modulo')   // false
  * ```
  */
-export const isMathOperation: Guard<MathOperation> = literalOf(
-	'add',
-	'subtract',
-	'multiply',
-	'divide',
-	'percentage',
-	'minimum',
-	'maximum',
-	'average',
-	'power',
-	'round',
-	'ceil',
-	'floor',
-	'abs',
-)
+export const isMathOperation: Guard<MathOperation> = literalOf(...MATH_OPERATIONS)
 
 /**
  * Determines whether a value is an {@link Aggregation} literal.
@@ -166,13 +304,7 @@ export const isMathOperation: Guard<MathOperation> = literalOf(
  * isAggregation('median') // false
  * ```
  */
-export const isAggregation: Guard<Aggregation> = literalOf(
-	'sum',
-	'product',
-	'average',
-	'minimum',
-	'maximum',
-)
+export const isAggregation: Guard<Aggregation> = literalOf(...AGGREGATIONS)
 
 /**
  * Determines whether a value is a {@link Comparison} literal.
@@ -188,18 +320,7 @@ export const isAggregation: Guard<Aggregation> = literalOf(
  * isComparison('greaterThan') // false — the operator vocabulary is single-word
  * ```
  */
-export const isComparison: Guard<Comparison> = literalOf(
-	'equals',
-	'not',
-	'above',
-	'below',
-	'from',
-	'to',
-	'any',
-	'none',
-	'between',
-	'outside',
-)
+export const isComparison: Guard<Comparison> = literalOf(...COMPARISONS)
 
 /**
  * Determines whether a value is a {@link LogicalOperator} literal.
@@ -215,13 +336,7 @@ export const isComparison: Guard<Comparison> = literalOf(
  * isLogicalOperator('nand')    // false
  * ```
  */
-export const isLogicalOperator: Guard<LogicalOperator> = literalOf(
-	'and',
-	'or',
-	'not',
-	'implies',
-	'xor',
-)
+export const isLogicalOperator: Guard<LogicalOperator> = literalOf(...LOGICAL_OPERATORS)
 
 /**
  * Determines whether a value is a {@link FieldPath} — a single string key or an
@@ -284,7 +399,7 @@ export function isCheck(value: unknown): value is Check {
 	return recordOf({
 		field: isFieldPath,
 		operator: isComparison,
-		value: notOf(unionOf()),
+		value: isJSONValue,
 	})(value)
 }
 
@@ -658,8 +773,9 @@ export function isQuantitativeDefinition(value: unknown): value is QuantitativeD
 			base: isFiniteNumber,
 			bounds: isBounds,
 			precision: isFiniteNumber,
+			shape: isContractShape,
 		},
-		['description', 'base', 'bounds', 'precision'],
+		['description', 'base', 'bounds', 'precision', 'shape'],
 	)(value)
 }
 
@@ -687,8 +803,9 @@ export function isLogicalDefinition(value: unknown): value is LogicalDefinition 
 			rules: arrayOf(isRule),
 			strategy: isChainStrategy,
 			depth: isFiniteNumber,
+			shape: isContractShape,
 		},
-		['description', 'depth'],
+		['description', 'depth', 'shape'],
 	)(value)
 }
 
@@ -716,8 +833,9 @@ export function isSymbolicDefinition(value: unknown): value is SymbolicDefinitio
 			equations: arrayOf(isEquation),
 			variables: isNumberRecord,
 			precision: isFiniteNumber,
+			shape: isContractShape,
 		},
-		['description', 'precision'],
+		['description', 'precision', 'shape'],
 	)(value)
 }
 
@@ -746,8 +864,9 @@ export function isInferentialDefinition(value: unknown): value is InferentialDef
 			facts: arrayOf(isFact),
 			strategy: isChainStrategy,
 			depth: isFiniteNumber,
+			shape: isContractShape,
 		},
-		['description', 'depth'],
+		['description', 'depth', 'shape'],
 	)(value)
 }
 
@@ -795,6 +914,7 @@ export const isQuantitativeClearKey: Guard<QuantitativeClearKey> = literalOf(
 	'base',
 	'bounds',
 	'precision',
+	'shape',
 )
 
 /**
@@ -812,7 +932,7 @@ export const isQuantitativeClearKey: Guard<QuantitativeClearKey> = literalOf(
  * isLogicalClearKey('strategy') // false — required, never clearable
  * ```
  */
-export const isLogicalClearKey: Guard<LogicalClearKey> = literalOf('description', 'depth')
+export const isLogicalClearKey: Guard<LogicalClearKey> = literalOf('description', 'depth', 'shape')
 
 /**
  * Determines whether a value is a {@link SymbolicClearKey} — an optional field
@@ -829,7 +949,11 @@ export const isLogicalClearKey: Guard<LogicalClearKey> = literalOf('description'
  * isSymbolicClearKey('variables') // false — required, never clearable
  * ```
  */
-export const isSymbolicClearKey: Guard<SymbolicClearKey> = literalOf('description', 'precision')
+export const isSymbolicClearKey: Guard<SymbolicClearKey> = literalOf(
+	'description',
+	'precision',
+	'shape',
+)
 
 /**
  * Determines whether a value is an {@link InferentialClearKey} — an optional
@@ -846,7 +970,11 @@ export const isSymbolicClearKey: Guard<SymbolicClearKey> = literalOf('descriptio
  * isInferentialClearKey('strategy') // false — required, never clearable
  * ```
  */
-export const isInferentialClearKey: Guard<InferentialClearKey> = literalOf('description', 'depth')
+export const isInferentialClearKey: Guard<InferentialClearKey> = literalOf(
+	'description',
+	'depth',
+	'shape',
+)
 
 /**
  * Determines whether a value is a result-side {@link Fact}.
@@ -895,8 +1023,8 @@ export function isResultFact(value: unknown): value is Fact {
  * ```ts
  * import { isCheckResult } from '@src/core'
  *
- * isCheckResult({ field: 'age', met: true, actual: 30 })  // true
- * isCheckResult({ field: 'age', met: 'yes', actual: 30 }) // false
+ * isCheckResult({ field: 'age', state: 'met', actual: 30 }) // true
+ * isCheckResult({ field: 'age', state: true, actual: 30 })  // false
  * ```
  */
 export function isCheckResult(value: unknown): value is CheckResult {
@@ -905,7 +1033,7 @@ export function isCheckResult(value: unknown): value is CheckResult {
 		const error = Reflect.get(result, 'error')
 		return (
 			isFieldPath(Reflect.get(result, 'field')) &&
-			isBoolean(Reflect.get(result, 'met')) &&
+			isCheckState(Reflect.get(result, 'state')) &&
 			Reflect.has(result, 'actual') &&
 			(error === undefined || isString(error))
 		)
@@ -981,8 +1109,8 @@ export function isGroupResult(value: unknown): value is GroupResult {
  * ```ts
  * import { isRuleResult } from '@src/core'
  *
- * isRuleResult({ id: 'adult', applied: true, premises: [true] }) // true
- * isRuleResult({ id: 'adult', applied: true, premises: [1] })    // false
+ * isRuleResult({ id: 'adult', state: 'met', premises: ['met'], checks: [] }) // true
+ * isRuleResult({ id: 'adult', state: 'met', premises: [true], checks: [] })  // false
  * ```
  */
 export function isRuleResult(value: unknown): value is RuleResult {
@@ -990,8 +1118,9 @@ export function isRuleResult(value: unknown): value is RuleResult {
 		return (
 			!isArray(result) &&
 			isString(Reflect.get(result, 'id')) &&
-			isBoolean(Reflect.get(result, 'applied')) &&
-			arrayOf(isBoolean)(Reflect.get(result, 'premises'))
+			isCheckState(Reflect.get(result, 'state')) &&
+			arrayOf(isCheckState)(Reflect.get(result, 'premises')) &&
+			arrayOf(isCheckResult)(Reflect.get(result, 'checks'))
 		)
 	})(value)
 }
@@ -1072,8 +1201,8 @@ export function isProofNode(value: unknown): value is ProofNode {
  * ```ts
  * import { isQuantitativeResult } from '@src/core'
  *
- * isQuantitativeResult({ reasoning: 'quantitative', value: 0, groups: [], count: 0, success: true, trace: [], errors: [] }) // true
- * isQuantitativeResult({ reasoning: 'quantitative' })                                                                       // false
+ * isQuantitativeResult({ reasoning: 'quantitative', value: 0, groups: [], count: 0, success: true, trace: [], errors: [], unread: [], defaulted: [] }) // true
+ * isQuantitativeResult({ reasoning: 'quantitative' })                                                                                                  // false
  * ```
  */
 export function isQuantitativeResult(value: unknown): value is QuantitativeResult {
@@ -1086,7 +1215,10 @@ export function isQuantitativeResult(value: unknown): value is QuantitativeResul
 			isNumber(Reflect.get(result, 'count')) &&
 			isBoolean(Reflect.get(result, 'success')) &&
 			arrayOf(isString)(Reflect.get(result, 'trace')) &&
-			arrayOf(isString)(Reflect.get(result, 'errors'))
+			arrayOf(isString)(Reflect.get(result, 'errors')) &&
+			arrayOf(isAuditFault)(Reflect.get(result, 'faults')) &&
+			arrayOf(isAuditFault)(Reflect.get(result, 'repairs')) &&
+			arrayOf(isFieldPath)(Reflect.get(result, 'defaulted'))
 		)
 	})(value)
 }
@@ -1101,8 +1233,8 @@ export function isQuantitativeResult(value: unknown): value is QuantitativeResul
  * ```ts
  * import { isLogicalResult } from '@src/core'
  *
- * isLogicalResult({ reasoning: 'logical', conclusion: false, rules: [], count: 0, success: true, trace: [], errors: [] }) // true
- * isLogicalResult({ reasoning: 'logical', rules: [] })                                                                    // false
+ * isLogicalResult({ reasoning: 'logical', state: 'unmet', rules: [], count: 0, success: true, trace: [], errors: [], unread: [], defaulted: [] }) // true
+ * isLogicalResult({ reasoning: 'logical', rules: [] })                                                                                             // false
  * ```
  */
 export function isLogicalResult(value: unknown): value is LogicalResult {
@@ -1110,12 +1242,15 @@ export function isLogicalResult(value: unknown): value is LogicalResult {
 		return (
 			!isArray(result) &&
 			Reflect.get(result, 'reasoning') === 'logical' &&
-			isBoolean(Reflect.get(result, 'conclusion')) &&
+			isCheckState(Reflect.get(result, 'conclusion')) &&
 			arrayOf(isRuleResult)(Reflect.get(result, 'rules')) &&
 			isNumber(Reflect.get(result, 'count')) &&
 			isBoolean(Reflect.get(result, 'success')) &&
 			arrayOf(isString)(Reflect.get(result, 'trace')) &&
-			arrayOf(isString)(Reflect.get(result, 'errors'))
+			arrayOf(isString)(Reflect.get(result, 'errors')) &&
+			arrayOf(isAuditFault)(Reflect.get(result, 'faults')) &&
+			arrayOf(isAuditFault)(Reflect.get(result, 'repairs')) &&
+			arrayOf(isFieldPath)(Reflect.get(result, 'defaulted'))
 		)
 	})(value)
 }
@@ -1135,8 +1270,8 @@ export function isLogicalResult(value: unknown): value is LogicalResult {
  * ```ts
  * import { isSymbolicResult } from '@src/core'
  *
- * isSymbolicResult({ reasoning: 'symbolic', solutions: { x: 4 }, success: true, trace: [], errors: [] })   // true
- * isSymbolicResult({ reasoning: 'symbolic', solutions: { x: '4' }, success: true, trace: [], errors: [] }) // false
+ * isSymbolicResult({ reasoning: 'symbolic', solutions: { x: 4 }, success: true, trace: [], errors: [], unread: [], defaulted: [] })   // true
+ * isSymbolicResult({ reasoning: 'symbolic', solutions: { x: '4' }, success: true, trace: [], errors: [], unread: [], defaulted: [] }) // false
  * ```
  */
 export function isSymbolicResult(value: unknown): value is SymbolicResult {
@@ -1154,7 +1289,10 @@ export function isSymbolicResult(value: unknown): value is SymbolicResult {
 			)(Reflect.get(result, 'solutions')) &&
 			isBoolean(Reflect.get(result, 'success')) &&
 			arrayOf(isString)(Reflect.get(result, 'trace')) &&
-			arrayOf(isString)(Reflect.get(result, 'errors'))
+			arrayOf(isString)(Reflect.get(result, 'errors')) &&
+			arrayOf(isAuditFault)(Reflect.get(result, 'faults')) &&
+			arrayOf(isAuditFault)(Reflect.get(result, 'repairs')) &&
+			arrayOf(isFieldPath)(Reflect.get(result, 'defaulted'))
 		)
 	})(value)
 }
@@ -1169,8 +1307,8 @@ export function isSymbolicResult(value: unknown): value is SymbolicResult {
  * ```ts
  * import { isInferentialResult } from '@src/core'
  *
- * isInferentialResult({ reasoning: 'inferential', derived: [], success: true, trace: [], errors: [] })     // true
- * isInferentialResult({ reasoning: 'inferential', derived: [null], success: true, trace: [], errors: [] }) // false
+ * isInferentialResult({ reasoning: 'inferential', derived: [], success: true, trace: [], errors: [], unread: [], defaulted: [] })     // true
+ * isInferentialResult({ reasoning: 'inferential', derived: [null], success: true, trace: [], errors: [], unread: [], defaulted: [] }) // false
  * ```
  */
 export function isInferentialResult(value: unknown): value is InferentialResult {
@@ -1183,7 +1321,10 @@ export function isInferentialResult(value: unknown): value is InferentialResult 
 			(proof === undefined || isProofNode(proof)) &&
 			isBoolean(Reflect.get(result, 'success')) &&
 			arrayOf(isString)(Reflect.get(result, 'trace')) &&
-			arrayOf(isString)(Reflect.get(result, 'errors'))
+			arrayOf(isString)(Reflect.get(result, 'errors')) &&
+			arrayOf(isAuditFault)(Reflect.get(result, 'faults')) &&
+			arrayOf(isAuditFault)(Reflect.get(result, 'repairs')) &&
+			arrayOf(isFieldPath)(Reflect.get(result, 'defaulted'))
 		)
 	})(value)
 }

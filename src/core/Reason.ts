@@ -66,6 +66,7 @@ export class Reason implements ReasonInterface {
 	readonly #reasoners = new Map<Reasoning, ReasonerInterface>()
 	readonly #bail: boolean
 	readonly #validate: boolean
+	readonly #valid = new WeakSet<Definition>()
 	readonly #emitter: Emitter<ReasonEventMap>
 	#destroyed = false
 
@@ -154,7 +155,7 @@ export class Reason implements ReasonInterface {
 			)
 		}
 
-		if (this.#validate) {
+		if (this.#validate && !this.#valid.has(definition)) {
 			const validation = reasoner.validate(definition)
 			if (!validation.valid) {
 				// Also bypasses bail and emits nothing — pre-run, not a reasoner fault.
@@ -163,6 +164,7 @@ export class Reason implements ReasonInterface {
 					reasoning: definition.reasoning,
 				})
 			}
+			this.#valid.add(definition)
 		}
 
 		try {

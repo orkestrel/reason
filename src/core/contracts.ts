@@ -1,0 +1,60 @@
+import type { ContractInterface } from '@orkestrel/contract'
+import { createContract } from '@orkestrel/contract'
+import {
+	definitionShape,
+	inferentialDefinitionShape,
+	inferentialResultShape,
+	logicalDefinitionShape,
+	logicalResultShape,
+	quantitativeDefinitionShape,
+	quantitativeResultShape,
+	resultShape,
+	symbolicDefinitionShape,
+	symbolicResultShape,
+} from './shapers.js'
+
+/**
+ * Publishes any `Definition` as a contract, its `schema` for an LLM, a tool, or MCP.
+ *
+ * @remarks
+ * Cross a definition on `is`, never `parse`, which would turn `enabled: '0'` into `false` and
+ * accept a padded operator. `is` sits inside `isDefinition` for what `shape` leaves aside, and
+ * `validate` still reads what no shape says.
+ */
+export const definitionContract: ContractInterface<unknown> = createContract(definitionShape)
+
+/** Publishes a `QuantitativeDefinition` as a contract. Cross it on `is`. */
+export const quantitativeDefinitionContract: ContractInterface<unknown> = createContract(
+	quantitativeDefinitionShape,
+)
+
+/** Publishes a `LogicalDefinition` as a contract. Cross it on `is`. */
+export const logicalDefinitionContract: ContractInterface<unknown> =
+	createContract(logicalDefinitionShape)
+
+/** Publishes a `SymbolicDefinition` as a contract. Cross it on `is`. */
+export const symbolicDefinitionContract: ContractInterface<unknown> =
+	createContract(symbolicDefinitionShape)
+
+/** Publishes an `InferentialDefinition` as a contract. Cross it on `is`. */
+export const inferentialDefinitionContract: ContractInterface<unknown> = createContract(
+	inferentialDefinitionShape,
+)
+
+/** Publishes any `ReasonResult`'s JSON projection as a contract, read through `projectResult`. */
+export const resultContract: ContractInterface<unknown> = createContract(resultShape)
+
+/** Publishes a `QuantitativeResult`'s JSON projection as a contract. */
+export const quantitativeResultContract: ContractInterface<unknown> =
+	createContract(quantitativeResultShape)
+
+/** Publishes a `LogicalResult`'s JSON projection as a contract. */
+export const logicalResultContract: ContractInterface<unknown> = createContract(logicalResultShape)
+
+/** Publishes a `SymbolicResult`'s JSON projection as a contract. */
+export const symbolicResultContract: ContractInterface<unknown> =
+	createContract(symbolicResultShape)
+
+/** Publishes an `InferentialResult`'s JSON projection as a contract. */
+export const inferentialResultContract: ContractInterface<unknown> =
+	createContract(inferentialResultShape)

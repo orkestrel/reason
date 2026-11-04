@@ -72,12 +72,9 @@ describe('Aggregator — sum', () => {
 		expect(aggregator.aggregate([1, 2, 3], 'sum', [2, 3, 1])).toBe(11)
 	})
 
-	it('ignores weights of mismatched length (silently unweighted)', () => {
-		expect(aggregator.aggregate([1, 2, 3], 'sum', [2, 3])).toBe(6)
-	})
-
-	it('treats an empty weights array as unweighted', () => {
-		expect(aggregator.aggregate([1, 2, 3], 'sum', [])).toBe(6)
+	it('has no answer for weights of another length', () => {
+		expect(aggregator.aggregate([1, 2, 3], 'sum', [2, 3])).toBeNaN()
+		expect(aggregator.aggregate([1, 2, 3], 'sum', [])).toBeNaN()
 	})
 })
 
@@ -152,12 +149,12 @@ describe('Aggregator — average', () => {
 		expect(aggregator.aggregate([10, 20, 30], 'average', [1, 1, 1])).toBe(20)
 	})
 
-	it('returns 0 on a zero total weight (never a division blow-up)', () => {
-		expect(aggregator.aggregate([10, 20], 'average', [0, 0])).toBe(0)
+	it('has no answer on a zero total weight, as with no data', () => {
+		expect(aggregator.aggregate([10, 20], 'average', [0, 0])).toBeNaN()
 	})
 
-	it('ignores weights of mismatched length (silently unweighted)', () => {
-		expect(aggregator.aggregate([10, 20, 30], 'average', [1, 2])).toBe(20)
+	it('has no answer for weights of another length', () => {
+		expect(aggregator.aggregate([10, 20, 30], 'average', [1, 2])).toBeNaN()
 	})
 
 	it('a dominant weight pulls the mean to its value (exact FP)', () => {
@@ -264,11 +261,11 @@ describe('Aggregator — maximum', () => {
 })
 
 describe('Aggregator — edge cases', () => {
-	it('an unknown aggregation returns 0 for empty and populated arrays alike (never throws)', () => {
-		expect(invokeUnchecked<number>(aggregator, aggregator.aggregate, [[], 'unknown'])).toBe(0)
-		expect(invokeUnchecked<number>(aggregator, aggregator.aggregate, [[1, 2, 3], 'unknown'])).toBe(
-			0,
-		)
+	it('an unknown aggregation has no answer, for empty and populated arrays alike (never throws)', () => {
+		expect(invokeUnchecked<number>(aggregator, aggregator.aggregate, [[], 'unknown'])).toBeNaN()
+		expect(
+			invokeUnchecked<number>(aggregator, aggregator.aggregate, [[1, 2, 3], 'unknown']),
+		).toBeNaN()
 	})
 
 	it('handles 10000 ones across every aggregation', () => {

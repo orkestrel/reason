@@ -92,7 +92,7 @@ describe('SymbolicReasoner — validate', () => {
 		expect(validation.errors).toContain('Equation "" must have a target variable')
 	})
 
-	it('duplicate equation ids are a WARNING, once per duplicated id', () => {
+	it('duplicate equation ids are an ERROR, once per duplicated id', () => {
 		const validation = reasoner.validate(
 			createSymbolicDefinition('d', 'd', [
 				createEquation('dup', createVariable('x'), createConstant(1), 'x'),
@@ -100,9 +100,9 @@ describe('SymbolicReasoner — validate', () => {
 				createEquation('dup', createVariable('z'), createConstant(3), 'z'),
 			]),
 		)
-		expect(validation.valid).toBe(true)
+		expect(validation.valid).toBe(false)
 		expect(
-			validation.warnings.filter((warning) => warning === 'Duplicate equation id "dup"'),
+			validation.errors.filter((error) => error === 'Duplicate equation id "dup"'),
 		).toHaveLength(1)
 	})
 })
@@ -155,7 +155,7 @@ describe('SymbolicReasoner — reason (evaluation)', () => {
 		expect(expectSymbolic(reasoner.reason({}, definition)).solutions.x).toBe(10)
 	})
 
-	it('evaluates unary operations and treats an absent right operand as 0', () => {
+	it('evaluates unary operations, and refuses a binary one with no right operand', () => {
 		const absolute = createSymbolicDefinition('d', 'd', [
 			createEquation('e1', createVariable('y'), createOperation('abs', createVariable('x')), 'y'),
 		])
@@ -164,7 +164,11 @@ describe('SymbolicReasoner — reason (evaluation)', () => {
 		const bare = createSymbolicDefinition('d', 'd', [
 			createEquation('e1', createVariable('y'), createOperation('add', createVariable('x')), 'y'),
 		])
-		expect(expectSymbolic(reasoner.reason({ x: 7 }, bare)).solutions.y).toBe(7)
+		const refused = expectSymbolic(reasoner.reason({ x: 7 }, bare))
+		expect(refused.success).toBe(false)
+		expect(refused.errors).toEqual(['Equation "e1": Operation "add" has no right side'])
+		expect(refused.solutions).toEqual({})
+		expect(reasoner.validate(bare).errors).toEqual(['Operation "add" has no right side'])
 	})
 
 	it('chains equations — earlier solutions bind later ones', () => {
@@ -281,7 +285,7 @@ describe('SymbolicReasoner — bindings (parseNumber coercion & precedence)', ()
 		expect(expectSymbolic(reasoner.reason({ x: 41 }, definition)).solutions.y).toBe(42)
 	})
 
-	it('numeric-string subject fields parse; non-numeric strings never bind', () => {
+	it('no string subject field binds, numeric or not, and the field is named', () => {
 		const definition = createSymbolicDefinition('d', 'd', [
 			createEquation(
 				'e1',
@@ -290,11 +294,14 @@ describe('SymbolicReasoner — bindings (parseNumber coercion & precedence)', ()
 				'y',
 			),
 		])
-		expect(expectSymbolic(reasoner.reason({ x: '40' }, definition)).solutions.y).toBe(42)
+		const numeric = expectSymbolic(reasoner.reason({ x: '40' }, definition))
+		expect(numeric.success).toBe(false)
+		expect(numeric.faults.map((fault) => fault.path)).toEqual(['x'])
 
 		const unbound = expectSymbolic(reasoner.reason({ x: 'hello' }, definition))
 		expect(unbound.success).toBe(false)
 		expect(unbound.errors).toContain('Equation "e1": Unbound variable: x')
+		expect(unbound.faults.map((fault) => fault.path)).toEqual(['x'])
 	})
 
 	it('a non-finite subject number never binds (parseNumber rejects NaN)', () => {
@@ -475,7 +482,8 @@ describe('SymbolicReasoner — error containment & precision', () => {
 		])
 		const result = expectSymbolic(reasoner.reason({}, definition))
 		expect(result.success).toBe(false)
-		expect(result.errors).toEqual(['Equation "e1": Unbound variable: x'])
+		expect(result.errors).toEqual(['Equation "e1": Unbound variable: x', 'Field "x" is missing'])
+		expect(result.faults.map((fault) => fault.path)).toEqual(['x'])
 		expect(result.trace).toContain('Equation "e1": FAILED — Unbound variable: x')
 	})
 
@@ -549,7 +557,10 @@ describe('SymbolicReasoner — error containment & precision', () => {
 		)
 		const result = expectSymbolic(reasoner.reason({}, definition))
 		expect(result.success).toBe(false)
-		expect(result.errors).toEqual(['Equation "e1": Unbound variable: unbound'])
+		expect(result.errors).toEqual([
+			'Equation "e1": Unbound variable: unbound',
+			'Field "unbound" is missing',
+		])
 		// The target was bound BEFORE the run — solutions read final bindings.
 		expect(result.solutions).toEqual({ a: 7 })
 	})
@@ -809,27 +820,29 @@ describe('SymbolicReasoner — full-operator evaluation', () => {
 		).toBe(3)
 	})
 
-	it('a binary operation with no right operand treats it as 0', () => {
-		expect(evaluateExpression(createOperation('power', createConstant(5)))).toBe(1)
-		expect(evaluateExpression(createOperation('multiply', createConstant(5)))).toBe(0)
-		expect(evaluateExpression(createOperation('minimum', createConstant(5)))).toBe(0)
-		expect(evaluateExpression(createOperation('maximum', createConstant(5)))).toBe(5)
-		expect(evaluateExpression(createOperation('subtract', createConstant(5)))).toBe(5)
-		expect(evaluateExpression(createOperation('percentage', createConstant(5)))).toBe(0)
-	})
-
-	it('a binary DIVIDE with no right operand is a divide-by-zero non-finite error', () => {
-		const definition = createSymbolicDefinition('d', 'd', [
-			createEquation(
-				'e1',
-				createVariable('result'),
-				createOperation('divide', createConstant(5)),
-				'result',
-			),
-		])
-		const result = expectSymbolic(reasoner.reason({}, definition))
-		expect(result.success).toBe(false)
-		expect(result.errors).toEqual(['Equation "e1": produced non-finite value (NaN)'])
+	it('a binary operation with no right operand refuses, whichever operation', () => {
+		for (const operator of [
+			'power',
+			'multiply',
+			'minimum',
+			'maximum',
+			'subtract',
+			'percentage',
+			'divide',
+		] as const) {
+			const definition = createSymbolicDefinition('d', 'd', [
+				createEquation(
+					'e1',
+					createVariable('result'),
+					createOperation(operator, createConstant(5)),
+					'result',
+				),
+			])
+			const result = expectSymbolic(reasoner.reason({}, definition))
+			expect(result.success).toBe(false)
+			expect(result.errors).toEqual([`Equation "e1": Operation "${operator}" has no right side`])
+			expect(result.solutions).toEqual({})
+		}
 	})
 })
 
@@ -1162,7 +1175,7 @@ describe('SymbolicReasoner — large equation list', () => {
 })
 
 describe('SymbolicReasoner — sparse equations array', () => {
-	it('a sparse equations array solves only the present equations', () => {
+	it('a sparse equations array solves the present equations and refuses', () => {
 		const equations = sparse<Equation>(3, [
 			[0, createEquation('e1', createVariable('x'), createConstant(5), 'x')],
 			[2, createEquation('e2', createVariable('y'), createConstant(7), 'y')],
@@ -1170,8 +1183,8 @@ describe('SymbolicReasoner — sparse equations array', () => {
 		const result = expectSymbolic(
 			reasoner.reason({}, createSymbolicDefinition('d', 'd', equations)),
 		)
-		expect(result.success).toBe(true)
-		expect(result.errors).toEqual([])
+		expect(result.success).toBe(false)
+		expect(result.errors).toEqual(['Equation at index 1 is malformed'])
 		expect(result.solutions).toEqual({ x: 5, y: 7 })
 	})
 })
@@ -1209,53 +1222,74 @@ describe('SymbolicReasoner — divide-by-zero inversion (zero guards)', () => {
 	})
 })
 
-describe('SymbolicReasoner — parseNumber binding-site boundary pins', () => {
-	it('exponential-notation string "1e3" binds 1000', () => {
+describe('SymbolicReasoner — the binding site reads a finite number and nothing else', () => {
+	it('exponential-notation string "1e3" never binds', () => {
 		const result = evaluateSubjectBinding('1e3')
-		expect(result.success).toBe(true)
-		expect(result.solutions.y).toBe(1000)
+		expect(result.success).toBe(false)
+		expect(result.errors).toEqual([
+			'Equation "e1": Unbound variable: x',
+			'Field "x" expected number, received "1e3"',
+		])
 	})
 
-	it('hex-notation string "0x10" binds 16', () => {
+	it('hex-notation string "0x10" never binds', () => {
 		const result = evaluateSubjectBinding('0x10')
-		expect(result.success).toBe(true)
-		expect(result.solutions.y).toBe(16)
+		expect(result.success).toBe(false)
+		expect(result.errors).toEqual([
+			'Equation "e1": Unbound variable: x',
+			'Field "x" expected number, received "0x10"',
+		])
 	})
 
-	it('a numeric string with surrounding spaces binds trimmed (" 42 " → 42)', () => {
+	it('a numeric string with surrounding spaces never binds', () => {
 		const result = evaluateSubjectBinding(' 42 ')
-		expect(result.success).toBe(true)
-		expect(result.solutions.y).toBe(42)
+		expect(result.success).toBe(false)
+		expect(result.errors).toEqual([
+			'Equation "e1": Unbound variable: x',
+			'Field "x" expected number, received " 42 "',
+		])
 	})
 
 	it('an empty string never binds', () => {
 		const result = evaluateSubjectBinding('')
 		expect(result.success).toBe(false)
-		expect(result.errors).toEqual(['Equation "e1": Unbound variable: x'])
+		expect(result.errors).toEqual([
+			'Equation "e1": Unbound variable: x',
+			'Field "x" expected number, received ""',
+		])
 	})
 
 	it('a whitespace-only string never binds', () => {
 		const result = evaluateSubjectBinding('   ')
 		expect(result.success).toBe(false)
-		expect(result.errors).toEqual(['Equation "e1": Unbound variable: x'])
+		expect(result.errors).toEqual([
+			'Equation "e1": Unbound variable: x',
+			'Field "x" expected number, received "   "',
+		])
 	})
 
 	it('the string "Infinity" never binds (finite guard rejects it)', () => {
 		const result = evaluateSubjectBinding('Infinity')
 		expect(result.success).toBe(false)
-		expect(result.errors).toEqual(['Equation "e1": Unbound variable: x'])
+		expect(result.errors).toEqual([
+			'Equation "e1": Unbound variable: x',
+			'Field "x" expected number, received "Infinity"',
+		])
 	})
 
 	it('a boolean true never binds — never coerced to 1', () => {
 		const result = evaluateSubjectBinding(true)
 		expect(result.success).toBe(false)
-		expect(result.errors).toEqual(['Equation "e1": Unbound variable: x'])
+		expect(result.errors).toEqual([
+			'Equation "e1": Unbound variable: x',
+			'Field "x" expected number, received true',
+		])
 	})
 
 	it('a bigint value never binds', () => {
 		const result = evaluateSubjectBinding(9007199254740993n)
 		expect(result.success).toBe(false)
-		expect(result.errors).toEqual(['Equation "e1": Unbound variable: x'])
+		expect(result.faults.map((fault) => fault.reason)).toEqual(['type'])
 	})
 })
 

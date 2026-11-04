@@ -37,9 +37,9 @@ export class Transformer implements TransformerInterface {
 	}
 
 	apply(value: number, transform: Transform): number {
-		// An unknown operation from an untrusted definition is a silent no-op, and
-		// the guard is what keeps `applyOperation`'s throwing default unreachable.
-		if (!isMathOperation(transform.operation)) return value
+		// An unknown operation from an untrusted definition has no answer, and the factor's
+		// finite recheck refuses it. The guard keeps `applyOperation`'s throwing default unreachable.
+		if (!isMathOperation(transform.operation)) return Number.NaN
 		return applyOperation(
 			transform.operation,
 			value,

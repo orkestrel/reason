@@ -314,7 +314,7 @@ describe('createEvaluator', () => {
 	it('returns a working evaluator with the default id', () => {
 		const evaluator = createEvaluator()
 		expect(evaluator.id).toBe('evaluator')
-		expect(evaluator.evaluate(createCheck('age', 'above', 18), { age: 25 }).met).toBe(true)
+		expect(evaluator.evaluate(createCheck('age', 'above', 18), { age: 25 }).state).toBe('met')
 	})
 
 	it('honors a custom id', () => {

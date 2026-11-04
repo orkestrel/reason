@@ -2,9 +2,11 @@ import type {
 	Aggregation,
 	Atom,
 	Bounds,
+	CheckState,
 	Definition,
 	DefinitionEnvelope,
 	Equation,
+	Check,
 	Expression,
 	Fact,
 	Factor,
@@ -15,30 +17,48 @@ import type {
 	InferentialDefinition,
 	LogicalClearKey,
 	LogicalDefinition,
+	LogicalOperator,
 	MathOperation,
+	PolarRead,
 	QuantitativeClearKey,
 	QuantitativeDefinition,
 	ReasonResult,
 	Rule,
+	ShapeRead,
+	ShapeScan,
+	SourceResult,
 	Subject,
+	SubjectAdmission,
 	SymbolicClearKey,
 	SymbolicDefinition,
 	SymbolicExpression,
 } from './types.js'
-import type { FieldPath } from '@orkestrel/contract'
+import type {
+	AuditFault,
+	ContractShape,
+	FaultKind,
+	FieldPath,
+	JSONValue,
+} from '@orkestrel/contract'
 import {
+	createContract,
+	GUARD_DEPTH_LIMIT,
 	isArray,
+	isBoolean,
 	isFiniteNumber,
 	isFunction,
+	isNull,
 	isNumber,
 	isObject,
+	isRecord,
 	isString,
 	iterateIndices,
-	parseNumberField,
+	preview,
 	resolveField,
 } from '@orkestrel/contract'
 import { DEFAULT_CONFIDENCE, DEFAULT_PRIORITY } from './constants.js'
 import { ReasonError } from './errors.js'
+import { isComparable, isLookupKey, isMembership, isRange } from './validators.js'
 
 // The module's pure leaves: field display, the numeric helpers, equality and
 // ordering, the inferential fact machinery, the symbolic algebra machinery, the
@@ -139,7 +159,8 @@ export function matchesBounds(value: unknown, range: unknown): boolean {
  * The aggregator's "no data" answers: `sum` and `average` reduce to `0`,
  * `product` to `1`, and `minimum` / `maximum` to `NaN` — a deliberate signal
  * the quantitative reasoner surfaces as a non-finite-value error rather than a
- * silent success. An unknown aggregation from an untrusted definition is `0`.
+ * silent success. An unknown aggregation from an untrusted definition is `NaN`
+ * too, for the same reason.
  *
  * @param aggregation - The aggregation whose identity is wanted
  * @returns The value the aggregation yields over zero inputs
@@ -160,11 +181,8 @@ export function emptyAggregate(aggregation: Aggregation): number {
 			return 0
 		case 'product':
 			return 1
-		case 'minimum':
-		case 'maximum':
-			return Number.NaN
 		default:
-			return 0
+			return Number.NaN
 	}
 }
 
@@ -173,65 +191,213 @@ export function emptyAggregate(aggregation: Aggregation): number {
  *
  * @remarks
  * The source-resolution leaf of the quantitative factor pipeline. A `static`
- * source passes its value through; `field` and `range` coerce through the
- * contracts `parseNumberField`, so a non-finite subject number or a
- * non-numeric string is unresolvable and takes `fallback`; `lookup` reads only
- * the table's own keys, and a missing or `null` field takes `fallback` directly
- * rather than letting a `''` key intercept absent data. A `range` scans its
- * bands in order and the first match wins — a band without `bounds` is a
- * catch-all and an absent bound side is open. A malformed factor carrying no
- * source at all takes `fallback` rather than crashing.
+ * source passes its value through. A `field` or `range` source reads a finite
+ * number, with no coercion. A `lookup` source reads a string, a finite number, or
+ * a boolean as a key of the table's own keys. Anything else leaves the source
+ * unread, with no `value`. `fallback` serves only a readable key the table does not
+ * hold and a number no band covers. A `range` scans its bands in order and the
+ * first match wins — a band without `bounds` is a catch-all and an absent bound side
+ * is open. A malformed factor carrying no source is unread rather than a crash.
  *
  * @param source - The factor source to resolve
  * @param subject - The subject to read from
- * @param fallback - The value taken when the source does not resolve
- * @returns The resolved number, the `fallback`, or `undefined` when neither exists
+ * @param fallback - The value an unknown key or a missing band takes
+ * @returns The resolved value, absent when the source is unread, and whether `fallback` supplied it
  *
  * @example
  * ```ts
  * import { createFieldSource, createLookupSource, resolveSource } from '@src/core'
  *
- * resolveSource(createFieldSource('age'), { age: 30 })                      // 30
- * resolveSource(createLookupSource('state', { CA: 5 }), { state: 'NY' }, 1) // 1 — fallback
+ * resolveSource(createFieldSource('age'), { age: 30 })                      // { value: 30, fallback: false }
+ * resolveSource(createFieldSource('age'), { age: '30' }, 1)                 // { fallback: false } — unread
+ * resolveSource(createLookupSource('state', { CA: 5 }), { state: 'NY' }, 1) // { value: 1, fallback: true }
  * ```
  */
 export function resolveSource(
 	source: FactorSource,
 	subject: Subject,
 	fallback?: number,
-): number | undefined {
-	// A malformed factor may carry no source at all — the fallback path, not a crash.
-	if (!source) return fallback
+): SourceResult {
+	const unread: SourceResult = { fallback: false }
+	const missed: SourceResult = fallback === undefined ? unread : { value: fallback, fallback: true }
+	// A malformed factor may carry no source at all — unread, not a crash.
+	if (!source) return unread
 	switch (source.origin) {
 		case 'static':
-			return source.value
-		case 'field':
-			return parseNumberField(subject, source.field) ?? fallback
+			return { value: source.value, fallback: false }
+		case 'field': {
+			const value = resolveField(subject, source.field)
+			return isFiniteNumber(value) ? { value, fallback: false } : unread
+		}
 		case 'lookup': {
 			const resolved = resolveField(subject, source.field)
-			// A missing / null field never reaches the table (a '' key must not
-			// intercept absent data); a present value still stringifies, so a
-			// real '' value may hit a '' key.
-			if (resolved === undefined || resolved === null) return fallback
+			if (!isLookupKey(resolved)) return unread
 			const key = String(resolved)
-			return Object.hasOwn(source.table, key) ? source.table[key] : fallback
+			const value = Object.hasOwn(source.table, key) ? source.table[key] : undefined
+			return value === undefined ? missed : { value, fallback: false }
 		}
 		case 'range': {
-			const value = parseNumberField(subject, source.field)
-			if (value === undefined) return fallback
+			const value = resolveField(subject, source.field)
+			if (!isFiniteNumber(value)) return unread
 			for (const range of source.ranges) {
 				if (!isObject(range)) continue
 				const limit = range.bounds
 				// A band without bounds is a catch-all; an absent side is open.
-				if (!limit) return range.value
+				if (!limit) return { value: range.value, fallback: false }
 				const aboveMinimum = limit.minimum === undefined || value >= limit.minimum
 				const belowMaximum = limit.maximum === undefined || value <= limit.maximum
-				if (aboveMinimum && belowMaximum) return range.value
+				if (aboveMinimum && belowMaximum) return { value: range.value, fallback: false }
 			}
-			return fallback
+			return missed
 		}
 		default:
-			return fallback
+			return unread
+	}
+}
+
+// === Comparison and logic over states
+
+/**
+ * Compares a subject value with an expected value and returns what that settles.
+ *
+ * @remarks
+ * Every comparison reads `unread` rather than guessing when either side cannot be
+ * compared, and a malformed expected value is unread. Ordering and range need finite
+ * numbers on both sides. Equality settles two values of one primitive type by `===`, reads
+ * a blank or padded string as unread, and reads any other difference of type as unread,
+ * except that `null` as the expected value settles on any present field. Membership
+ * settles on an exact hit, reads as unread when an element has another type, and otherwise
+ * settles.
+ *
+ * @param actual - The subject's value
+ * @param operator - The comparison, typed `string` because an untrusted definition reaches here unchecked
+ * @param expected - The value to compare with
+ * @returns The settled state
+ * @throws {@link ReasonError} `'OPERATOR'` when `operator` names no known comparison
+ *
+ * @example
+ * ```ts
+ * import { settleComparison } from '@src/core'
+ *
+ * settleComparison(30, 'above', 18)        // 'met'
+ * settleComparison(undefined, 'above', 18) // 'unread'
+ * settleComparison(90, 'not', null)        // 'met'
+ * settleComparison(90, 'not', 'none')      // 'unread'
+ * settleComparison('1', 'equals', 1)       // 'unread'
+ * settleComparison(' 1', 'equals', ' 1')   // 'unread'
+ * ```
+ */
+export function settleComparison(actual: unknown, operator: string, expected: unknown): CheckState {
+	switch (operator) {
+		case 'equals':
+		case 'not':
+			if (!isComparable(actual) || !isComparable(expected)) return 'unread'
+			if (isString(actual) && (actual === '' || actual !== actual.trim())) return 'unread'
+			if (!isNull(expected) && typeof actual !== typeof expected) return 'unread'
+			return (actual === expected) === (operator === 'equals') ? 'met' : 'unmet'
+		case 'above':
+		case 'below':
+		case 'from':
+		case 'to':
+			if (!isFiniteNumber(actual) || !isFiniteNumber(expected)) return 'unread'
+			if (operator === 'above') return actual > expected ? 'met' : 'unmet'
+			if (operator === 'below') return actual < expected ? 'met' : 'unmet'
+			if (operator === 'from') return actual >= expected ? 'met' : 'unmet'
+			return actual <= expected ? 'met' : 'unmet'
+		case 'any':
+		case 'none':
+			if (!isComparable(actual) || !isMembership(expected)) return 'unread'
+			if (expected.includes(actual)) return operator === 'any' ? 'met' : 'unmet'
+			if (expected.some((entry) => typeof entry !== typeof actual)) return 'unread'
+			return operator === 'any' ? 'unmet' : 'met'
+		case 'between':
+		case 'outside':
+			if (!isFiniteNumber(actual) || !isRange(expected)) return 'unread'
+			return matchesBounds(actual, expected) === (operator === 'between') ? 'met' : 'unmet'
+		default:
+			throw new ReasonError('OPERATOR', `Unknown comparison operator: ${operator}`, { operator })
+	}
+}
+
+/**
+ * Returns what a comparison reads on a conclusion no rule concluded, once every rule
+ * that could have has settled.
+ *
+ * @remarks
+ * Closed-world applies to these keys alone. `equals` and `any` are unmet, `not` and
+ * `none` are met, and an ordering or range comparison is unread, because it needs a
+ * number and the key holds none.
+ *
+ * @param operator - The comparison reading the key
+ * @returns The settled state
+ *
+ * @example
+ * ```ts
+ * import { readClosedState } from '@src/core'
+ *
+ * readClosedState('equals') // 'unmet'
+ * readClosedState('not')    // 'met'
+ * readClosedState('above')  // 'unread'
+ * ```
+ */
+export function readClosedState(operator: string): CheckState {
+	if (operator === 'equals' || operator === 'any') return 'unmet'
+	if (operator === 'not' || operator === 'none') return 'met'
+	return 'unread'
+}
+
+/**
+ * Combines operand states under a logical connective, in strong Kleene logic.
+ *
+ * @remarks
+ * `and` is `unmet` when any operand is, `or` is `met` when any operand is, and otherwise
+ * an `unread` operand leaves the result `unread`, so `age above 18 and credit above 600`
+ * with age 15 and no credit is exactly `unmet`. A wrong arity or an unknown connective
+ * reads `unread`.
+ *
+ * @param operator - The connective, typed `string` because an untrusted definition reaches here unchecked
+ * @param states - The operand states, in order
+ * @returns The combined state
+ *
+ * @example
+ * ```ts
+ * import { combineStates } from '@src/core'
+ *
+ * combineStates('and', ['unmet', 'unread']) // 'unmet'
+ * combineStates('or', ['met', 'unread'])    // 'met'
+ * combineStates('not', ['unread'])          // 'unread'
+ * combineStates('and', [])                  // 'unread'
+ * ```
+ */
+export function combineStates(
+	operator: LogicalOperator | string,
+	states: readonly CheckState[],
+): CheckState {
+	// A hole is an operand nobody can read, and the array methods below would step over it.
+	if (states.filter(() => true).length !== states.length) return 'unread'
+	const first = states[0]
+	const second = states[1]
+	switch (operator) {
+		case 'and':
+			if (states.length === 0) return 'unread'
+			if (states.includes('unmet')) return 'unmet'
+			return states.includes('unread') ? 'unread' : 'met'
+		case 'or':
+			if (states.length === 0) return 'unread'
+			if (states.includes('met')) return 'met'
+			return states.includes('unread') ? 'unread' : 'unmet'
+		case 'not':
+			if (states.length !== 1 || first === undefined || first === 'unread') return 'unread'
+			return first === 'met' ? 'unmet' : 'met'
+		case 'implies':
+			if (states.length !== 2 || first === undefined || second === undefined) return 'unread'
+			if (first === 'unmet' || second === 'met') return 'met'
+			return first === 'unread' || second === 'unread' ? 'unread' : 'unmet'
+		case 'xor':
+			if (states.length !== 2 || states.includes('unread')) return 'unread'
+			return first === second ? 'unmet' : 'met'
+		default:
+			return 'unread'
 	}
 }
 
@@ -1019,60 +1185,6 @@ export function extractConclusions(expression: Expression): Record<string, unkno
 }
 
 /**
- * Collects the flattened overlay keys written through an array path and also
- * read through an array path.
- *
- * @remarks
- * The reported keys are the `formatField`-flattened overlay keys an array-path
- * conclusion atom writes anywhere among `rules` that an array-path premise atom
- * also reads anywhere among `rules`. The cross-rule authoring-time footgun
- * probe behind `LogicalReasoner.validate`'s overlay-key-mismatch warning: a
- * logical conclusion's derived overlay is a flat record keyed by
- * `formatField(check.field)` — an array `FieldPath` dot-joins into one string
- * key. A premise that reads the same field through a dotted-string path resolves
- * that flat key correctly, but a premise that reads it through an array path
- * calls `resolveField`, which descends key-by-key into nesting the flat
- * overlay never created, so the chain silently fails to connect. Collects the
- * flattened keys of every array-path conclusion atom across `rules` (once
- * each, authored order), then returns the ones that also appear as the
- * flattened key of some array-path premise atom anywhere in `rules` — a
- * single pass over every rule's conclusion and premise atoms, so the cost is
- * linear in total atom count, never quadratic.
- *
- * @param rules - The rules to scan for the array-path write/read overlap
- * @returns The mismatched overlay keys, once each, authored order
- *
- * @example
- * ```ts
- * import { createAtom, createRule, findOverlayMismatches } from '@src/core'
- *
- * findOverlayMismatches([
- * 	createRule('a', [], createAtom(['address', 'city'], 'equals', 'NYC')),
- * 	createRule('b', [createAtom(['address', 'city'], 'equals', 'NYC')], createAtom('eligible', 'equals', true)),
- * ]) // ['address.city']
- * ```
- */
-export function findOverlayMismatches(rules: readonly Rule[]): readonly string[] {
-	const writeKeys = new Set(
-		Iterator.from(rules).flatMap((candidate) =>
-			extractAtoms(candidate.conclusion).flatMap((atom) =>
-				isArray(atom.check.field) ? [formatField(atom.check.field)] : [],
-			),
-		),
-	)
-	const readKeys = new Set(
-		Iterator.from(rules).flatMap((candidate) =>
-			Iterator.from(candidate.premises).flatMap((premise) =>
-				extractAtoms(premise).flatMap((atom) =>
-					isArray(atom.check.field) ? [formatField(atom.check.field)] : [],
-				),
-			),
-		),
-	)
-	return [...writeKeys].filter((key) => readKeys.has(key))
-}
-
-/**
  * Builds the empty, type-shaped failure {@link ReasonResult} matching a
  * definition's reasoning.
  *
@@ -1080,8 +1192,8 @@ export function findOverlayMismatches(rules: readonly Rule[]): readonly string[]
  * The `bail: false` fallback of the `Reason` orchestrator: when a reasoner
  * throws and bail is off, the throw becomes an empty failure result carrying the
  * message as its sole `errors` entry. Each reasoning gets its own zero-valued
- * shape (`quantitative` → `value: 0` / empty `groups`; `logical` → `conclusion:
- * false` / empty `rules`; `symbolic` → empty `solutions`; `inferential` → empty
+ * shape (`quantitative` → `value: 0` / empty `groups`; `logical` → `state:
+ * 'unread'` / empty `rules`; `symbolic` → empty `solutions`; `inferential` → empty
  * `derived`), always with `success: false` and an empty `trace`.
  *
  * @param definition - The definition whose reasoning selects the result shape
@@ -1093,7 +1205,7 @@ export function findOverlayMismatches(rules: readonly Rule[]): readonly string[]
  * import { buildErrorResult, createLogicalDefinition } from '@src/core'
  *
  * const result = buildErrorResult(createLogicalDefinition('e', 'E', []), 'boom')
- * // { reasoning: 'logical', conclusion: false, rules: [], count: 0, success: false, trace: [], errors: ['boom'] }
+ * // { reasoning: 'logical', state: 'unread', rules: [], count: 0, success: false, trace: [], errors: ['boom'], unread: [] }
  * ```
  */
 export function buildErrorResult(definition: Definition, message: string): ReasonResult {
@@ -1107,16 +1219,22 @@ export function buildErrorResult(definition: Definition, message: string): Reaso
 				success: false,
 				trace: [],
 				errors: [message],
+				faults: [],
+				repairs: [],
+				defaulted: [],
 			}
 		case 'logical':
 			return {
 				reasoning: 'logical',
-				conclusion: false,
+				conclusion: 'unread',
 				rules: [],
 				count: 0,
 				success: false,
 				trace: [],
 				errors: [message],
+				faults: [],
+				repairs: [],
+				defaulted: [],
 			}
 		case 'symbolic':
 			return {
@@ -1125,6 +1243,9 @@ export function buildErrorResult(definition: Definition, message: string): Reaso
 				success: false,
 				trace: [],
 				errors: [message],
+				faults: [],
+				repairs: [],
+				defaulted: [],
 			}
 		case 'inferential':
 			return {
@@ -1133,8 +1254,941 @@ export function buildErrorResult(definition: Definition, message: string): Reaso
 				success: false,
 				trace: [],
 				errors: [message],
+				faults: [],
+				repairs: [],
+				defaulted: [],
 			}
 	}
+}
+
+/**
+ * Builds the empty failure result for a subject the door refused.
+ *
+ * @param definition - The definition whose reasoning shapes the result
+ * @param admission - The refusal
+ * @returns A failure result carrying the refusal's errors and faults
+ *
+ * @example
+ * ```ts
+ * import { buildRefusedResult, createLogicalDefinition } from '@src/core'
+ *
+ * const refusal = { faults: [], repairs: [], defaulted: [], errors: ['no'] }
+ * buildRefusedResult(createLogicalDefinition('d', 'd', []), refusal).errors // ['no']
+ * ```
+ */
+export function buildRefusedResult(
+	definition: Definition,
+	admission: SubjectAdmission,
+): ReasonResult {
+	const { faults, errors } = admission
+	return { ...buildErrorResult(definition, ''), faults, errors }
+}
+
+/**
+ * Collects each conclusion key with the rules that conclude it.
+ *
+ * @param rules - The rules to read, disabled ones excluded by the caller
+ * @returns A fresh map from each flattened key to its concluding rules, in authored order
+ *
+ * @example
+ * ```ts
+ * import { collectConcluders, createAtom, createRule } from '@src/core'
+ *
+ * const rule = createRule('adult', [createAtom('age', 'from', 18)], createAtom('adult', 'equals', true))
+ * collectConcluders([rule]).get('adult') // [rule]
+ * ```
+ */
+export function collectConcluders(rules: readonly Rule[]): ReadonlyMap<string, readonly Rule[]> {
+	const concluders = new Map<string, Rule[]>()
+	for (const rule of rules) {
+		for (const key of Object.keys(extractConclusions(rule.conclusion))) {
+			const known = concluders.get(key)
+			if (known === undefined) concluders.set(key, [rule])
+			else known.push(rule)
+		}
+	}
+	return concluders
+}
+
+/**
+ * Finds the conclusion keys a subject supplies itself, which would let it assert what a
+ * rule has to derive.
+ *
+ * @param rules - The enabled rules
+ * @param subject - The subject to check
+ * @returns The flattened keys the subject holds a value for, in authored order, once each
+ *
+ * @example
+ * ```ts
+ * import { createAtom, createRule, findSuppliedConclusions } from '@src/core'
+ *
+ * const rule = createRule('adult', [createAtom('age', 'from', 18)], createAtom('adult', 'equals', true))
+ * findSuppliedConclusions([rule], { age: 15, adult: true }) // ['adult']
+ * findSuppliedConclusions([rule], { age: 15 })              // []
+ * ```
+ */
+export function findSuppliedConclusions(
+	rules: readonly Rule[],
+	subject: Subject,
+): readonly string[] {
+	const supplied = rules.flatMap((rule) =>
+		extractAtoms(rule.conclusion).flatMap((atom) => {
+			const key = formatField(atom.check.field)
+			const held =
+				Object.hasOwn(subject, key) || resolveField(subject, atom.check.field) !== undefined
+			return held ? [key] : []
+		}),
+	)
+	return [...new Set(supplied)]
+}
+
+/**
+ * Finds the conclusion keys on a cycle through negation, which no order of evaluation
+ * can settle.
+ *
+ * @remarks
+ * A rule reading key `r` and concluding key `c` is an edge from `r` to `c`, negative
+ * when the read sits under an odd number of negations: the `not` connective, the
+ * antecedent of `implies`, either side of `xor`, or the `not` and `none` comparisons. A
+ * negative edge on a cycle makes the answer depend on visit order, so forward refuses it
+ * at run time and backward would settle it silently. A key on any cycle through such an
+ * edge is reported, whichever rule wrote it.
+ *
+ * @param rules - The enabled rules
+ * @returns The keys on such a cycle, in authored order, once each
+ *
+ * @example
+ * ```ts
+ * import { createAtom, createCompound, createRule, findNegativeCycles } from '@src/core'
+ *
+ * findNegativeCycles([
+ * 	createRule('a', [createCompound('not', [createAtom('b', 'equals', true)])], createAtom('a', 'equals', true)),
+ * 	createRule('b', [createCompound('not', [createAtom('a', 'equals', true)])], createAtom('b', 'equals', true)),
+ * ]) // ['a', 'b']
+ * ```
+ */
+export function findNegativeCycles(rules: readonly Rule[]): readonly string[] {
+	const concluded = collectConcluders(rules)
+	const edges = rules.flatMap((rule) => {
+		const targets = Object.keys(extractConclusions(rule.conclusion))
+		return rule.premises.flatMap((premise) =>
+			collectPolarReads(premise, false).flatMap((read) =>
+				concluded.has(read.key)
+					? targets.map((target) => ({ from: read.key, to: target, negated: read.negated }))
+					: [],
+			),
+		)
+	})
+	const forward = edges.map((edge): readonly [string, string] => [edge.from, edge.to])
+	const reverse = edges.map((edge): readonly [string, string] => [edge.to, edge.from])
+	const cyclic = new Set(
+		edges.flatMap((edge) => {
+			if (!edge.negated) return []
+			const behind = collectReachable(edge.from, reverse)
+			return [...collectReachable(edge.to, forward)].filter((key) => behind.has(key))
+		}),
+	)
+	return [...concluded.keys()].filter((key) => cyclic.has(key))
+}
+
+/**
+ * Collects every node a list of directed edges reaches from a start, the start included.
+ *
+ * @param start - The node to walk from
+ * @param edges - The edges, each `[from, to]`
+ * @returns A fresh set of the nodes reached
+ *
+ * @example
+ * ```ts
+ * import { collectReachable } from '@src/core'
+ *
+ * collectReachable('a', [['a', 'b'], ['b', 'c'], ['x', 'a']]) // Set { 'a', 'b', 'c' }
+ * ```
+ */
+export function collectReachable(
+	start: string,
+	edges: ReadonlyArray<readonly [string, string]>,
+): ReadonlySet<string> {
+	const reached = new Set([start])
+	for (const key of reached) {
+		for (const edge of edges) if (edge[0] === key) reached.add(edge[1])
+	}
+	return reached
+}
+
+/**
+ * Collects every key an expression reads with the polarity of that read.
+ *
+ * @param expression - The expression to walk
+ * @param negated - Whether the expression itself sits under an odd number of negations
+ * @returns One entry per atom, a `xor` operand contributing both polarities
+ *
+ * @example
+ * ```ts
+ * import { collectPolarReads, createAtom, createCompound } from '@src/core'
+ *
+ * collectPolarReads(createCompound('not', [createAtom('a', 'equals', true)]), false)
+ * // [{ key: 'a', negated: true }]
+ * ```
+ */
+export function collectPolarReads(expression: Expression, negated: boolean): readonly PolarRead[] {
+	if (expression.form === 'atom') {
+		const flipped = expression.check.operator === 'not' || expression.check.operator === 'none'
+		return [{ key: formatField(expression.check.field), negated: flipped ? !negated : negated }]
+	}
+	const operator = expression.operator
+	return expression.operands.flatMap((operand, index) => {
+		if (operator === 'not') return collectPolarReads(operand, !negated)
+		if (operator === 'implies' && index === 0) return collectPolarReads(operand, !negated)
+		if (operator === 'xor') {
+			return [...collectPolarReads(operand, negated), ...collectPolarReads(operand, !negated)]
+		}
+		return collectPolarReads(operand, negated)
+	})
+}
+
+// === Faults
+
+/**
+ * Describes a fault as one `errors` entry.
+ *
+ * @param fault - The fault
+ * @returns The message
+ *
+ * @example
+ * ```ts
+ * import { describeFault } from '@src/core'
+ *
+ * describeFault({ reason: 'missing', path: 'age', expected: 'number' }) // 'Field "age" is missing'
+ * describeFault({ reason: 'extra', path: ['agee'] })                    // 'Field "agee" is not declared'
+ * ```
+ */
+export function describeFault(fault: AuditFault): string {
+	const field = formatField(fault.path)
+	switch (fault.reason) {
+		case 'missing':
+			return `Field "${field}" is missing`
+		case 'type':
+			return `Field "${field}" expected ${fault.expected}, received ${fault.received}`
+		case 'constraint':
+			return `Field "${field}" breaks its ${fault.constraint} constraint, received ${fault.received}`
+		case 'variant':
+			return `Field "${field}" matches none of its ${String(fault.variants)} variants`
+		case 'oneOf':
+			return `Field "${field}" matches ${String(fault.matched)} of its variants, not exactly one`
+		case 'extra':
+			return `Field "${field}" is not declared`
+	}
+}
+
+/**
+ * Builds the fault for a field the engine could not read.
+ *
+ * @param path - The field
+ * @param expected - What the reader needed
+ * @param actual - What the field held
+ * @returns A `missing` fault when the field is absent, otherwise a `type` fault
+ *
+ * @example
+ * ```ts
+ * import { valueToFault } from '@src/core'
+ *
+ * valueToFault('age', 'number', undefined) // { reason: 'missing', path: 'age', expected: 'number' }
+ * valueToFault('age', 'number', 'old')     // { reason: 'type', path: 'age', expected: 'number', received: '"old"' }
+ * ```
+ */
+export function valueToFault(path: FieldPath, expected: FaultKind, actual: unknown): AuditFault {
+	return actual === undefined
+		? { reason: 'missing', path, expected }
+		: { reason: 'type', path, expected, received: preview(actual) }
+}
+
+/**
+ * Names what a check needed from its field, for the fault an unread read becomes.
+ *
+ * @remarks
+ * Ordering and range need a number. Equality needs the expected value's kind. Membership
+ * needs the elements' kind, or `union` when they differ.
+ *
+ * @param check - The check
+ * @returns The kind of value that would have read
+ *
+ * @example
+ * ```ts
+ * import { createCheck, readExpectedKind } from '@src/core'
+ *
+ * readExpectedKind(createCheck('a', 'above', 1))        // 'number'
+ * readExpectedKind(createCheck('a', 'equals', 'x'))     // 'string'
+ * readExpectedKind(createCheck('a', 'any', ['x', 1]))   // 'union'
+ * ```
+ */
+export function readExpectedKind(check: Check): FaultKind {
+	switch (check.operator) {
+		case 'equals':
+		case 'not':
+			return valueToKind(check.value)
+		case 'any':
+		case 'none': {
+			const kinds = new Set(isArray(check.value) ? check.value.map(valueToKind) : [])
+			const [only] = kinds
+			return kinds.size === 1 && only !== undefined ? only : 'union'
+		}
+		default:
+			return 'number'
+	}
+}
+
+/**
+ * Names the fault kind of a JSON value.
+ *
+ * @param value - The value
+ * @returns `null`, `string`, `boolean`, or `number` for a primitive, otherwise `json`
+ *
+ * @example
+ * ```ts
+ * import { valueToKind } from '@src/core'
+ *
+ * valueToKind(null) // 'null'
+ * valueToKind(1)    // 'number'
+ * valueToKind({})   // 'json'
+ * ```
+ */
+export function valueToKind(value: unknown): FaultKind {
+	if (isNull(value)) return 'null'
+	if (isString(value)) return 'string'
+	if (isBoolean(value)) return 'boolean'
+	return isNumber(value) ? 'number' : 'json'
+}
+
+/**
+ * Returns the faults of a list once per field, compared by the flattened path.
+ *
+ * @param faults - The faults, repeats allowed
+ * @returns The first fault of each field, in order
+ *
+ * @example
+ * ```ts
+ * import { filterUniqueFaults } from '@src/core'
+ *
+ * const fault = { reason: 'extra', path: 'a' } as const
+ * filterUniqueFaults([fault, fault]) // [fault]
+ * ```
+ */
+export function filterUniqueFaults(faults: readonly AuditFault[]): readonly AuditFault[] {
+	return faults.filter(
+		(fault, index) =>
+			faults.findIndex((other) => formatField(other.path) === formatField(fault.path)) === index,
+	)
+}
+
+// === The JSON projection
+
+/**
+ * Projects any value to JSON: a non-finite number becomes `null`, and what JSON cannot hold is
+ * dropped.
+ *
+ * @remarks
+ * `undefined`, a function, a symbol, a bigint, and an object that is not a plain record have no
+ * JSON form, so a key holding one is omitted and an array slot holding one is `null`. A value
+ * past `GUARD_DEPTH_LIMIT` is dropped the same way, so a cycle cannot run away.
+ *
+ * @param value - The value to project
+ * @param depth - How deep the walk already is
+ * @returns The JSON value, or `undefined` when it has no JSON form
+ *
+ * @example
+ * ```ts
+ * import { projectValue } from '@src/core'
+ *
+ * projectValue({ a: Number.NaN, b: undefined, c: [1, undefined] }) // { a: null, c: [1, null] }
+ * ```
+ */
+export function projectValue(value: unknown, depth = 0): JSONValue | undefined {
+	if (isNull(value) || isString(value) || isBoolean(value)) return value
+	if (isNumber(value)) return isFiniteNumber(value) ? value : null
+	if (depth >= GUARD_DEPTH_LIMIT) return undefined
+	if (isArray(value)) return value.map((entry) => projectValue(entry, depth + 1) ?? null)
+	if (!isRecord(value)) return undefined
+	return Object.fromEntries(
+		Object.entries(value).flatMap(([key, entry]) => {
+			const projected = projectValue(entry, depth + 1)
+			return projected === undefined ? [] : [[key, projected]]
+		}),
+	)
+}
+
+/**
+ * Projects a result to the JSON its contract reads.
+ *
+ * @remarks
+ * The engine publishes `NaN` by design and a check's `actual` holds whatever the subject held,
+ * so a result crosses a boundary as this projection, and the in-memory result and its guard
+ * stay as they are.
+ *
+ * @param result - The result
+ * @returns Its JSON projection, which `resultContract` admits
+ *
+ * @example
+ * ```ts
+ * import { createLogicalDefinition, createLogicalReasoner, projectResult, resultContract } from '@src/core'
+ *
+ * const result = createLogicalReasoner().reason({}, createLogicalDefinition('d', 'd', []))
+ * resultContract.is(projectResult(result)) // true
+ * ```
+ */
+export function projectResult(result: ReasonResult): JSONValue | undefined {
+	return projectValue(result)
+}
+
+// === The door's rules
+
+/**
+ * Determines whether a `parse` coercion kept everything the value said.
+ *
+ * @remarks
+ * Only a `type` fault can be a repair. A number needs a string whose trim is the number's
+ * own text, so `'30'` and `' 30 '` pass and `'30.0'`, `'007'`, `'0x10'`, `'1e3'`, and
+ * `'9007199254740993'` do not. A boolean needs `'true'` or `'false'`, a literal its trimmed
+ * text, and a string a finite number.
+ *
+ * @param fault - The fault `audit` reported
+ * @param subject - The subject as it arrived
+ * @param parsed - What `parse` made of it
+ * @returns True if the repair loses nothing; false otherwise
+ *
+ * @example
+ * ```ts
+ * import { isLosslessRepair } from '@src/core'
+ *
+ * const fault = { reason: 'type', path: ['a'], expected: 'number', received: '' } as const
+ * isLosslessRepair(fault, { a: ' 30 ' }, { a: 30 })  // true
+ * isLosslessRepair(fault, { a: '30.0' }, { a: 30 })  // false
+ * ```
+ */
+export function isLosslessRepair(fault: AuditFault, subject: Subject, parsed: Subject): boolean {
+	if (fault.reason !== 'type') return false
+	const raw = resolveField(subject, fault.path)
+	const value = resolveField(parsed, fault.path)
+	switch (fault.expected) {
+		case 'number':
+		case 'integer':
+		case 'literal':
+			return isString(raw) && value !== undefined && raw.trim() === String(value)
+		case 'boolean':
+			return raw === 'true' || raw === 'false'
+		case 'string':
+			return isFiniteNumber(raw)
+		default:
+			return false
+	}
+}
+
+/**
+ * Lists the paths `parse` filled: absent or `undefined` in the input and present in the output.
+ *
+ * @remarks
+ * Computed by that difference over object and array nesting rather than from a shape walk, so
+ * it reports what `parse` did.
+ *
+ * @param input - The value as it arrived
+ * @param parsed - What `parse` made of it
+ * @param path - The path walked so far
+ * @returns The filled paths, each an array of keys
+ *
+ * @example
+ * ```ts
+ * import { findFilledPaths } from '@src/core'
+ *
+ * findFilledPaths({ a: 1 }, { a: 1, b: 2 })             // [['b']]
+ * findFilledPaths({ o: {} }, { o: { c: 3 } })           // [['o', 'c']]
+ * findFilledPaths({ a: 1 }, { a: 1 })                   // []
+ * ```
+ */
+export function findFilledPaths(
+	input: unknown,
+	parsed: unknown,
+	path: readonly string[] = [],
+): readonly FieldPath[] {
+	if (!isObject(parsed)) return []
+	return Object.keys(parsed).flatMap((key) => {
+		const inner = [...path, key]
+		const supplied =
+			isObject(input) && Object.hasOwn(input, key) ? Reflect.get(input, key) : undefined
+		return supplied === undefined
+			? [inner]
+			: findFilledPaths(supplied, Reflect.get(parsed, key), inner)
+	})
+}
+
+// === Reading a shape
+
+/**
+ * Finds what a shape says about a field path.
+ *
+ * @remarks
+ * A string is one key and an array descends, as a {@link Check} reads it. An `optional`
+ * wrapper is removed and a `nullable` one is kept at the leaf, because `null` is a value the
+ * field admits.
+ *
+ * @param shape - The shape to read
+ * @param path - The field path
+ * @returns What the shape says, see {@link ShapeRead}
+ *
+ * @example
+ * ```ts
+ * import { numberShape, objectShape } from '@orkestrel/contract'
+ * import { findFieldShape } from '@src/core'
+ *
+ * const shape = objectShape({ age: numberShape() })
+ * findFieldShape(shape, 'age').declared  // true
+ * findFieldShape(shape, 'agee').declared // false
+ * ```
+ */
+export function findFieldShape(shape: ContractShape, path: FieldPath): ShapeRead {
+	const keys = isString(path) ? [path] : path
+	if (shape.category === 'optional') return findFieldShape(shape.inner, keys)
+	const key = keys[0]
+	if (key === undefined) return { declared: true, shape }
+	const rest = keys.slice(1)
+	switch (shape.category) {
+		case 'nullable':
+			return findFieldShape(shape.inner, keys)
+		case 'object': {
+			const property = Object.hasOwn(shape.properties, key) ? shape.properties[key] : undefined
+			if (property !== undefined) return findFieldShape(property, rest)
+			const open = shape.additionalProperties
+			if (open === true) return { declared: true }
+			return isObject(open) ? findFieldShape(open, rest) : { declared: false }
+		}
+		case 'array':
+			return /^\d+$/.test(key) ? findFieldShape(shape.items, rest) : { declared: false }
+		case 'union':
+		case 'raw':
+		case 'json':
+			return { declared: true }
+		default:
+			return { declared: false }
+	}
+}
+
+/**
+ * Determines whether a field's shape leaves its value untyped, which a `raw` or `json` node does.
+ *
+ * @param shape - The field's shape, absent when a path ran into something that says nothing
+ * @returns True for a `raw` or `json` shape; false otherwise
+ *
+ * @example
+ * ```ts
+ * import { jsonShape, numberShape } from '@orkestrel/contract'
+ * import { isUntypedShape } from '@src/core'
+ *
+ * isUntypedShape(jsonShape())   // true
+ * isUntypedShape(numberShape()) // false
+ * ```
+ */
+export function isUntypedShape(shape: ContractShape | undefined): boolean {
+	return shape?.category === 'raw' || shape?.category === 'json'
+}
+
+/**
+ * Determines whether a shape admits a string as one of its closed values.
+ *
+ * @param shape - The field's shape
+ * @param value - The string
+ * @returns True if a `literal` reachable through `nullable` or `union` holds it; false otherwise
+ *
+ * @example
+ * ```ts
+ * import { literalShape, stringShape } from '@orkestrel/contract'
+ * import { admitsLiteral } from '@src/core'
+ *
+ * admitsLiteral(literalShape(['FL', 'CA']), 'FL') // true
+ * admitsLiteral(stringShape(), 'FL')              // false
+ * ```
+ */
+export function admitsLiteral(shape: ContractShape, value: string): boolean {
+	switch (shape.category) {
+		case 'literal':
+			return shape.values.includes(value)
+		case 'nullable':
+			return admitsLiteral(shape.inner, value)
+		case 'union':
+			return shape.variants.some((variant) => admitsLiteral(variant, value))
+		default:
+			return false
+	}
+}
+
+/**
+ * Scans a shape for what cannot stand in a definition.
+ *
+ * @remarks
+ * The subject is a record, so the root is an object. A `pattern` refuses, because it does not
+ * survive JSON and a definition must. A required key carrying a `default` refuses, because
+ * the keyword is only an annotation there.
+ *
+ * @param shape - The shape to scan
+ * @param path - The path walked so far
+ * @param required - Whether a key the shape requires holds this node
+ * @returns The messages naming each fault, empty when the shape can stand
+ *
+ * @example
+ * ```ts
+ * import { numberShape, objectShape, stringShape } from '@orkestrel/contract'
+ * import { scanShape } from '@src/core'
+ *
+ * scanShape(objectShape({ age: numberShape() }))                    // []
+ * scanShape(objectShape({ a: stringShape({ pattern: /x/ }) })).length // 1
+ * scanShape(numberShape()).length                                   // 1
+ * ```
+ */
+export function scanShape(
+	shape: ContractShape,
+	path: readonly string[] = [],
+	required = false,
+): readonly string[] {
+	const field = path.join('.')
+	const root =
+		path.length === 0 && shape.category !== 'object' ? ['Shape must describe an object'] : []
+	switch (shape.category) {
+		case 'string':
+			return shape.pattern === undefined
+				? root
+				: [...root, `Field "${field}" carries a pattern, which does not survive JSON`]
+		case 'optional':
+			return [...root, ...scanShape(shape.inner, path)]
+		case 'nullable':
+			return [...root, ...scanShape(shape.inner, path, required)]
+		case 'array':
+			return [...root, ...scanShape(shape.items, path)]
+		case 'union':
+			return [...root, ...shape.variants.flatMap((variant) => scanShape(variant, path))]
+		case 'object':
+			return [
+				...root,
+				...Object.entries(shape.properties).flatMap(([key, property]) =>
+					scanShape(property, [...path, key], property.category !== 'optional'),
+				),
+				...(isObject(shape.additionalProperties)
+					? scanShape(shape.additionalProperties, path)
+					: []),
+			]
+		case 'raw':
+			return required && Object.hasOwn(shape.schema, 'default')
+				? [...root, `Field "${field}" is required and carries a default`]
+				: root
+		default:
+			return root
+	}
+}
+
+/**
+ * Scans what a definition reads against its shape.
+ *
+ * @remarks
+ * Every path read is in the shape or in `known`, the keys the definition produces itself. A
+ * check's expected value satisfies the field's shape, per element for a list, and a string one
+ * needs a field that admits it as a literal, because free text is never compared by equality.
+ * A `raw` or `json` field read is a warning, since the typed read is then the only guard.
+ *
+ * @param shape - The definition's shape
+ * @param checks - The checks the definition evaluates
+ * @param fields - The other fields it reads
+ * @param known - The keys it produces itself, flattened
+ * @returns The errors and warnings found
+ *
+ * @example
+ * ```ts
+ * import { numberShape, objectShape } from '@orkestrel/contract'
+ * import { createCheck, scanShapeReads } from '@src/core'
+ *
+ * const shape = objectShape({ age: numberShape() })
+ * scanShapeReads(shape, [createCheck('age', 'above', 18)], [], new Set()).errors  // []
+ * scanShapeReads(shape, [createCheck('agee', 'above', 18)], [], new Set()).errors.length // 1
+ * ```
+ */
+export function scanShapeReads(
+	shape: ContractShape,
+	checks: readonly Check[],
+	fields: readonly FieldPath[],
+	known: ReadonlySet<string>,
+): ShapeScan {
+	const reads = [...checks.map((check) => check.field), ...fields]
+		.map((field) => ({ name: formatField(field), read: findFieldShape(shape, field) }))
+		.filter(({ name }) => !known.has(name))
+	return {
+		errors: [
+			...new Set([
+				...reads
+					.filter(({ read }) => !read.declared)
+					.map(({ name }) => `Field "${name}" is read, and the shape does not declare it`),
+				...checks.flatMap((check) => scanCheckExpected(shape, check, known)),
+			]),
+		],
+		warnings: [
+			...new Set(
+				reads
+					.filter(({ read }) => isUntypedShape(read.shape))
+					.map(({ name }) => `Field "${name}" is read through a shape that types nothing`),
+			),
+		],
+	}
+}
+
+/**
+ * Scans a check's expected value against the shape of the field it reads.
+ *
+ * @param shape - The definition's shape
+ * @param check - The check
+ * @param known - The keys the definition produces itself, flattened
+ * @returns The messages naming each fault, empty when the value fits or nothing can be said
+ *
+ * @example
+ * ```ts
+ * import { numberShape, objectShape } from '@orkestrel/contract'
+ * import { createCheck, scanCheckExpected } from '@src/core'
+ *
+ * const shape = objectShape({ age: numberShape() })
+ * scanCheckExpected(shape, createCheck('age', 'above', 18), new Set())   // []
+ * scanCheckExpected(shape, createCheck('age', 'equals', '18'), new Set()).length // 1
+ * ```
+ */
+export function scanCheckExpected(
+	shape: ContractShape,
+	check: Check,
+	known: ReadonlySet<string>,
+): readonly string[] {
+	const name = formatField(check.field)
+	if (known.has(name)) return []
+	const field = findFieldShape(shape, check.field).shape
+	if (field === undefined || isUntypedShape(field)) return []
+	const contract = createContract(field)
+	const values: readonly unknown[] = isArray(check.value) ? check.value : [check.value]
+	return values.flatMap((value) => {
+		if (!contract.is(value))
+			return [`Check on "${name}": ${preview(value)} is not a value of this field`]
+		return isString(value) && !admitsLiteral(field, value)
+			? [`Check on "${name}": a string compares only against a field that declares it as a literal`]
+			: []
+	})
+}
+
+/**
+ * Scans a shape for a key the rules conclude, which a subject may not supply.
+ *
+ * @param shape - The definition's shape
+ * @param rules - The definition's rules
+ * @returns One message per declared conclusion key
+ *
+ * @example
+ * ```ts
+ * import { booleanShape, objectShape } from '@orkestrel/contract'
+ * import { createAtom, createRule, scanShapeConclusions } from '@src/core'
+ *
+ * const rule = createRule('r', [createAtom('a', 'equals', 1)], createAtom('ok', 'equals', true))
+ * scanShapeConclusions(objectShape({ ok: booleanShape() }), [rule]) // ['Shape declares conclusion "ok"']
+ * ```
+ */
+export function scanShapeConclusions(
+	shape: ContractShape,
+	rules: readonly Rule[],
+): readonly string[] {
+	const declared = rules.flatMap((rule) =>
+		extractAtoms(rule.conclusion).flatMap((atom) =>
+			findFieldShape(shape, atom.check.field).shape === undefined
+				? []
+				: [`Shape declares conclusion "${formatField(atom.check.field)}"`],
+		),
+	)
+	return [...new Set(declared)]
+}
+
+// === Scanning definitions for what `validate` refuses
+
+/**
+ * Scans a check for an expected value its comparison cannot use.
+ *
+ * @param check - The check to scan
+ * @returns The messages naming each fault, empty when the check is well formed
+ *
+ * @example
+ * ```ts
+ * import { createCheck, scanCheck } from '@src/core'
+ *
+ * scanCheck(createCheck('age', 'above', 18))   // []
+ * scanCheck(createCheck('age', 'above', '18')).length // 1
+ * ```
+ */
+export function scanCheck(check: Check): readonly string[] {
+	const field = formatField(check.field)
+	switch (check.operator) {
+		case 'equals':
+		case 'not':
+			return isComparable(check.value)
+				? []
+				: [
+						`Check on "${field}": "${check.operator}" needs a finite number, a string, a boolean, or null`,
+					]
+		case 'above':
+		case 'below':
+		case 'from':
+		case 'to':
+			return isFiniteNumber(check.value)
+				? []
+				: [`Check on "${field}": "${check.operator}" needs a finite number`]
+		case 'any':
+		case 'none':
+			return isMembership(check.value)
+				? []
+				: [`Check on "${field}": "${check.operator}" needs a non-empty list of comparable values`]
+		default:
+			return isRange(check.value)
+				? []
+				: [
+						`Check on "${field}": "${check.operator}" needs [minimum, maximum] of finite numbers in order`,
+					]
+	}
+}
+
+/**
+ * Scans a premise expression for a wrong connective arity and a malformed check.
+ *
+ * @param expression - The expression to scan
+ * @returns The messages naming each fault, empty when the expression is well formed
+ *
+ * @example
+ * ```ts
+ * import { createAtom, createCompound, scanExpression } from '@src/core'
+ *
+ * scanExpression(createCompound('and', [createAtom('a', 'equals', 1)])) // []
+ * scanExpression(createCompound('and', [])).length                      // 1
+ * ```
+ */
+export function scanExpression(expression: Expression): readonly string[] {
+	if (expression.form === 'atom') return scanCheck(expression.check)
+	const { operator, operands } = expression
+	const arity =
+		operator === 'not'
+			? operands.length === 1
+			: operator === 'implies' || operator === 'xor'
+				? operands.length === 2
+				: operands.length > 0
+	return [
+		...(arity ? [] : [`Connective "${operator}" has ${String(operands.length)} operands`]),
+		...operands.flatMap((operand) => scanExpression(operand)),
+	]
+}
+
+/**
+ * Scans a rule's conclusion, which may only assert: `equals` atoms under `and`, none of
+ * them asserting `false`.
+ *
+ * @remarks
+ * `extractConclusions` ignores connectives and operators, so `not(blocked)` would assert
+ * `blocked = true`. `false` is refused because a settled pass writes it to mean "this
+ * rule did not fire".
+ *
+ * @param expression - The conclusion to scan
+ * @returns The messages naming each fault, empty when the conclusion is well formed
+ *
+ * @example
+ * ```ts
+ * import { createAtom, createCompound, scanConclusion } from '@src/core'
+ *
+ * scanConclusion(createAtom('ok', 'equals', true))                              // []
+ * scanConclusion(createCompound('not', [createAtom('ok', 'equals', true)])).length // 1
+ * ```
+ */
+export function scanConclusion(expression: Expression): readonly string[] {
+	if (expression.form === 'compound') {
+		return [
+			...(expression.operator === 'and' && expression.operands.length > 0
+				? []
+				: [`A conclusion may only join atoms with "and", not "${expression.operator}"`]),
+			...expression.operands.flatMap((operand) => scanConclusion(operand)),
+		]
+	}
+	const { field, operator, value } = expression.check
+	const key = formatField(field)
+	return [
+		...(operator === 'equals'
+			? []
+			: [`Conclusion on "${key}" must use "equals", not "${operator}"`]),
+		...(value === false ? [`Conclusion on "${key}" may not assert false`] : []),
+		...(isComparable(value) ? [] : [`Conclusion on "${key}" must assert a comparable value`]),
+	]
+}
+
+/**
+ * Scans a factor for a `fallback` its source cannot use and for malformed checks.
+ *
+ * @param factor - The factor to scan
+ * @returns The messages naming each fault, empty when the factor is well formed
+ *
+ * @example
+ * ```ts
+ * import { createFieldFactor, scanFactor } from '@src/core'
+ *
+ * scanFactor(createFieldFactor('age', 'age'))                       // []
+ * scanFactor(createFieldFactor('age', 'age', { fallback: 0 })).length // 1
+ * ```
+ */
+export function scanFactor(factor: Factor): readonly string[] {
+	const usable = factor.source.origin === 'lookup' || factor.source.origin === 'range'
+	return [
+		...(factor.fallback !== undefined && !usable
+			? [`Factor "${factor.id}": a "${factor.source.origin}" source cannot use a fallback`]
+			: []),
+		...(factor.checks ?? []).flatMap((check) => scanCheck(check)),
+	]
+}
+
+/**
+ * Scans a symbolic expression for a binary operation with no right side.
+ *
+ * @param expression - The expression to scan
+ * @returns The messages naming each fault, empty when the expression is well formed
+ *
+ * @example
+ * ```ts
+ * import { createConstant, scanSymbolicExpression } from '@src/core'
+ *
+ * scanSymbolicExpression(createConstant(1))                                                       // []
+ * scanSymbolicExpression({ form: 'operation', operator: 'add', left: createConstant(1) }).length // 1
+ * ```
+ */
+export function scanSymbolicExpression(expression: SymbolicExpression): readonly string[] {
+	if (expression.form !== 'operation') return []
+	const unary = ['round', 'ceil', 'floor', 'abs'].includes(expression.operator)
+	return [
+		...(unary || expression.right !== undefined
+			? []
+			: [`Operation "${expression.operator}" has no right side`]),
+		...scanSymbolicExpression(expression.left),
+		...(expression.right === undefined ? [] : scanSymbolicExpression(expression.right)),
+	]
+}
+
+/**
+ * Collects every variable a symbolic expression reads.
+ *
+ * @param expression - The expression to walk
+ * @returns The variable names, repeats allowed
+ *
+ * @example
+ * ```ts
+ * import { collectVariables, createOperation, createVariable } from '@src/core'
+ *
+ * collectVariables(createOperation('add', createVariable('x'), createVariable('y'))) // ['x', 'y']
+ * ```
+ */
+export function collectVariables(expression: SymbolicExpression): readonly string[] {
+	if (expression.form === 'variable') return [expression.name]
+	if (expression.form === 'constant') return []
+	return [
+		...collectVariables(expression.left),
+		...(expression.right === undefined ? [] : collectVariables(expression.right)),
+	]
 }
 
 // === Definition projection

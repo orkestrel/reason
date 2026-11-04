@@ -148,13 +148,13 @@ describe('Transformer — apply (propagation & unknown operation)', () => {
 		)
 	})
 
-	it('an unknown operation returns the value unchanged (never throws)', () => {
+	it('an unknown operation has no answer, which the finite recheck refuses (never throws)', () => {
 		expect(
 			invokeUnchecked<number>(transformer, transformer.apply, [
 				42,
 				{ operation: 'unknown', operand: 7 },
 			]),
-		).toBe(42)
+		).toBeNaN()
 	})
 })
 

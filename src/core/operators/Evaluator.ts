@@ -1,29 +1,26 @@
 import type { Check, CheckResult, EvaluatorInterface, EvaluatorOptions, Subject } from '../types.js'
-import { isArray, isError, isNumber, resolveField } from '@orkestrel/contract'
-import { matchesBounds } from '../helpers.js'
+import { isError, resolveField } from '@orkestrel/contract'
+import { settleComparison } from '../helpers.js'
 import { EVALUATOR_ID } from '../constants.js'
 
 /**
- * Evaluates {@link Check}s against subjects — the shared predicate engine of the
- * quantitative and logical reasoners.
+ * Evaluates field predicates against subjects.
  *
  * @remarks
- * Total and strict: `evaluate` never throws (an unknown operator is caught and
- * surfaced as `CheckResult.error` with `met: false`) and never coerces —
- * `equals` / `not` are raw `===` / `!==`, the ordering operators demand numbers
- * on each side, `any` / `none` demand an array expected value (a non-array is
- * not met for either — `none` is not the raw complement of `any` on malformed
- * input), while `outside` is the pure negation of `between` (so a malformed
- * range is `outside`). Fields resolve through the core `resolveField` — a string
- * is a single key, an array descends. Stateless and deterministic.
+ * Every comparison reads `unread` when it cannot read a side, which {@link Comparison}
+ * spells out, and a settled answer stays `met` or `unmet`. Fields resolve through the core
+ * `resolveField` — a string `field` is one key (never dot-split), an array descends. An
+ * unknown operator is caught into `state: 'unread'` with an `error` naming it, so
+ * `evaluate` and `batch` are total.
  *
  * @example
  * ```ts
  * import { createCheck, createEvaluator } from '@orkestrel/reason'
  *
  * const evaluator = createEvaluator()
- * evaluator.evaluate(createCheck('age', 'above', 18), { age: 25 }) // { field: 'age', met: true, actual: 25 }
- * evaluator.batch([createCheck('age', 'above', 18)], { age: 25 }) // one CheckResult per check, positionally
+ * evaluator.evaluate(createCheck('age', 'above', 18), { age: 25 }) // { field: 'age', state: 'met', actual: 25 }
+ * evaluator.evaluate(createCheck('age', 'above', 18), {}).state    // 'unread'
+ * evaluator.batch([createCheck('age', 'above', 18)], { age: 25 })  // one CheckResult per check, positionally
  * ```
  */
 export class Evaluator implements EvaluatorInterface {
@@ -40,44 +37,18 @@ export class Evaluator implements EvaluatorInterface {
 	evaluate(check: Check, subject: Subject): CheckResult {
 		const actual = resolveField(subject, check.field)
 		try {
-			const met = this.#compare(actual, check.operator, check.value)
-			return { field: check.field, met, actual }
+			return {
+				field: check.field,
+				state: settleComparison(actual, check.operator, check.value),
+				actual,
+			}
 		} catch (error) {
 			const message = isError(error) ? error.message : String(error)
-			return { field: check.field, met: false, actual, error: message }
+			return { field: check.field, state: 'unread', actual, error: message }
 		}
 	}
 
 	batch(checks: readonly Check[], subject: Subject): readonly CheckResult[] {
 		return checks.map((check) => this.evaluate(check, subject))
-	}
-
-	// The one throwing path is the unknown-operator default — caught by `evaluate`.
-	// `operator` is typed `string` because untrusted definitions reach here unchecked.
-	#compare(actual: unknown, operator: string, expected: unknown): boolean {
-		switch (operator) {
-			case 'equals':
-				return actual === expected
-			case 'not':
-				return actual !== expected
-			case 'above':
-				return isNumber(actual) && isNumber(expected) && actual > expected
-			case 'below':
-				return isNumber(actual) && isNumber(expected) && actual < expected
-			case 'from':
-				return isNumber(actual) && isNumber(expected) && actual >= expected
-			case 'to':
-				return isNumber(actual) && isNumber(expected) && actual <= expected
-			case 'any':
-				return isArray(expected) && expected.includes(actual)
-			case 'none':
-				return isArray(expected) && !expected.includes(actual)
-			case 'between':
-				return matchesBounds(actual, expected)
-			case 'outside':
-				return !matchesBounds(actual, expected)
-			default:
-				throw new Error(`Unknown comparison operator: ${operator}`)
-		}
 	}
 }

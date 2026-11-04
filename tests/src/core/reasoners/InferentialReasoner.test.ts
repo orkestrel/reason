@@ -89,7 +89,7 @@ describe('InferentialReasoner — validate', () => {
 		expect(validation.warnings).toContain('Definition has no inference rules')
 	})
 
-	it('a premise-less inference is a WARNING; a conclusion-less one is an ERROR', () => {
+	it('a premise-less inference is a WARNING; a conclusion-less one is malformed', () => {
 		const warned = reasoner.validate(
 			createInferentialDefinition(
 				'd',
@@ -112,10 +112,13 @@ describe('InferentialReasoner — validate', () => {
 			},
 		])
 		expect(errored.valid).toBe(false)
-		expect(errored.errors).toContain('Inference "i1" must have a conclusion')
+		expect(errored.errors).toEqual([
+			'Definition does not match the inferential definition shape',
+			'Inference at index 0 is malformed',
+		])
 	})
 
-	it('duplicate inference ids are a WARNING, once per duplicated id', () => {
+	it('duplicate inference ids are an ERROR, once per duplicated id', () => {
 		const validation = reasoner.validate(
 			createInferentialDefinition(
 				'd',
@@ -128,13 +131,13 @@ describe('InferentialReasoner — validate', () => {
 				],
 			),
 		)
-		expect(validation.valid).toBe(true)
+		expect(validation.valid).toBe(false)
 		expect(
-			validation.warnings.filter((warning) => warning === 'Duplicate inference id "dup"'),
+			validation.errors.filter((error) => error === 'Duplicate inference id "dup"'),
 		).toHaveLength(1)
 	})
 
-	it('a confidence outside [0, 1] is a WARNING — on facts and inferences alike', () => {
+	it('a confidence outside [0, 1] is an ERROR — on facts and inferences alike', () => {
 		const validation = reasoner.validate(
 			createInferentialDefinition(
 				'd',
@@ -150,15 +153,15 @@ describe('InferentialReasoner — validate', () => {
 				],
 			),
 		)
-		expect(validation.valid).toBe(true)
-		expect(validation.warnings).toContain('Fact "f1" confidence outside [0, 1]')
-		expect(validation.warnings).toContain('Inference "i1" confidence outside [0, 1]')
+		expect(validation.valid).toBe(false)
+		expect(validation.errors).toContain('Fact "f1" confidence outside [0, 1]')
+		expect(validation.errors).toContain('Inference "i1" confidence outside [0, 1]')
 		// The in-range fact and inference stay silent.
-		expect(validation.warnings.some((warning) => warning.includes('"f2"'))).toBe(false)
-		expect(validation.warnings.some((warning) => warning.includes('"i2"'))).toBe(false)
+		expect(validation.errors.some((error) => error.includes('"f2"'))).toBe(false)
+		expect(validation.errors.some((error) => error.includes('"i2"'))).toBe(false)
 	})
 
-	it('a NaN confidence is outside [0, 1] too — the warning still fires', () => {
+	it('a NaN confidence is refused by the shape, before any range check', () => {
 		const validation = reasoner.validate(
 			createInferentialDefinition(
 				'd',
@@ -171,9 +174,12 @@ describe('InferentialReasoner — validate', () => {
 				],
 			),
 		)
-		expect(validation.valid).toBe(true)
-		expect(validation.warnings).toContain('Fact "f1" confidence outside [0, 1]')
-		expect(validation.warnings).toContain('Inference "i1" confidence outside [0, 1]')
+		expect(validation.valid).toBe(false)
+		expect(validation.errors).toEqual([
+			'Definition does not match the inferential definition shape',
+			'Fact at index 0 is malformed',
+			'Inference at index 0 is malformed',
+		])
 	})
 
 	it('a conclusion variable unbound by all premises is a WARNING (runnable)', () => {
@@ -251,7 +257,7 @@ describe('InferentialReasoner — validate', () => {
 		expect(errored.warnings.filter((warning) => warning.includes('is unbound by'))).toEqual([])
 	})
 
-	it('keeps the existing duplicate-id and confidence warnings unaffected by the new unbound-variable check', () => {
+	it('duplicate-id and confidence errors stand beside the unbound-variable warning', () => {
 		const definition = createInferentialDefinition(
 			'd',
 			'd',
@@ -273,8 +279,8 @@ describe('InferentialReasoner — validate', () => {
 			],
 		)
 		const validation = reasoner.validate(definition)
-		expect(validation.warnings).toContain('Duplicate inference id "dup"')
-		expect(validation.warnings).toContain('Inference "dup" confidence outside [0, 1]')
+		expect(validation.errors).toContain('Duplicate inference id "dup"')
+		expect(validation.errors).toContain('Inference "dup" confidence outside [0, 1]')
 		expect(validation.warnings).toContain(
 			'Inference "dup" conclusion variable "?y" is unbound by all premises',
 		)
@@ -748,7 +754,7 @@ describe('InferentialReasoner — backward chaining (proof trees)', () => {
 		expect(result.derived[0]?.terms).toEqual(['?x'])
 	})
 
-	it('a SELF-RECURSIVE inference terminates through the depth cap alone', () => {
+	it('a SELF-RECURSIVE inference terminates through the depth cap, and refuses', () => {
 		// p(?x) → p(?x) with no base facts: the ONLY recursion guard is the cap.
 		const definition = createInferentialDefinition(
 			'd',
@@ -760,7 +766,8 @@ describe('InferentialReasoner — backward chaining (proof trees)', () => {
 		const result = expectInferential(reasoner.reason({}, definition))
 		expect(result.derived).toEqual([])
 		expect(result.proof).toBeUndefined()
-		expect(result.success).toBe(true)
+		expect(result.success).toBe(false)
+		expect(result.errors).toEqual(['Backward proving hit depth 5'])
 	})
 
 	it('a goal that IS a base fact proves as a bare leaf — and still "derives" a duplicate', () => {
@@ -1149,7 +1156,7 @@ describe('InferentialReasoner — deep backward proof tree', () => {
 })
 
 describe('InferentialReasoner — recursion termination', () => {
-	it('mutually-recursive backward inferences terminate through the depth cap', () => {
+	it('mutually-recursive backward inferences terminate through the depth cap, and refuse', () => {
 		const definition = createInferentialDefinition(
 			'mutual',
 			'Mutual',
@@ -1170,7 +1177,8 @@ describe('InferentialReasoner — recursion termination', () => {
 		)
 		const result = expectInferential(reasoner.reason({}, definition))
 		// No base fact ever bottoms out the ping↔pong loop — the cap is the sole guard.
-		expect(result.success).toBe(true)
+		expect(result.success).toBe(false)
+		expect(result.errors).toEqual(['Backward proving hit depth 5'])
 		expect(result.derived).toEqual([])
 		expect(result.proof).toBeUndefined()
 	})
@@ -1703,8 +1711,8 @@ describe('InferentialReasoner — depth-cap-bounded backward proof', () => {
 	})
 })
 
-describe('InferentialReasoner — sparse array positions are hole-tolerant', () => {
-	it('a sparse facts list derives from only the present facts — holes are skipped', () => {
+describe('InferentialReasoner — a sparse array refuses, naming the hole', () => {
+	it('a sparse facts list derives from the present facts and refuses', () => {
 		const facts = sparse(3, [
 			[0, createFact('f1', 'p', ['a'])],
 			[2, createFact('f2', 'p', ['b'])],
@@ -1721,15 +1729,15 @@ describe('InferentialReasoner — sparse array positions are hole-tolerant', () 
 		const result = expectInferential(
 			invokeUnchecked<ReasonResult>(reasoner, reasoner.reason, [{}, definition]),
 		)
-		expect(result.success).toBe(true)
-		expect(result.errors).toEqual([])
+		expect(result.success).toBe(false)
+		expect(result.errors).toEqual(['Fact at index 1 is malformed'])
 		expect(result.derived).toEqual([
 			{ id: 'c1', predicate: 'q', terms: ['a'], confidence: 1 },
 			{ id: 'c1', predicate: 'q', terms: ['b'], confidence: 1 },
 		])
 	})
 
-	it('a sparse inferences list derives from only the present inferences — holes are skipped', () => {
+	it('a sparse inferences list derives from the present inferences and refuses', () => {
 		const inferences = sparse(2, [
 			[1, createInference('i1', [createFact('p1', 'p', ['?x'])], createFact('c1', 'q', ['?x']))],
 		])
@@ -1743,8 +1751,8 @@ describe('InferentialReasoner — sparse array positions are hole-tolerant', () 
 		const result = expectInferential(
 			invokeUnchecked<ReasonResult>(reasoner, reasoner.reason, [{}, definition]),
 		)
-		expect(result.success).toBe(true)
-		expect(result.errors).toEqual([])
+		expect(result.success).toBe(false)
+		expect(result.errors).toEqual(['Inference at index 0 is malformed'])
 		expect(result.derived).toEqual([{ id: 'c1', predicate: 'q', terms: ['a'], confidence: 1 }])
 	})
 })

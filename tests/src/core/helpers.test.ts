@@ -2,6 +2,10 @@ import {
 	readVariablePresence,
 	type Item,
 	ADVERSARIAL_VALUE_SUBJECT,
+	createCycleThrough,
+	createFlagAtom,
+	createFlagRule,
+	createNegatedFlag,
 	EXTREME_NUMBERS,
 	INTEGER_KEY_SUBJECT,
 	TRICKY_KEYS,
@@ -11,7 +15,7 @@ import {
 	sequence,
 	sparse,
 } from '../../setup.js'
-import type { MathOperation, Subject } from '@src/core'
+import type { CheckState, Comparison, MathOperation, Subject } from '@src/core'
 import {
 	addVariable,
 	appendById,
@@ -25,6 +29,12 @@ import {
 	assignField,
 	buildErrorResult,
 	clamp,
+	collectConcluders,
+	collectPolarReads,
+	collectReachable,
+	collectVariables,
+	combineStates,
+	settleComparison,
 	clearInferentialDefinition,
 	clearLogicalDefinition,
 	clearQuantitativeDefinition,
@@ -33,18 +43,22 @@ import {
 	containsVariable,
 	createAtom,
 	createBounds,
+	createCheck,
 	createCompound,
 	createConstant,
 	createEquation,
 	createFact,
 	createFactorGroup,
+	createFieldFactor,
 	createFieldSource,
 	createInference,
 	createInferentialDefinition,
 	createLogicalDefinition,
+	createLookupFactor,
 	createLookupSource,
 	createOperation,
 	createQuantitativeDefinition,
+	createRangeFactor,
 	createRangeSource,
 	createRule,
 	createStaticFactor,
@@ -52,14 +66,30 @@ import {
 	createSymbolicDefinition,
 	createVariable,
 	definitionToEnvelope,
+	describeFault,
 	emptyAggregate,
 	equalValues,
 	extractAtoms,
 	extractConclusions,
 	factToArityKey,
 	factToKey,
+	admitsLiteral,
+	buildRefusedResult,
+	filterUniqueFaults,
+	findFieldShape,
+	findFilledPaths,
+	isLosslessRepair,
+	isUntypedShape,
+	readExpectedKind,
+	scanCheckExpected,
+	scanShape,
+	scanShapeConclusions,
+	scanShapeReads,
+	valueToFault,
+	valueToKind,
 	findDuplicates,
-	findOverlayMismatches,
+	findNegativeCycles,
+	findSuppliedConclusions,
 	findUnboundVariables,
 	formatField,
 	indexByArity,
@@ -84,6 +114,7 @@ import {
 	prependGroup,
 	prependInference,
 	prependRule,
+	readClosedState,
 	removeById,
 	removeEquation,
 	removeFact,
@@ -104,11 +135,29 @@ import {
 	resolveOperand,
 	resolveSource,
 	roundTo,
+	scanCheck,
+	scanConclusion,
+	scanExpression,
+	scanFactor,
+	scanSymbolicExpression,
 	sortByPriority,
 	subjectToFacts,
 	termToKey,
 } from '@src/core'
 import { describe, expect, it } from 'vitest'
+import {
+	arrayShape,
+	booleanShape,
+	jsonShape,
+	literalShape,
+	nullableShape,
+	numberShape,
+	objectShape,
+	optionalShape,
+	rawShape,
+	stringShape,
+	unionShape,
+} from '@orkestrel/contract'
 import { captureError, invokeUnchecked } from '@orkestrel/test'
 
 // The reasons helpers — `formatField`'s display form, the `clamp` / `roundTo`
@@ -991,28 +1040,40 @@ describe('emptyAggregate — the empty-input identity per aggregation', () => {
 		expect(emptyAggregate('maximum')).toBeNaN()
 	})
 
-	it('yields 0 for an unknown aggregation from an untrusted definition', () => {
-		expect(invokeUnchecked<number>(undefined, emptyAggregate, ['median'])).toBe(0)
+	it('has no answer for an unknown aggregation from an untrusted definition', () => {
+		expect(invokeUnchecked<number>(undefined, emptyAggregate, ['median'])).toBeNaN()
 	})
 })
 
 describe('resolveSource — one factor source against a subject', () => {
 	it('passes a static value through', () => {
-		expect(resolveSource(createStaticSource(42), {})).toBe(42)
+		expect(resolveSource(createStaticSource(42), {})).toEqual({ value: 42, fallback: false })
 	})
 
-	it('coerces a field source and falls back when unresolvable', () => {
-		expect(resolveSource(createFieldSource('age'), { age: 30 })).toBe(30)
-		expect(resolveSource(createFieldSource('age'), { age: 'old' }, 7)).toBe(7)
-		expect(resolveSource(createFieldSource('age'), {})).toBeUndefined()
+	it('reads a field source as a finite number and nothing else, whatever the fallback', () => {
+		const unread = { fallback: false }
+		expect(resolveSource(createFieldSource('age'), { age: 30 })).toEqual({
+			value: 30,
+			fallback: false,
+		})
+		expect(resolveSource(createFieldSource('age'), { age: 'old' }, 7)).toEqual(unread)
+		expect(resolveSource(createFieldSource('age'), { age: '30' }, 7)).toEqual(unread)
+		expect(resolveSource(createFieldSource('age'), { age: Number.NaN }, 7)).toEqual(unread)
+		expect(resolveSource(createFieldSource('age'), {}, 7)).toEqual(unread)
 	})
 
-	it('reads only OWN lookup table keys, and falls back on a missing field', () => {
+	it('reads only OWN lookup table keys, and takes the fallback only on a readable miss', () => {
 		const source = createLookupSource('state', { CA: 5 })
-		expect(resolveSource(source, { state: 'CA' })).toBe(5)
-		expect(resolveSource(source, { state: 'NY' }, 1)).toBe(1)
-		expect(resolveSource(source, { state: null }, 1)).toBe(1)
-		expect(resolveSource(source, { state: 'toString' }, 1)).toBe(1)
+		const unread = { fallback: false }
+		expect(resolveSource(source, { state: 'CA' })).toEqual({ value: 5, fallback: false })
+		expect(resolveSource(source, { state: 'NY' }, 1)).toEqual({ value: 1, fallback: true })
+		expect(resolveSource(source, { state: 'NY' })).toEqual(unread)
+		expect(resolveSource(source, { state: 'toString' }, 1)).toEqual({ value: 1, fallback: true })
+		expect(resolveSource(source, { state: null }, 1)).toEqual(unread)
+		expect(resolveSource(source, {}, 1)).toEqual(unread)
+		expect(resolveSource(source, { state: ['CA'] }, 1)).toEqual(unread)
+		expect(resolveSource(source, { state: {} }, 1)).toEqual(unread)
+		expect(resolveSource(source, { state: Number.NaN }, 1)).toEqual(unread)
 	})
 
 	it('scans range bands in order and takes the first match', () => {
@@ -1021,16 +1082,20 @@ describe('resolveSource — one factor source against a subject', () => {
 			{ bounds: createBounds(25, 64), value: 15 },
 			{ value: 1 },
 		])
-		expect(resolveSource(source, { age: 20 })).toBe(30)
-		expect(resolveSource(source, { age: 40 })).toBe(15)
-		expect(resolveSource(source, { age: 90 })).toBe(1)
-		expect(resolveSource(source, {}, 0)).toBe(0)
+		expect(resolveSource(source, { age: 20 })).toEqual({ value: 30, fallback: false })
+		expect(resolveSource(source, { age: 40 })).toEqual({ value: 15, fallback: false })
+		expect(resolveSource(source, { age: 90 })).toEqual({ value: 1, fallback: false })
+		expect(resolveSource(source, {}, 0)).toEqual({ fallback: false })
+		expect(resolveSource(source, { age: '20' }, 0)).toEqual({ fallback: false })
+		const gapped = createRangeSource('age', [{ bounds: createBounds(0, 10), value: 2 }])
+		expect(resolveSource(gapped, { age: 50 }, 9)).toEqual({ value: 9, fallback: true })
+		expect(resolveSource(gapped, { age: 50 })).toEqual({ fallback: false })
 	})
 
-	it('takes the fallback for a factor carrying no source at all', () => {
-		expect(invokeUnchecked<number | undefined>(undefined, resolveSource, [undefined, {}, 3])).toBe(
-			3,
-		)
+	it('reads a factor carrying no source at all as unread', () => {
+		expect(invokeUnchecked<unknown>(undefined, resolveSource, [undefined, {}, 3])).toEqual({
+			fallback: false,
+		})
 	})
 })
 
@@ -1158,70 +1223,6 @@ describe('extractConclusions — flatten a logical conclusion', () => {
 	})
 })
 
-describe('findOverlayMismatches — cross-rule array-path overlay-key collision', () => {
-	it('flags an array-path conclusion whose key is also read through an array-path premise', () => {
-		const mismatched = [
-			createRule('a', [], createAtom(['address', 'city'], 'equals', 'NYC')),
-			createRule(
-				'b',
-				[createAtom(['address', 'city'], 'equals', 'NYC')],
-				createAtom('eligible', 'equals', true),
-			),
-		]
-		expect(findOverlayMismatches(mismatched)).toEqual(['address.city'])
-		expect(findOverlayMismatches(mismatched)).toEqual(['address.city'])
-	})
-
-	it('stays silent when the reading premise uses the dotted-string form instead', () => {
-		const safe = [
-			createRule('a', [], createAtom(['address', 'city'], 'equals', 'NYC')),
-			createRule(
-				'b',
-				[createAtom('address.city', 'equals', 'NYC')],
-				createAtom('eligible', 'equals', true),
-			),
-		]
-		expect(findOverlayMismatches(safe)).toEqual([])
-		expect(findOverlayMismatches(safe)).toEqual([])
-	})
-
-	it('stays silent when every field is a plain string (no array paths anywhere)', () => {
-		const allString = [
-			createRule('a', [], createAtom('adult', 'equals', true)),
-			createRule(
-				'b',
-				[createAtom('adult', 'equals', true)],
-				createAtom('eligible', 'equals', true),
-			),
-		]
-		expect(findOverlayMismatches(allString)).toEqual([])
-		expect(findOverlayMismatches(allString)).toEqual([])
-	})
-
-	it('stays silent when the array-path conclusion key is never read by any premise', () => {
-		const unread = [
-			createRule('a', [], createAtom(['address', 'city'], 'equals', 'NYC')),
-			createRule(
-				'b',
-				[createAtom('unrelated', 'equals', true)],
-				createAtom('eligible', 'equals', true),
-			),
-		]
-		expect(findOverlayMismatches(unread)).toEqual([])
-	})
-
-	it('returns each mismatched key once, in authored order, across many rules', () => {
-		const rules = [
-			createRule('a', [], createAtom(['x', 'y'], 'equals', 1)),
-			createRule('b', [], createAtom(['p', 'q'], 'equals', 2)),
-			createRule('c', [createAtom(['x', 'y'], 'equals', 1)], createAtom('c1', 'equals', true)),
-			createRule('d', [createAtom(['x', 'y'], 'equals', 1)], createAtom('c2', 'equals', true)),
-			createRule('e', [createAtom(['p', 'q'], 'equals', 2)], createAtom('c3', 'equals', true)),
-		]
-		expect(findOverlayMismatches(rules)).toEqual(['x.y', 'p.q'])
-	})
-})
-
 describe('buildErrorResult — empty type-shaped failure result', () => {
 	it('builds the quantitative failure shape', () => {
 		expect(buildErrorResult(createQuantitativeDefinition('q', 'Q', []), 'boom')).toEqual({
@@ -1232,18 +1233,24 @@ describe('buildErrorResult — empty type-shaped failure result', () => {
 			success: false,
 			trace: [],
 			errors: ['boom'],
+			faults: [],
+			repairs: [],
+			defaulted: [],
 		})
 	})
 
 	it('builds the logical failure shape', () => {
 		expect(buildErrorResult(createLogicalDefinition('l', 'L', []), 'boom')).toEqual({
 			reasoning: 'logical',
-			conclusion: false,
+			conclusion: 'unread',
 			rules: [],
 			count: 0,
 			success: false,
 			trace: [],
 			errors: ['boom'],
+			faults: [],
+			repairs: [],
+			defaulted: [],
 		})
 	})
 
@@ -1254,6 +1261,9 @@ describe('buildErrorResult — empty type-shaped failure result', () => {
 			success: false,
 			trace: [],
 			errors: ['boom'],
+			faults: [],
+			repairs: [],
+			defaulted: [],
 		})
 	})
 
@@ -1264,6 +1274,9 @@ describe('buildErrorResult — empty type-shaped failure result', () => {
 			success: false,
 			trace: [],
 			errors: ['boom'],
+			faults: [],
+			repairs: [],
+			defaulted: [],
 		})
 	})
 })
@@ -2064,5 +2077,914 @@ describe('subject engine — assignField / removeField / mergeSubjects / repeatS
 		const subject = deepFreeze({ id: 's1' })
 		expect(repeatSubject(subject, 0)).toEqual([])
 		expect(repeatSubject(subject, -3)).toEqual([])
+	})
+})
+
+// The three-valued logic, written out rather than derived, so a table cannot agree with
+// the implementation by sharing its reasoning.
+const m: CheckState = 'met'
+const u: CheckState = 'unmet'
+const r: CheckState = 'unread'
+
+describe('combineStates — strong Kleene truth tables', () => {
+	it.each<[CheckState, CheckState, CheckState, CheckState, CheckState, CheckState]>([
+		[m, m, m, m, m, u],
+		[m, u, u, m, u, m],
+		[m, r, r, m, r, r],
+		[u, m, u, m, m, m],
+		[u, u, u, u, m, u],
+		[u, r, u, r, m, r],
+		[r, m, r, m, m, r],
+		[r, u, u, r, r, r],
+		[r, r, r, r, r, r],
+	])('%s, %s: and %s, or %s, implies %s, xor %s', (left, right, and, or, implies, xor) => {
+		expect(combineStates('and', [left, right])).toBe(and)
+		expect(combineStates('or', [left, right])).toBe(or)
+		expect(combineStates('implies', [left, right])).toBe(implies)
+		expect(combineStates('xor', [left, right])).toBe(xor)
+	})
+
+	it('not flips met and unmet and leaves unread alone', () => {
+		expect(combineStates('not', [m])).toBe(u)
+		expect(combineStates('not', [u])).toBe(m)
+		expect(combineStates('not', [r])).toBe(r)
+	})
+
+	it('and and or read any number of operands', () => {
+		expect(combineStates('and', [m])).toBe(m)
+		expect(combineStates('and', [m, m, r])).toBe(r)
+		expect(combineStates('and', [m, r, u])).toBe(u)
+		expect(combineStates('or', [u])).toBe(u)
+		expect(combineStates('or', [u, u, r])).toBe(r)
+		expect(combineStates('or', [u, r, m])).toBe(m)
+	})
+
+	it('a wrong arity reads unread, in both directions', () => {
+		expect(combineStates('and', [])).toBe(r)
+		expect(combineStates('or', [])).toBe(r)
+		expect(combineStates('not', [])).toBe(r)
+		expect(combineStates('not', [m, m])).toBe(r)
+		expect(combineStates('implies', [m])).toBe(r)
+		expect(combineStates('implies', [u, m, m])).toBe(r)
+		expect(combineStates('xor', [m])).toBe(r)
+		expect(combineStates('xor', [m, u, m])).toBe(r)
+	})
+
+	it('an unknown connective and a hole both read unread', () => {
+		expect(combineStates('nand', [m, m])).toBe(r)
+		expect(combineStates('and', sparse<CheckState>(2, [[0, u]]))).toBe(r)
+		expect(combineStates('or', sparse<CheckState>(2, [[0, m]]))).toBe(r)
+	})
+})
+
+describe('settleComparison', () => {
+	it.each<[unknown, string, unknown, CheckState]>([
+		// One primitive type settles by ===.
+		[1, 'equals', 1, m],
+		[1, 'equals', 2, u],
+		['a', 'equals', 'a', m],
+		['a', 'equals', 'b', u],
+		[true, 'equals', true, m],
+		[false, 'equals', true, u],
+		[1, 'not', 2, m],
+		[1, 'not', 1, u],
+		// null is a value: as the expected value it settles on any present field.
+		[null, 'equals', null, m],
+		[5, 'equals', null, u],
+		[null, 'not', null, u],
+		[5, 'not', null, m],
+		['a', 'not', null, m],
+		[false, 'not', null, m],
+		// Any other difference of type never settles, in either direction.
+		[90, 'equals', 'none', r],
+		[90, 'not', 'none', r],
+		['abc', 'equals', 1, r],
+		['yes', 'equals', true, r],
+		[1, 'equals', true, r],
+		[true, 'equals', 1, r],
+		['1', 'equals', 1, r],
+		['1', 'not', 1, r],
+		['2', 'equals', 1, r],
+		[1, 'equals', '1', r],
+		[1, 'not', '1.0', r],
+		[true, 'equals', 'true', r],
+		[true, 'not', 'true', r],
+		['no', 'equals', false, r],
+		['off', 'not', false, r],
+		['False', 'equals', false, r],
+		[null, 'equals', 1, r],
+		[null, 'not', 'a', r],
+		// A blank or padded string reads unread, whatever it is compared with.
+		['', 'equals', '', r],
+		[' ', 'equals', ' ', r],
+		[' a', 'equals', ' a', r],
+		['a ', 'not', 'b', r],
+		['', 'equals', false, r],
+		[' true ', 'equals', true, r],
+		['', 'not', null, r],
+		// Either side unreadable.
+		[undefined, 'equals', 1, r],
+		[undefined, 'equals', null, r],
+		[undefined, 'not', null, r],
+		[Number.NaN, 'equals', 1, r],
+		[Number.POSITIVE_INFINITY, 'not', 1, r],
+		[{}, 'equals', 1, r],
+		[[1], 'not', 1, r],
+		[1n, 'equals', 1, r],
+		[1, 'equals', Number.NaN, r],
+		[1, 'not', {}, r],
+	])('%o %s %o is %s', (actual, operator, expected, state) => {
+		expect(settleComparison(actual, operator, expected)).toBe(state)
+	})
+
+	it.each<[unknown, string, unknown, CheckState]>([
+		[30, 'above', 18, m],
+		[18, 'above', 18, u],
+		[17, 'below', 18, m],
+		[18, 'below', 18, u],
+		[18, 'from', 18, m],
+		[17, 'from', 18, u],
+		[18, 'to', 18, m],
+		[19, 'to', 18, u],
+		['30', 'above', 18, r],
+		[undefined, 'below', 18, r],
+		[null, 'from', 18, r],
+		[Number.NaN, 'to', 18, r],
+		[Number.POSITIVE_INFINITY, 'above', 18, r],
+		[true, 'above', 0, r],
+		[30, 'above', '18', r],
+		[30, 'below', Number.NaN, r],
+		[30, 'from', undefined, r],
+	])('ordering: %o %s %o is %s', (actual, operator, expected, state) => {
+		expect(settleComparison(actual, operator, expected)).toBe(state)
+	})
+
+	it.each<[unknown, string, unknown, CheckState]>([
+		['a', 'any', ['a', 'b'], m],
+		['c', 'any', ['a', 'b'], u],
+		['a', 'none', ['a', 'b'], u],
+		['c', 'none', ['a', 'b'], m],
+		[1, 'any', [1, 2], m],
+		[3, 'any', [1, 2], u],
+		// An exact hit settles, whatever else the list holds.
+		['1', 'any', ['1', 1], m],
+		['1', 'none', ['1', 1], u],
+		[1, 'any', ['1', 1], m],
+		[null, 'any', [null, 'a'], m],
+		[null, 'none', [null], u],
+		// No hit, and an element of another type: unread.
+		['x', 'any', [1, 2], r],
+		['1', 'any', [1, 2], r],
+		['1', 'none', [1, 2], r],
+		['1', 'any', [2, 'x'], r],
+		[1, 'any', ['1'], r],
+		[true, 'none', ['true'], r],
+		[5, 'none', [null], r],
+		[null, 'any', ['a'], r],
+		// Unreadable.
+		[undefined, 'any', ['a'], r],
+		[undefined, 'none', ['a'], r],
+		['a', 'any', [], r],
+		['a', 'none', 'a', r],
+		[1, 'any', [Number.NaN], r],
+		[{}, 'any', ['a'], r],
+		// Membership has no padding rule: one type with no hit settles.
+		[' CA ', 'any', ['CA'], u],
+		[' CA ', 'none', ['CA'], m],
+	])('membership: %o %s %o is %s', (actual, operator, expected, state) => {
+		expect(settleComparison(actual, operator, expected)).toBe(state)
+	})
+
+	it.each<[unknown, string, unknown, CheckState]>([
+		[5, 'between', [1, 10], m],
+		[1, 'between', [1, 10], m],
+		[10, 'between', [1, 10], m],
+		[11, 'between', [1, 10], u],
+		[11, 'outside', [1, 10], m],
+		[5, 'outside', [1, 10], u],
+		['5', 'between', [1, 10], r],
+		[undefined, 'outside', [1, 10], r],
+		[5, 'between', [10, 1], r],
+		[5, 'outside', [1], r],
+		[5, 'between', [1, Number.NaN], r],
+	])('range: %o %s %o is %s', (actual, operator, expected, state) => {
+		expect(settleComparison(actual, operator, expected)).toBe(state)
+	})
+
+	it('throws OPERATOR on a comparison it does not know', () => {
+		const error = captureError(() => settleComparison(1, 'nearly', 1))
+		if (!isReasonError(error)) throw new Error('expected a ReasonError')
+		expect(error.code).toBe('OPERATOR')
+	})
+})
+
+describe('readClosedState', () => {
+	it('membership reads as absent, and every comparison needing a number is unread', () => {
+		expect(readClosedState('equals')).toBe(u)
+		expect(readClosedState('any')).toBe(u)
+		expect(readClosedState('not')).toBe(m)
+		expect(readClosedState('none')).toBe(m)
+		for (const operator of ['above', 'below', 'from', 'to', 'between', 'outside', 'nearly']) {
+			expect(readClosedState(operator)).toBe(r)
+		}
+	})
+})
+
+describe('collectConcluders', () => {
+	it('maps each key to its concluding rules, in authored order', () => {
+		const first = createFlagRule('first', 'a')
+		const second = createFlagRule('second', 'b')
+		const third = createFlagRule('third', 'a')
+		const concluders = collectConcluders([first, second, third])
+		expect([...concluders.keys()]).toEqual(['a', 'b'])
+		expect(concluders.get('a')).toEqual([first, third])
+		expect(concluders.get('b')).toEqual([second])
+		expect(concluders.get('x')).toBeUndefined()
+	})
+
+	it('reads every asserted key of a joined conclusion, and flattens a path', () => {
+		const rule = createRule(
+			'r',
+			[createAtom('x', 'equals', 1)],
+			createCompound('and', [
+				createAtom('a', 'equals', true),
+				createAtom(['b', 'c'], 'equals', true),
+			]),
+		)
+		expect([...collectConcluders([rule]).keys()]).toEqual(['a', 'b.c'])
+	})
+})
+
+describe('findSuppliedConclusions', () => {
+	const a = createFlagRule('r', 'a')
+	const path = createFlagRule('r', ['f', 'ok'])
+
+	it('finds a key the subject holds, once each, and ignores the rest', () => {
+		expect(findSuppliedConclusions([a], { a: true })).toEqual(['a'])
+		expect(findSuppliedConclusions([a], { a: false })).toEqual(['a'])
+		expect(findSuppliedConclusions([a], { a: undefined })).toEqual(['a'])
+		expect(findSuppliedConclusions([a, a], { a: true })).toEqual(['a'])
+		expect(findSuppliedConclusions([a], { b: true })).toEqual([])
+	})
+
+	it('reads a path nested and flat, and never through the prototype', () => {
+		expect(findSuppliedConclusions([path], { f: { ok: true } })).toEqual(['f.ok'])
+		expect(findSuppliedConclusions([path], { 'f.ok': true })).toEqual(['f.ok'])
+		expect(findSuppliedConclusions([createFlagRule('r', 'toString')], {})).toEqual([])
+	})
+})
+
+describe('findNegativeCycles', () => {
+	const key = createFlagAtom
+	const not = createNegatedFlag
+
+	it('names both keys of a cycle through negation, and one key of a self-negation', () => {
+		const rules = [createRule('a', [not('b')], key('a')), createRule('b', [not('a')], key('b'))]
+		expect(findNegativeCycles(rules)).toEqual(['a', 'b'])
+		expect(findNegativeCycles([createRule('a', [not('a')], key('a'))])).toEqual(['a'])
+	})
+
+	it('names every key of a longer cycle with one negative edge, in authored order', () => {
+		const rules = [
+			createRule('a', [not('c')], key('a')),
+			createRule('b', [key('a')], key('b')),
+			createRule('c', [key('b')], key('c')),
+		]
+		expect(findNegativeCycles(rules)).toEqual(['a', 'b', 'c'])
+	})
+
+	it('names only the keys on the cycle, not the keys it reaches', () => {
+		const rules = [
+			createRule('a', [not('b')], key('a')),
+			createRule('b', [not('a')], key('b')),
+			createRule('c', [key('a')], key('c')),
+		]
+		expect(findNegativeCycles(rules)).toEqual(['a', 'b'])
+	})
+
+	it('leaves a positive cycle alone', () => {
+		const rules = [createRule('a', [key('b')], key('a')), createRule('b', [key('a')], key('b'))]
+		expect(findNegativeCycles(rules)).toEqual([])
+	})
+
+	it('leaves a negation off any cycle alone, and one over an input', () => {
+		const rules = [
+			createRule('nb', [not('a')], key('nb')),
+			createRule('a', [createAtom('x', 'above', 1)], key('a')),
+			createRule('nc', [key('nb')], key('nc')),
+			createRule('d', [not('input')], key('d')),
+		]
+		expect(findNegativeCycles(rules)).toEqual([])
+	})
+
+	it('reads each way a premise can negate', () => {
+		const through = createCycleThrough
+		expect(findNegativeCycles(through(createAtom('b', 'not', true)))).toEqual(['a', 'b'])
+		expect(findNegativeCycles(through(createAtom('b', 'none', [true])))).toEqual(['a', 'b'])
+		expect(findNegativeCycles(through(createCompound('implies', [key('b'), key('x')])))).toEqual([
+			'a',
+			'b',
+		])
+		expect(findNegativeCycles(through(createCompound('xor', [key('b'), key('x')])))).toEqual([
+			'a',
+			'b',
+		])
+		// The consequent of `implies` reads positively, and so does a double negation.
+		expect(findNegativeCycles(through(createCompound('implies', [key('x'), key('b')])))).toEqual([])
+		expect(findNegativeCycles(through(createCompound('not', [not('b')])))).toEqual([])
+	})
+})
+
+describe('collectReachable', () => {
+	it('walks the edges from the start, the start included', () => {
+		const edges: ReadonlyArray<readonly [string, string]> = [
+			['a', 'b'],
+			['b', 'c'],
+			['x', 'a'],
+		]
+		expect([...collectReachable('a', edges)]).toEqual(['a', 'b', 'c'])
+		expect([...collectReachable('c', edges)]).toEqual(['c'])
+		expect([...collectReachable('none', edges)]).toEqual(['none'])
+	})
+
+	it('terminates on a cycle', () => {
+		const edges: ReadonlyArray<readonly [string, string]> = [
+			['a', 'b'],
+			['b', 'a'],
+		]
+		expect([...collectReachable('a', edges)]).toEqual(['a', 'b'])
+	})
+})
+
+describe('collectPolarReads', () => {
+	const key = createFlagAtom
+
+	it('reads an atom at the polarity it was given, flipped by a negating comparison', () => {
+		expect(collectPolarReads(key('a'), false)).toEqual([{ key: 'a', negated: false }])
+		expect(collectPolarReads(key('a'), true)).toEqual([{ key: 'a', negated: true }])
+		expect(collectPolarReads(createAtom('a', 'not', true), false)).toEqual([
+			{ key: 'a', negated: true },
+		])
+		expect(collectPolarReads(createAtom('a', 'none', [true]), true)).toEqual([
+			{ key: 'a', negated: false },
+		])
+	})
+
+	it('reads the connectives', () => {
+		expect(collectPolarReads(createCompound('and', [key('a'), key('b')]), false)).toEqual([
+			{ key: 'a', negated: false },
+			{ key: 'b', negated: false },
+		])
+		expect(collectPolarReads(createCompound('not', [key('a')]), false)).toEqual([
+			{ key: 'a', negated: true },
+		])
+		expect(
+			collectPolarReads(createCompound('not', [createCompound('not', [key('a')])]), false),
+		).toEqual([{ key: 'a', negated: false }])
+		expect(collectPolarReads(createCompound('implies', [key('a'), key('b')]), false)).toEqual([
+			{ key: 'a', negated: true },
+			{ key: 'b', negated: false },
+		])
+		expect(collectPolarReads(createCompound('xor', [key('a'), key('b')]), false)).toEqual([
+			{ key: 'a', negated: false },
+			{ key: 'a', negated: true },
+			{ key: 'b', negated: false },
+			{ key: 'b', negated: true },
+		])
+	})
+})
+
+describe('scanCheck', () => {
+	it.each<[Comparison, unknown]>([
+		['equals', 1],
+		['not', 'a'],
+		['equals', false],
+		['equals', null],
+		['above', 18],
+		['below', 18],
+		['from', 18],
+		['to', 18],
+		['any', ['a', 1]],
+		['none', [true]],
+		['between', [1, 2]],
+		['outside', [2, 2]],
+	])('%s %j is well formed', (operator, value) => {
+		expect(scanCheck(createCheck('a', operator, value))).toEqual([])
+	})
+
+	it.each<[Comparison, unknown, string]>([
+		['equals', [1], 'needs a finite number, a string, a boolean, or null'],
+		['not', Number.NaN, 'needs a finite number, a string, a boolean, or null'],
+		['equals', {}, 'needs a finite number, a string, a boolean, or null'],
+		['above', '18', 'needs a finite number'],
+		['below', Number.POSITIVE_INFINITY, 'needs a finite number'],
+		['from', null, 'needs a finite number'],
+		['to', [1], 'needs a finite number'],
+		['any', [], 'needs a non-empty list of comparable values'],
+		['none', 'a', 'needs a non-empty list of comparable values'],
+		['any', [{}], 'needs a non-empty list of comparable values'],
+		['between', [2, 1], 'needs [minimum, maximum] of finite numbers in order'],
+		['outside', [1], 'needs [minimum, maximum] of finite numbers in order'],
+		['between', 1, 'needs [minimum, maximum] of finite numbers in order'],
+	])('%s %j %s', (operator, value, fault) => {
+		expect(scanCheck(createCheck('a', operator, value))).toEqual([
+			`Check on "a": "${operator}" ${fault}`,
+		])
+	})
+})
+
+describe('scanExpression', () => {
+	const atom = createAtom('a', 'equals', 1)
+
+	it('accepts each connective at its arity', () => {
+		expect(scanExpression(atom)).toEqual([])
+		expect(scanExpression(createCompound('and', [atom]))).toEqual([])
+		expect(scanExpression(createCompound('or', [atom, atom, atom]))).toEqual([])
+		expect(scanExpression(createCompound('not', [atom]))).toEqual([])
+		expect(scanExpression(createCompound('implies', [atom, atom]))).toEqual([])
+		expect(scanExpression(createCompound('xor', [atom, atom]))).toEqual([])
+	})
+
+	it('refuses a wrong arity in both directions', () => {
+		expect(scanExpression(createCompound('and', []))).toEqual(['Connective "and" has 0 operands'])
+		expect(scanExpression(createCompound('or', []))).toEqual(['Connective "or" has 0 operands'])
+		expect(scanExpression(createCompound('not', []))).toEqual(['Connective "not" has 0 operands'])
+		expect(scanExpression(createCompound('not', [atom, atom]))).toEqual([
+			'Connective "not" has 2 operands',
+		])
+		expect(scanExpression(createCompound('implies', [atom]))).toEqual([
+			'Connective "implies" has 1 operands',
+		])
+		expect(scanExpression(createCompound('xor', [atom, atom, atom]))).toEqual([
+			'Connective "xor" has 3 operands',
+		])
+	})
+
+	it('finds a fault at any depth', () => {
+		const nested = createCompound('and', [
+			createCompound('not', []),
+			createCompound('or', [createAtom('a', 'above', 'x')]),
+		])
+		expect(scanExpression(nested)).toEqual([
+			'Connective "not" has 0 operands',
+			'Check on "a": "above" needs a finite number',
+		])
+	})
+})
+
+describe('scanConclusion', () => {
+	const okay = createAtom('ok', 'equals', true)
+
+	it('accepts an assertion, and assertions joined with "and"', () => {
+		expect(scanConclusion(okay)).toEqual([])
+		expect(scanConclusion(createAtom('tier', 'equals', 'gold'))).toEqual([])
+		expect(scanConclusion(createAtom('score', 'equals', 0))).toEqual([])
+		expect(scanConclusion(createCompound('and', [okay, createAtom('x', 'equals', 1)]))).toEqual([])
+	})
+
+	it('refuses any other connective, and an empty "and"', () => {
+		expect(scanConclusion(createCompound('not', [okay]))).toEqual([
+			'A conclusion may only join atoms with "and", not "not"',
+		])
+		expect(scanConclusion(createCompound('or', [okay]))).toEqual([
+			'A conclusion may only join atoms with "and", not "or"',
+		])
+		expect(scanConclusion(createCompound('and', []))).toEqual([
+			'A conclusion may only join atoms with "and", not "and"',
+		])
+	})
+
+	it('refuses a comparison that is not "equals", false, and an incomparable value', () => {
+		expect(scanConclusion(createAtom('ok', 'not', true))).toEqual([
+			'Conclusion on "ok" must use "equals", not "not"',
+		])
+		expect(scanConclusion(createAtom('ok', 'equals', false))).toEqual([
+			'Conclusion on "ok" may not assert false',
+		])
+		expect(scanConclusion(createAtom('ok', 'equals', {}))).toEqual([
+			'Conclusion on "ok" must assert a comparable value',
+		])
+	})
+
+	it('finds a fault under "and"', () => {
+		expect(scanConclusion(createCompound('and', [createAtom('ok', 'equals', false)]))).toEqual([
+			'Conclusion on "ok" may not assert false',
+		])
+	})
+})
+
+describe('scanFactor', () => {
+	it('a fallback belongs to a source that can miss', () => {
+		expect(scanFactor(createFieldFactor('f', 'x'))).toEqual([])
+		expect(scanFactor(createStaticFactor('f', 1))).toEqual([])
+		expect(scanFactor(createLookupFactor('f', 'x', { a: 1 }, { fallback: 0 }))).toEqual([])
+		expect(scanFactor(createRangeFactor('f', 'x', [{ value: 1 }], { fallback: 0 }))).toEqual([])
+		expect(scanFactor(createFieldFactor('f', 'x', { fallback: 0 }))).toEqual([
+			'Factor "f": a "field" source cannot use a fallback',
+		])
+		expect(scanFactor(createStaticFactor('f', 1, { fallback: 0 }))).toEqual([
+			'Factor "f": a "static" source cannot use a fallback',
+		])
+	})
+
+	it('reads the checks gating the factor', () => {
+		expect(
+			scanFactor(createStaticFactor('f', 1, { checks: [createCheck('a', 'above', 'x')] })),
+		).toEqual(['Check on "a": "above" needs a finite number'])
+	})
+})
+
+describe('scanSymbolicExpression', () => {
+	it('a leaf and a unary operation need no right side', () => {
+		expect(scanSymbolicExpression(createConstant(1))).toEqual([])
+		expect(scanSymbolicExpression(createVariable('x'))).toEqual([])
+		for (const operator of ['round', 'ceil', 'floor', 'abs'] as const) {
+			expect(scanSymbolicExpression(createOperation(operator, createConstant(1)))).toEqual([])
+		}
+	})
+
+	it('a binary operation does, at any depth', () => {
+		expect(
+			scanSymbolicExpression(createOperation('add', createConstant(1), createConstant(2))),
+		).toEqual([])
+		expect(scanSymbolicExpression(createOperation('add', createConstant(1)))).toEqual([
+			'Operation "add" has no right side',
+		])
+		expect(
+			scanSymbolicExpression(
+				createOperation(
+					'add',
+					createOperation('multiply', createConstant(1)),
+					createOperation('abs', createOperation('divide', createConstant(1))),
+				),
+			),
+		).toEqual(['Operation "multiply" has no right side', 'Operation "divide" has no right side'])
+	})
+})
+
+describe('collectVariables', () => {
+	it('reads every variable, repeats kept, and no constants', () => {
+		expect(collectVariables(createConstant(1))).toEqual([])
+		expect(collectVariables(createVariable('x'))).toEqual(['x'])
+		expect(
+			collectVariables(
+				createOperation(
+					'add',
+					createVariable('x'),
+					createOperation('multiply', createVariable('y'), createVariable('x')),
+				),
+			),
+		).toEqual(['x', 'y', 'x'])
+		expect(collectVariables(createOperation('abs', createVariable('x')))).toEqual(['x'])
+	})
+})
+
+describe('describeFault', () => {
+	it('names each reason', () => {
+		expect(describeFault({ reason: 'missing', path: 'age', expected: 'number' })).toBe(
+			'Field "age" is missing',
+		)
+		expect(
+			describeFault({ reason: 'type', path: ['a', 'b'], expected: 'number', received: '"x"' }),
+		).toBe('Field "a.b" expected number, received "x"')
+		expect(
+			describeFault({
+				reason: 'constraint',
+				path: 'a',
+				expected: 'number',
+				constraint: 'min',
+				received: '1',
+			}),
+		).toBe('Field "a" breaks its min constraint, received 1')
+		expect(describeFault({ reason: 'variant', path: 'a', variants: 2 })).toBe(
+			'Field "a" matches none of its 2 variants',
+		)
+		expect(describeFault({ reason: 'oneOf', path: 'a', matched: 0 })).toBe(
+			'Field "a" matches 0 of its variants, not exactly one',
+		)
+		expect(describeFault({ reason: 'extra', path: ['a'] })).toBe('Field "a" is not declared')
+	})
+})
+
+describe('valueToFault, valueToKind, and readExpectedKind', () => {
+	it('an absent field is missing and anything else is the wrong type', () => {
+		expect(valueToFault('a', 'number', undefined)).toEqual({
+			reason: 'missing',
+			path: 'a',
+			expected: 'number',
+		})
+		expect(valueToFault('a', 'number', 'x')).toEqual({
+			reason: 'type',
+			path: 'a',
+			expected: 'number',
+			received: '"x"',
+		})
+		expect(valueToFault('a', 'number', null)).toEqual({
+			reason: 'type',
+			path: 'a',
+			expected: 'number',
+			received: 'null',
+		})
+	})
+
+	it('names a value', () => {
+		expect(valueToKind(null)).toBe('null')
+		expect(valueToKind('a')).toBe('string')
+		expect(valueToKind(false)).toBe('boolean')
+		expect(valueToKind(1)).toBe('number')
+		expect(valueToKind({})).toBe('json')
+	})
+
+	it('names what a check needed', () => {
+		expect(readExpectedKind(createCheck('a', 'above', 1))).toBe('number')
+		expect(readExpectedKind(createCheck('a', 'between', [1, 2]))).toBe('number')
+		expect(readExpectedKind(createCheck('a', 'equals', 'x'))).toBe('string')
+		expect(readExpectedKind(createCheck('a', 'not', null))).toBe('null')
+		expect(readExpectedKind(createCheck('a', 'any', ['x', 'y']))).toBe('string')
+		expect(readExpectedKind(createCheck('a', 'none', ['x', 1]))).toBe('union')
+		expect(readExpectedKind(createCheck('a', 'any', 'x'))).toBe('union')
+	})
+})
+
+describe('filterUniqueFaults', () => {
+	it('keeps the first fault of each flattened path', () => {
+		const first = { reason: 'missing', path: ['a', 'b'], expected: 'number' } as const
+		const second = { reason: 'extra', path: 'a.b' } as const
+		const other = { reason: 'extra', path: 'c' } as const
+		expect(filterUniqueFaults([first, second, other])).toEqual([first, other])
+		expect(filterUniqueFaults([])).toEqual([])
+	})
+})
+
+describe('buildRefusedResult', () => {
+	it('carries the refusal on the empty result of the definition', () => {
+		const fault = { reason: 'extra', path: 'x' } as const
+		const refusal = { faults: [fault], repairs: [], defaulted: [], errors: ['no'] }
+		const result = buildRefusedResult(createLogicalDefinition('d', 'd', []), refusal)
+		expect(result).toMatchObject({
+			reasoning: 'logical',
+			conclusion: 'unread',
+			success: false,
+			errors: ['no'],
+			faults: [fault],
+		})
+	})
+})
+
+describe('isLosslessRepair', () => {
+	const number = { reason: 'type', path: ['a'], expected: 'number', received: '' } as const
+	const integer = { reason: 'type', path: ['a'], expected: 'integer', received: '' } as const
+	const literal = { reason: 'type', path: ['a'], expected: 'literal', received: '' } as const
+	const boolean = { reason: 'type', path: ['a'], expected: 'boolean', received: '' } as const
+	const string = { reason: 'type', path: ['a'], expected: 'string', received: '' } as const
+
+	it('a number or literal needs a string whose trim is its own text', () => {
+		expect(isLosslessRepair(number, { a: '30' }, { a: 30 })).toBe(true)
+		expect(isLosslessRepair(number, { a: ' 30 ' }, { a: 30 })).toBe(true)
+		expect(isLosslessRepair(integer, { a: '30' }, { a: 30 })).toBe(true)
+		expect(isLosslessRepair(literal, { a: ' CA ' }, { a: 'CA' })).toBe(true)
+		expect(isLosslessRepair(number, { a: '30.0' }, { a: 30 })).toBe(false)
+		expect(isLosslessRepair(number, { a: '-0' }, { a: -0 })).toBe(false)
+		expect(isLosslessRepair(number, { a: 30 }, { a: 30 })).toBe(false)
+		expect(isLosslessRepair(number, { a: '30' }, {})).toBe(false)
+	})
+
+	it('a boolean needs its own word, and a string a finite number', () => {
+		expect(isLosslessRepair(boolean, { a: 'true' }, { a: true })).toBe(true)
+		expect(isLosslessRepair(boolean, { a: 'false' }, { a: false })).toBe(true)
+		expect(isLosslessRepair(boolean, { a: '1' }, { a: true })).toBe(false)
+		expect(isLosslessRepair(boolean, { a: 1 }, { a: true })).toBe(false)
+		expect(isLosslessRepair(string, { a: 5 }, { a: '5' })).toBe(true)
+		expect(isLosslessRepair(string, { a: true }, { a: 'true' })).toBe(false)
+	})
+
+	it('anything but a type fault of a known kind is no repair', () => {
+		expect(isLosslessRepair({ reason: 'extra', path: 'a' }, { a: 1 }, {})).toBe(false)
+		expect(
+			isLosslessRepair({ reason: 'missing', path: 'a', expected: 'number' }, {}, { a: 1 }),
+		).toBe(false)
+		expect(
+			isLosslessRepair(
+				{ reason: 'type', path: 'a', expected: 'json', received: '' },
+				{ a: 1 },
+				{ a: 1 },
+			),
+		).toBe(false)
+	})
+
+	it('reads a nested path', () => {
+		const nested = { reason: 'type', path: ['o', 'a'], expected: 'number', received: '' } as const
+		expect(isLosslessRepair(nested, { o: { a: '1' } }, { o: { a: 1 } })).toBe(true)
+	})
+})
+
+describe('findFilledPaths', () => {
+	it('lists what the output holds and the input left absent or undefined', () => {
+		expect(findFilledPaths({ a: 1 }, { a: 1, b: 2 })).toEqual([['b']])
+		expect(findFilledPaths({ b: undefined }, { b: 2 })).toEqual([['b']])
+		expect(findFilledPaths({ a: 1 }, { a: 1 })).toEqual([])
+	})
+
+	it('descends objects and arrays, and reports a default of null', () => {
+		expect(findFilledPaths({ o: {} }, { o: { c: 3 } })).toEqual([['o', 'c']])
+		expect(findFilledPaths({ l: [{}] }, { l: [{ c: 3 }] })).toEqual([['l', '0', 'c']])
+		expect(findFilledPaths({}, { n: null })).toEqual([['n']])
+	})
+
+	it('a repaired value is no fill', () => {
+		expect(findFilledPaths({ a: '1' }, { a: 1 })).toEqual([])
+	})
+})
+
+describe('findFieldShape', () => {
+	const city = stringShape()
+	const shape = objectShape({
+		age: numberShape(),
+		maybe: optionalShape(numberShape()),
+		spouse: nullableShape(numberShape()),
+		address: objectShape({ city }),
+		list: arrayShape(numberShape()),
+		either: unionShape(numberShape(), stringShape()),
+		raw: rawShape({}),
+		json: jsonShape(),
+		open: objectShape({}, { additionalProperties: true }),
+	})
+
+	it('reads a key, removing optional and keeping nullable', () => {
+		expect(findFieldShape(shape, 'age')).toEqual({ declared: true, shape: numberShape() })
+		expect(findFieldShape(shape, 'maybe')).toEqual({ declared: true, shape: numberShape() })
+		expect(findFieldShape(shape, 'spouse').shape?.category).toBe('nullable')
+	})
+
+	it('a string is one key, and an array descends', () => {
+		expect(findFieldShape(shape, ['address', 'city']).shape).toEqual(city)
+		expect(findFieldShape(shape, 'address.city').declared).toBe(false)
+		expect(findFieldShape(shape, ['list', '0']).shape?.category).toBe('number')
+		expect(findFieldShape(shape, ['list', 'x']).declared).toBe(false)
+		expect(findFieldShape(shape, ['age', 'x']).declared).toBe(false)
+	})
+
+	it('an undeclared key is undeclared, including a name on the prototype', () => {
+		expect(findFieldShape(shape, 'agee').declared).toBe(false)
+		expect(findFieldShape(shape, 'toString').declared).toBe(false)
+	})
+
+	it('past an open object, a union, raw, or json it can say nothing', () => {
+		expect(findFieldShape(shape, ['open', 'x'])).toEqual({ declared: true })
+		expect(findFieldShape(shape, ['either', 'x'])).toEqual({ declared: true })
+		expect(findFieldShape(shape, ['raw', 'x'])).toEqual({ declared: true })
+		expect(findFieldShape(shape, ['json', 'x'])).toEqual({ declared: true })
+	})
+
+	it('additional properties of a shape read that shape', () => {
+		const record = objectShape({}, { additionalProperties: numberShape() })
+		expect(findFieldShape(record, 'any').shape?.category).toBe('number')
+	})
+})
+
+describe('isUntypedShape and admitsLiteral', () => {
+	it('raw and json type nothing', () => {
+		expect(isUntypedShape(rawShape({}))).toBe(true)
+		expect(isUntypedShape(jsonShape())).toBe(true)
+		expect(isUntypedShape(numberShape())).toBe(false)
+		expect(isUntypedShape(undefined)).toBe(false)
+	})
+
+	it('a string needs a literal holding it, through nullable and union', () => {
+		const states = literalShape(['FL', 'CA'])
+		expect(admitsLiteral(states, 'FL')).toBe(true)
+		expect(admitsLiteral(states, 'NY')).toBe(false)
+		expect(admitsLiteral(nullableShape(states), 'FL')).toBe(true)
+		expect(admitsLiteral(unionShape(numberShape(), states), 'CA')).toBe(true)
+		expect(admitsLiteral(stringShape(), 'FL')).toBe(false)
+	})
+})
+
+describe('scanShape', () => {
+	it('accepts an object of plain fields', () => {
+		const shape = objectShape({
+			age: numberShape(),
+			list: arrayShape(stringShape()),
+			maybe: optionalShape(booleanShape()),
+		})
+		expect(scanShape(shape)).toEqual([])
+	})
+
+	it('the root is an object', () => {
+		expect(scanShape(numberShape())).toEqual(['Shape must describe an object'])
+	})
+
+	it('a pattern refuses, wherever it sits', () => {
+		const pattern = stringShape({ pattern: /x/ })
+		const message = 'Field "a" carries a pattern, which does not survive JSON'
+		expect(scanShape(objectShape({ a: pattern }))).toEqual([message])
+		expect(scanShape(objectShape({ a: optionalShape(pattern) }))).toEqual([message])
+		expect(scanShape(objectShape({ a: nullableShape(pattern) }))).toEqual([message])
+		expect(scanShape(objectShape({ a: arrayShape(pattern) }))).toEqual([message])
+		expect(scanShape(objectShape({ a: unionShape(pattern, numberShape()) }))).toEqual([message])
+		expect(scanShape(objectShape({ o: objectShape({ a: pattern }) }))).toEqual([
+			'Field "o.a" carries a pattern, which does not survive JSON',
+		])
+	})
+
+	it('a required key with a default refuses, since the keyword is only an annotation there', () => {
+		// Built by hand, because `rawShape` refuses the keyword until `contract` admits it.
+		const restored = { category: 'raw', schema: { type: 'number', default: 3 } } as const
+		const required = { category: 'object', properties: { a: restored } } as const
+		const optional = {
+			category: 'object',
+			properties: { a: { category: 'optional', inner: restored } },
+		} as const
+		expect(scanShape(required)).toEqual(['Field "a" is required and carries a default'])
+		expect(scanShape(optional)).toEqual([])
+	})
+})
+
+describe('scanShapeReads and scanCheckExpected', () => {
+	const shape = objectShape({
+		age: numberShape(),
+		state: literalShape(['FL', 'CA']),
+		name: stringShape(),
+		spouse: nullableShape(numberShape()),
+		raw: rawShape({}),
+		json: jsonShape(),
+	})
+	const none = new Set<string>()
+
+	it('a declared path with a fitting expected value is clean', () => {
+		const checks = [
+			createCheck('age', 'above', 18),
+			createCheck('age', 'between', [1, 2]),
+			createCheck('state', 'equals', 'FL'),
+			createCheck('state', 'any', ['FL', 'CA']),
+			createCheck('spouse', 'not', null),
+		]
+		expect(scanShapeReads(shape, checks, [], none)).toEqual({ errors: [], warnings: [] })
+	})
+
+	it('a path the shape does not declare refuses, whether a check or a source reads it', () => {
+		expect(scanShapeReads(shape, [createCheck('agee', 'above', 1)], [], none).errors).toEqual([
+			'Field "agee" is read, and the shape does not declare it',
+		])
+		expect(scanShapeReads(shape, [], ['agee'], none).errors).toEqual([
+			'Field "agee" is read, and the shape does not declare it',
+		])
+	})
+
+	it('a key the definition produces itself needs no declaration', () => {
+		const known = new Set(['adult'])
+		expect(scanShapeReads(shape, [createCheck('adult', 'equals', true)], [], known).errors).toEqual(
+			[],
+		)
+	})
+
+	it('reports one message per path', () => {
+		const checks = [createCheck('agee', 'above', 1), createCheck('agee', 'below', 9)]
+		expect(scanShapeReads(shape, checks, ['agee'], none).errors).toHaveLength(1)
+	})
+
+	it('an expected value the field cannot hold refuses, per element of a list', () => {
+		expect(scanCheckExpected(shape, createCheck('age', 'equals', '18'), none)).toEqual([
+			'Check on "age": "18" is not a value of this field',
+		])
+		expect(scanCheckExpected(shape, createCheck('state', 'any', ['FL', 'NY']), none)).toEqual([
+			'Check on "state": "NY" is not a value of this field',
+		])
+		expect(scanCheckExpected(shape, createCheck('age', 'not', null), none)).toEqual([
+			'Check on "age": null is not a value of this field',
+		])
+	})
+
+	it('free text is never compared by equality', () => {
+		expect(scanCheckExpected(shape, createCheck('name', 'equals', 'Ann'), none)).toEqual([
+			'Check on "name": a string compares only against a field that declares it as a literal',
+		])
+	})
+
+	it('a raw or json read warns and checks nothing, because the typed read is the backstop', () => {
+		const checks = [createCheck('raw', 'above', 1), createCheck('json', 'equals', 'x')]
+		expect(scanShapeReads(shape, checks, [], none)).toEqual({
+			errors: [],
+			warnings: [
+				'Field "raw" is read through a shape that types nothing',
+				'Field "json" is read through a shape that types nothing',
+			],
+		})
+	})
+})
+
+describe('scanShapeConclusions', () => {
+	const rule = createFlagRule('r', 'ok')
+
+	it('refuses a shape declaring a key a rule concludes', () => {
+		expect(scanShapeConclusions(objectShape({ ok: booleanShape() }), [rule])).toEqual([
+			'Shape declares conclusion "ok"',
+		])
+		expect(scanShapeConclusions(objectShape({ x: numberShape() }), [rule])).toEqual([])
+	})
+
+	it('an open object says nothing about the key, so nothing refuses', () => {
+		const open = objectShape({}, { additionalProperties: true })
+		expect(scanShapeConclusions(open, [rule])).toEqual([])
 	})
 })
