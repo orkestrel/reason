@@ -1,4 +1,4 @@
-import type { AuditFault, ContractShape, FieldPath, Guard, LiteralValue } from '@orkestrel/contract'
+import type { ContractShape, FieldPath, Guard, LiteralValue } from '@orkestrel/contract'
 import type {
 	Aggregation,
 	Bounds,
@@ -55,6 +55,7 @@ import {
 	isLiteralValue,
 	isNull,
 	isNumber,
+	isAuditFault,
 	isObject,
 	isRecord,
 	isString,
@@ -196,29 +197,6 @@ export function isPaddedText(value: unknown): boolean {
  */
 export function isContractShape(value: unknown): value is ContractShape {
 	return isSuccess(attempt(() => Reflect.apply(validateShape, undefined, [value])))
-}
-
-/**
- * Determines whether a value is a fault a result can carry, read openly because a result
- * is the package's own output.
- *
- * @param value - The value to test
- * @returns True if `value` carries a string `reason` and a `FieldPath`; false otherwise
- *
- * @example
- * ```ts
- * import { isAuditFault } from '@src/core'
- *
- * isAuditFault({ reason: 'extra', path: ['x'] }) // true
- * isAuditFault({ path: ['x'] })                  // false
- * ```
- */
-export function isAuditFault(value: unknown): value is AuditFault {
-	return (
-		isObject(value) &&
-		isString(Reflect.get(value, 'reason')) &&
-		isFieldPath(Reflect.get(value, 'path'))
-	)
 }
 
 /**

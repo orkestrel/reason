@@ -89,6 +89,22 @@ describe('definition contracts', () => {
 		}
 	})
 
+	it('names the gap: is admits a malformed nested shape, and the guard refuses it', () => {
+		const pairs = [
+			[definitionContract, logical],
+			[logicalDefinitionContract, logical],
+			[symbolicDefinitionContract, symbolic],
+			[quantitativeDefinitionContract, quantitative],
+			[inferentialDefinitionContract, inferential],
+		] as const
+		for (const [contract, definition] of pairs) {
+			for (const shape of [42, null, {}, { type: 'nonsense' }]) {
+				expect(contract.is({ ...definition, shape })).toBe(true)
+				expect(isDefinition({ ...definition, shape })).toBe(false)
+			}
+		}
+	})
+
 	it('refuse what the guards refuse', () => {
 		for (const junk of [
 			{},

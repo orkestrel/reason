@@ -47,7 +47,6 @@ import {
 	isChainStrategy,
 	isCheck,
 	isCheckResult,
-	isAuditFault,
 	isCheckState,
 	isComparable,
 	isContractShape,
@@ -1657,16 +1656,6 @@ describe('isContractShape', () => {
 
 	it('a pattern that has been through JSON refuses', () => {
 		expect(isContractShape({ category: 'string', pattern: {} })).toBe(false)
-	})
-})
-
-describe('isAuditFault', () => {
-	it('reads a reason and a path, openly', () => {
-		expect(isAuditFault({ reason: 'extra', path: ['x'] })).toBe(true)
-		expect(isAuditFault({ reason: 'missing', path: 'x', expected: 'number' })).toBe(true)
-		expect(isAuditFault({ path: ['x'] })).toBe(false)
-		expect(isAuditFault({ reason: 'extra' })).toBe(false)
-		expect(isAuditFault(null)).toBe(false)
 	})
 })
 

@@ -7,9 +7,10 @@ import {
 	FAULT_LIMIT,
 	isRecord,
 	isSuccess,
+	matchesLosslessRepair,
 	resolveField,
 } from '@orkestrel/contract'
-import { describeFault, findFilledPaths, isLosslessRepair } from './helpers.js'
+import { describeFault, findFilledPaths } from './helpers.js'
 
 /**
  * Admits a subject through a definition's shape before any reasoner reads it.
@@ -20,7 +21,8 @@ import { describeFault, findFilledPaths, isLosslessRepair } from './helpers.js'
  * an `explain` fault; an undeclared key, because `parse` would drop it and a typo beside a
  * default would then read as an answer; an audit at `FAULT_LIMIT`, because the next fault is
  * hidden; a `variant` or `oneOf` fault, because a union repairs by declaration order; and any
- * repair that loses information. Accepted repairs and filled defaults are reported beside the
+ * repair `matchesLosslessRepair` says loses information. A union whose literal names one arm
+ * answers through that arm, at its real paths. Accepted repairs and filled defaults are reported beside the
  * parsed subject. One contract is compiled per shape, by identity, so one door serves many
  * subjects. A malformed shape or a hostile subject refuses, and never throws.
  *
@@ -66,7 +68,7 @@ export class SubjectDoor implements SubjectDoorInterface {
 		if (unrepairable.length > 0) return this.#refuse(unrepairable)
 		const parsed = contract.parse(subject)
 		if (!isRecord(parsed)) return this.#refuse([], ['Shape does not describe a record'])
-		const lossy = repairs.filter((fault) => !isLosslessRepair(fault, subject, parsed))
+		const lossy = repairs.filter((fault) => !matchesLosslessRepair(fault, subject, parsed))
 		if (lossy.length > 0) return this.#refuse(lossy)
 		return {
 			subject: parsed,

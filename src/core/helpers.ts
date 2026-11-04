@@ -1603,6 +1603,26 @@ export function filterUniqueFaults(faults: readonly AuditFault[]): readonly Audi
 	)
 }
 
+/**
+ * Returns the fields of a list once each, compared by the flattened path.
+ *
+ * @param fields - The fields, repeats allowed
+ * @returns The first of each field, in order
+ *
+ * @example
+ * ```ts
+ * import { filterUniqueFields } from '@src/core'
+ *
+ * filterUniqueFields(['a', ['a'], 'b']) // ['a', 'b']
+ * ```
+ */
+export function filterUniqueFields(fields: readonly FieldPath[]): readonly FieldPath[] {
+	return fields.filter(
+		(field, index) =>
+			fields.findIndex((other) => formatField(other) === formatField(field)) === index,
+	)
+}
+
 // === The JSON projection
 
 /**
@@ -1732,47 +1752,6 @@ export function projectCheck(check: CheckResult): CheckResult {
 }
 
 // === The door's rules
-
-/**
- * Determines whether a `parse` coercion kept everything the value said.
- *
- * @remarks
- * Only a `type` fault can be a repair. A number needs a string whose trim is the number's
- * own text, so `'30'` and `' 30 '` pass and `'30.0'`, `'007'`, `'0x10'`, `'1e3'`, and
- * `'9007199254740993'` do not. A boolean needs `'true'` or `'false'`, a literal its trimmed
- * text, and a string a finite number.
- *
- * @param fault - The fault `audit` reported
- * @param subject - The subject as it arrived
- * @param parsed - What `parse` made of it
- * @returns True if the repair loses nothing; false otherwise
- *
- * @example
- * ```ts
- * import { isLosslessRepair } from '@src/core'
- *
- * const fault = { reason: 'type', path: ['a'], expected: 'number', received: '' } as const
- * isLosslessRepair(fault, { a: ' 30 ' }, { a: 30 })  // true
- * isLosslessRepair(fault, { a: '30.0' }, { a: 30 })  // false
- * ```
- */
-export function isLosslessRepair(fault: AuditFault, subject: Subject, parsed: Subject): boolean {
-	if (fault.reason !== 'type') return false
-	const raw = resolveField(subject, fault.path)
-	const value = resolveField(parsed, fault.path)
-	switch (fault.expected) {
-		case 'number':
-		case 'integer':
-		case 'literal':
-			return isString(raw) && value !== undefined && raw.trim() === String(value)
-		case 'boolean':
-			return raw === 'true' || raw === 'false'
-		case 'string':
-			return isFiniteNumber(raw)
-		default:
-			return false
-	}
-}
 
 /**
  * Lists the paths `parse` filled: absent or `undefined` in the input and present in the output.

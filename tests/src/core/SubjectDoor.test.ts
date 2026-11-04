@@ -165,6 +165,64 @@ describe('SubjectDoor — the lossless rule on repairs', () => {
 	})
 })
 
+describe('SubjectDoor — a union whose literal names its arm', () => {
+	const pay = unionShape(
+		objectShape({ kind: literalShape(['card']), last: numberShape() }),
+		objectShape({ kind: literalShape(['cash']), amount: numberShape() }),
+	)
+	const shape = objectShape({ pay })
+
+	it('a lossless repair in the named arm is a repair, at its real path', () => {
+		const admission = door.admit({ pay: { kind: 'cash', amount: '30' } }, shape)
+		expect(admission.subject).toEqual({ pay: { kind: 'cash', amount: 30 } })
+		expect(admission.repairs).toEqual([
+			{ reason: 'type', path: ['pay', 'amount'], expected: 'number', received: '"30"' },
+		])
+		expect(admission.errors).toEqual([])
+	})
+
+	it.each(['30.0', '1e3', '0x10', '007'])(
+		'a repair from %j in the named arm refuses, because its text says more than the number',
+		(amount) => {
+			const admission = door.admit({ pay: { kind: 'cash', amount } }, shape)
+			expect(admission.subject).toBeUndefined()
+			expect(admission.faults.map((fault) => fault.path)).toEqual([['pay', 'amount']])
+		},
+	)
+
+	it('a field the named arm needs refuses at its real path, and asks for nothing else', () => {
+		const admission = door.admit({ pay: { kind: 'cash' } }, shape)
+		expect(admission.subject).toBeUndefined()
+		expect(admission.faults).toEqual([
+			{ reason: 'missing', path: ['pay', 'amount'], expected: 'number' },
+		])
+	})
+
+	it('a key the named arm does not declare refuses, though the other arm declares it', () => {
+		const admission = door.admit({ pay: { kind: 'cash', amount: 30, last: 4 } }, shape)
+		expect(admission.subject).toBeUndefined()
+		expect(admission.faults).toEqual([{ reason: 'extra', path: ['pay', 'last'] }])
+	})
+
+	it.each([
+		['no arm holds it', { kind: 'cheque', amount: 30 }],
+		['it is padded', { kind: ' cash ', amount: 30 }],
+		['it is absent', { amount: 30 }],
+	])('a value names no arm when %s, and refuses as a variant', (_reason, value) => {
+		const admission = door.admit({ pay: value }, shape)
+		expect(admission.subject).toBeUndefined()
+		expect(admission.faults.map((fault) => fault.reason)).toContain('variant')
+	})
+
+	it('a one-of union whose literal names its arm reads the same rule', () => {
+		const single = objectShape({ pay: { ...pay, mode: 'oneOf' } })
+		const repaired = door.admit({ pay: { kind: 'cash', amount: '30' } }, single)
+		expect(repaired.subject).toEqual({ pay: { kind: 'cash', amount: 30 } })
+		const lossy = door.admit({ pay: { kind: 'cash', amount: '30.0' } }, single)
+		expect(lossy.subject).toBeUndefined()
+	})
+})
+
 describe('SubjectDoor — defaults', () => {
 	const shape = objectShape({
 		age: numberShape(),

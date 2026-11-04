@@ -180,8 +180,10 @@ export function createQuantitativeReasoner(
  * @remarks
  * Cross a definition on `is`, never `parse`, which would turn `enabled: '0'` into `false` and
  * accept a padded operator. `is` sits inside `isDefinition` for all but a definition's own
- * `shape` key, and `validate` still reads what no shape says. Building it walks the recursive
- * expressions, so this is a function and the caller holds the result.
+ * `shape` key: `is` reads it as any JSON value and the guard reads it as a shape, so a definition
+ * crossing a boundary goes through `isDefinition` as well. `validate` still reads what no shape
+ * says. Building it walks the recursive expressions, so this is a function and the caller holds
+ * the result.
  *
  * @returns A contract over all four definition kinds
  *
@@ -200,6 +202,10 @@ export function createDefinitionContract(): ContractInterface<unknown> {
 /**
  * Creates the contract of a `LogicalDefinition`. Cross it on `is`, and hold the result.
  *
+ * @remarks
+ * `is` reads a nested `shape` as any JSON value and the guard reads it as a shape, so a definition
+ * crossing a boundary goes through `isLogicalDefinition` as well.
+ *
  * @returns A contract holding expressions at `EXPRESSION_SHAPE_DEPTH`
  *
  * @example
@@ -215,6 +221,10 @@ export function createLogicalDefinitionContract(): ContractInterface<unknown> {
 
 /**
  * Creates the contract of a `SymbolicDefinition`. Cross it on `is`, and hold the result.
+ *
+ * @remarks
+ * `is` reads a nested `shape` as any JSON value and the guard reads it as a shape, so a definition
+ * crossing a boundary goes through `isSymbolicDefinition` as well.
  *
  * @returns A contract holding expressions at `SYMBOLIC_SHAPE_DEPTH`
  *

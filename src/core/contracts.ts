@@ -10,12 +10,24 @@ import {
 	symbolicResultShape,
 } from './shapers.js'
 
-/** Publishes a `QuantitativeDefinition` as a contract. Cross it on `is`. */
+/**
+ * Publishes a `QuantitativeDefinition` as a contract. Cross it on `is`.
+ *
+ * @remarks
+ * `is` reads a nested `shape` as any JSON value and the guard reads it as a shape, so a definition
+ * crossing a boundary goes through `isQuantitativeDefinition` as well.
+ */
 export const quantitativeDefinitionContract: ContractInterface<unknown> = createContract(
 	quantitativeDefinitionShape,
 )
 
-/** Publishes an `InferentialDefinition` as a contract. Cross it on `is`. */
+/**
+ * Publishes an `InferentialDefinition` as a contract. Cross it on `is`.
+ *
+ * @remarks
+ * `is` reads a nested `shape` as any JSON value and the guard reads it as a shape, so a definition
+ * crossing a boundary goes through `isInferentialDefinition` as well.
+ */
 export const inferentialDefinitionContract: ContractInterface<unknown> = createContract(
 	inferentialDefinitionShape,
 )

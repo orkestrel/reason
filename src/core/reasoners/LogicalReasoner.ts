@@ -73,7 +73,8 @@ import { isLogicalDefinition, isRule } from '../validators.js'
  * also proves each rule goal-first on its own state, to say why. An atom on an underived
  * conclusion key tries the rules concluding that key, matched by field alone, and re-reads the
  * overlay once one fires, so `score above 5` never proves through `score equals 5`. Those proofs
- * answer nothing, and a proof past `depth` stops and says so.
+ * answer nothing: each trace line opens `Proof:` and states an attempt, not a rule's state, a proof
+ * past `depth` stops and says so, and a proof that fails outright stops and leaves the answer alone.
  *
  * A subject may not supply a conclusion key, because that would assert what a rule has to derive.
  * Any rule left `unread` refuses the run: `success` is false, `errors` holds one entry per input
@@ -427,8 +428,8 @@ export class LogicalReasoner implements ReasonerInterface {
 
 	// The answer is the supported model, which both strategies share, so it comes from the one
 	// settle loop: a proof's order can take another value for a key two rules conclude, and a chain
-	// counts differently from the goal down. The proofs run on their own state and say why, for
-	// the trace, and nothing they find refuses the run.
+	// counts differently from the goal down. The proofs run on their own state and say why, each
+	// line marked as a proof, and nothing they find or fail at refuses the run.
 	#backward(
 		definition: LogicalDefinition,
 		rules: readonly Rule[],
@@ -441,10 +442,14 @@ export class LogicalReasoner implements ReasonerInterface {
 		const sorted = sortByPriority(rules)
 		const proving = new LogicalState(rules)
 		const proofs = new Map<Rule, CheckState>()
-		for (const rule of sorted) this.#proveRule(rule, 0, proofs, subject, proving, trace, depth)
-		if (this.#settle(sorted, subject, state, [], errors, 1, depth) === undefined) {
+		const proved = attempt(() => {
+			for (const rule of sorted) this.#proveRule(rule, 0, proofs, subject, proving, trace, depth)
+		})
+		if (!isSuccess(proved)) trace.push(`Proof: stopped: ${errorToMessage(proved.error)}`)
+		const pass = this.#settle(sorted, subject, state, trace, errors, 1, depth)
+		if (pass === undefined) {
 			errors.push(`Backward chaining did not settle within depth ${String(depth)}`)
-		}
+		} else if (errors.length === 0) trace.push(`Backward chaining converged at iteration ${pass}`)
 	}
 
 	#proveRule(
@@ -470,8 +475,10 @@ export class LogicalReasoner implements ReasonerInterface {
 			),
 		)
 		proofs.set(rule, outcome)
-		if (outcome === 'met') this.#derive(rule, state, trace, [], `backward, depth ${depth}`)
-		else trace.push(`Rule "${rule.id}": does not hold (backward, depth ${depth})`)
+		if (outcome === 'met') this.#derive(rule, state, [], [], `depth ${depth}`)
+		trace.push(
+			`Proof: rule "${rule.id}" ${outcome === 'met' ? 'established' : 'not established'} (depth ${depth})`,
+		)
 		return outcome
 	}
 
@@ -496,7 +503,7 @@ export class LogicalReasoner implements ReasonerInterface {
 		const key = formatField(check.field)
 		if (!state.concludes(key) || state.has(key)) return this.#readCheck(check, subject, state).state
 		if (depth > maxDepth) {
-			trace.push(`Stopped proving "${key}" at depth ${String(maxDepth)}`)
+			trace.push(`Proof: stopped at "${key}", depth ${String(maxDepth)}`)
 			return 'unread'
 		}
 		const outcomes: CheckState[] = []

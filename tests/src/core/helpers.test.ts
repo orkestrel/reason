@@ -81,9 +81,9 @@ import {
 	admitsLiteral,
 	buildRefusedResult,
 	filterUniqueFaults,
+	filterUniqueFields,
 	findFieldShape,
 	findFilledPaths,
-	isLosslessRepair,
 	isUntypedShape,
 	readExpectedKind,
 	scanCheckExpected,
@@ -2744,6 +2744,13 @@ describe('filterUniqueFaults', () => {
 	})
 })
 
+describe('filterUniqueFields', () => {
+	it('keeps the first of each flattened path, in order', () => {
+		expect(filterUniqueFields(['b', ['a', 'c'], 'a.c', 'b', 'd'])).toEqual(['b', ['a', 'c'], 'd'])
+		expect(filterUniqueFields([])).toEqual([])
+	})
+})
+
 describe('buildRefusedResult', () => {
 	it('carries the refusal on the empty result of the definition', () => {
 		const fault = { reason: 'extra', path: 'x' } as const
@@ -2756,53 +2763,6 @@ describe('buildRefusedResult', () => {
 			errors: ['no'],
 			faults: [fault],
 		})
-	})
-})
-
-describe('isLosslessRepair', () => {
-	const number = { reason: 'type', path: ['a'], expected: 'number', received: '' } as const
-	const integer = { reason: 'type', path: ['a'], expected: 'integer', received: '' } as const
-	const literal = { reason: 'type', path: ['a'], expected: 'literal', received: '' } as const
-	const boolean = { reason: 'type', path: ['a'], expected: 'boolean', received: '' } as const
-	const string = { reason: 'type', path: ['a'], expected: 'string', received: '' } as const
-
-	it('a number or literal needs a string whose trim is its own text', () => {
-		expect(isLosslessRepair(number, { a: '30' }, { a: 30 })).toBe(true)
-		expect(isLosslessRepair(number, { a: ' 30 ' }, { a: 30 })).toBe(true)
-		expect(isLosslessRepair(integer, { a: '30' }, { a: 30 })).toBe(true)
-		expect(isLosslessRepair(literal, { a: ' CA ' }, { a: 'CA' })).toBe(true)
-		expect(isLosslessRepair(number, { a: '30.0' }, { a: 30 })).toBe(false)
-		expect(isLosslessRepair(number, { a: '-0' }, { a: -0 })).toBe(false)
-		expect(isLosslessRepair(number, { a: 30 }, { a: 30 })).toBe(false)
-		expect(isLosslessRepair(number, { a: '30' }, {})).toBe(false)
-	})
-
-	it('a boolean needs its own word, and a string a finite number', () => {
-		expect(isLosslessRepair(boolean, { a: 'true' }, { a: true })).toBe(true)
-		expect(isLosslessRepair(boolean, { a: 'false' }, { a: false })).toBe(true)
-		expect(isLosslessRepair(boolean, { a: '1' }, { a: true })).toBe(false)
-		expect(isLosslessRepair(boolean, { a: 1 }, { a: true })).toBe(false)
-		expect(isLosslessRepair(string, { a: 5 }, { a: '5' })).toBe(true)
-		expect(isLosslessRepair(string, { a: true }, { a: 'true' })).toBe(false)
-	})
-
-	it('anything but a type fault of a known kind is no repair', () => {
-		expect(isLosslessRepair({ reason: 'extra', path: 'a' }, { a: 1 }, {})).toBe(false)
-		expect(
-			isLosslessRepair({ reason: 'missing', path: 'a', expected: 'number' }, {}, { a: 1 }),
-		).toBe(false)
-		expect(
-			isLosslessRepair(
-				{ reason: 'type', path: 'a', expected: 'json', received: '' },
-				{ a: 1 },
-				{ a: 1 },
-			),
-		).toBe(false)
-	})
-
-	it('reads a nested path', () => {
-		const nested = { reason: 'type', path: ['o', 'a'], expected: 'number', received: '' } as const
-		expect(isLosslessRepair(nested, { o: { a: '1' } }, { o: { a: 1 } })).toBe(true)
 	})
 })
 

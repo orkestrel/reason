@@ -752,6 +752,18 @@ export function createShapedDefinition(premise: Expression, shape: ContractShape
 	return createLogicalDefinition('d', 'd', [createRule('r', [premise], conclusion)], { shape })
 }
 
+/**
+ * Reads what a logical result's lines say about its answer, the same for either strategy.
+ *
+ * @param lines - A result's trace or errors
+ * @returns The lines without a proof's, with the strategy's name read as forward
+ */
+export function readAnswerLines(lines: readonly string[]): readonly string[] {
+	return lines
+		.filter((line) => !line.startsWith('Proof'))
+		.map((line) => line.replace('Backward chaining', 'Forward chaining'))
+}
+
 export function reasonRules(
 	subject: Subject,
 	rules: readonly Rule[],
