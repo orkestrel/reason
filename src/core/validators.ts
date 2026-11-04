@@ -159,6 +159,27 @@ export const isLookupKey: Guard<LiteralValue> = whereOf(
 export const isComparable: Guard<LiteralValue | null> = unionOf(isLookupKey, isNull)
 
 /**
+ * Determines whether a value is a string that is blank or differs from its trim, which no
+ * comparison reads as the text it would be without the padding.
+ *
+ * @param value - The value to test
+ * @returns True for such a string; false for anything else
+ *
+ * @example
+ * ```ts
+ * import { isPaddedText } from '@src/core'
+ *
+ * isPaddedText(' CA ') // true
+ * isPaddedText('')     // true
+ * isPaddedText('CA')   // false
+ * isPaddedText(1)      // false
+ * ```
+ */
+export function isPaddedText(value: unknown): boolean {
+	return isString(value) && (value === '' || value !== value.trim())
+}
+
+/**
  * Determines whether a value is a well-formed `ContractShape`, by asking `contract`.
  *
  * @param value - The value to test

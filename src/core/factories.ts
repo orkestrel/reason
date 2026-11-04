@@ -55,10 +55,16 @@ import type {
 	VariableManagerInterface,
 	VariableManagerOptions,
 } from './types.js'
-import type { FieldPath } from '@orkestrel/contract'
+import type { ContractInterface, FieldPath } from '@orkestrel/contract'
+import { createContract } from '@orkestrel/contract'
 import { DEFAULT_CONFIDENCE } from './constants.js'
 import { Reason } from './Reason.js'
 import { SubjectDoor } from './SubjectDoor.js'
+import {
+	createDefinitionShape,
+	createLogicalDefinitionShape,
+	createSymbolicDefinitionShape,
+} from './shapers.js'
 import { Evaluator } from './operators/Evaluator.js'
 import { Transformer } from './operators/Transformer.js'
 import { Aggregator } from './operators/Aggregator.js'
@@ -166,6 +172,61 @@ export function createQuantitativeReasoner(
 	options?: QuantitativeReasonerOptions,
 ): ReasonerInterface {
 	return new QuantitativeReasoner(options)
+}
+
+/**
+ * Creates the contract of any `Definition`, its `schema` for an LLM, a tool, or MCP.
+ *
+ * @remarks
+ * Cross a definition on `is`, never `parse`, which would turn `enabled: '0'` into `false` and
+ * accept a padded operator. `is` sits inside `isDefinition` for all but a definition's own
+ * `shape` key, and `validate` still reads what no shape says. Building it walks the recursive
+ * expressions, so this is a function and the caller holds the result.
+ *
+ * @returns A contract over all four definition kinds
+ *
+ * @example
+ * ```ts
+ * import { createDefinitionContract, createLogicalDefinition } from '@orkestrel/reason'
+ *
+ * const contract = createDefinitionContract()
+ * contract.is(createLogicalDefinition('d', 'd', [])) // true
+ * ```
+ */
+export function createDefinitionContract(): ContractInterface<unknown> {
+	return createContract(createDefinitionShape())
+}
+
+/**
+ * Creates the contract of a `LogicalDefinition`. Cross it on `is`, and hold the result.
+ *
+ * @returns A contract holding expressions at `EXPRESSION_SHAPE_DEPTH`
+ *
+ * @example
+ * ```ts
+ * import { createLogicalDefinition, createLogicalDefinitionContract } from '@orkestrel/reason'
+ *
+ * createLogicalDefinitionContract().is(createLogicalDefinition('d', 'd', [])) // true
+ * ```
+ */
+export function createLogicalDefinitionContract(): ContractInterface<unknown> {
+	return createContract(createLogicalDefinitionShape())
+}
+
+/**
+ * Creates the contract of a `SymbolicDefinition`. Cross it on `is`, and hold the result.
+ *
+ * @returns A contract holding expressions at `SYMBOLIC_SHAPE_DEPTH`
+ *
+ * @example
+ * ```ts
+ * import { createSymbolicDefinition, createSymbolicDefinitionContract } from '@orkestrel/reason'
+ *
+ * createSymbolicDefinitionContract().is(createSymbolicDefinition('d', 'd', [])) // true
+ * ```
+ */
+export function createSymbolicDefinitionContract(): ContractInterface<unknown> {
+	return createContract(createSymbolicDefinitionShape())
 }
 
 /**

@@ -75,12 +75,12 @@ export type Aggregation = 'sum' | 'product' | 'average' | 'minimum' | 'maximum'
  * `above` / `below` / `from` / `to` — `>` / `<` / `>=` / `<=` over finite numbers.
  * `between` / `outside` — inclusive test against a two-element `[minimum, maximum]` of
  * finite numbers. `equals` / `not` — `===` / `!==` over two values of one primitive type,
- * where a string that is blank or padded reads `unread` and any other difference of type
- * reads `unread`, so `x not 'none'` over 90 is `unread` and the author writes `x not null`.
- * `null` is a value: `equals null` and `not null` settle on a present field. `any` / `none`
- * — an exact hit settles, otherwise an element of another type reads `unread`, otherwise
- * settled. An absent field, an object, an array, `NaN`, `±Infinity`, or a bigint reads
- * `unread` for every comparison, and so does a malformed expected value.
+ * where any other difference of type reads `unread`, so `x not 'none'` over 90 is `unread`
+ * and the author writes `x not null`. `null` is a value: `equals null` and `not null` settle
+ * on a present field. `any` / `none` — an exact hit settles, otherwise an element of another
+ * type reads `unread`, otherwise settled. Under all four, a string that is blank or differs
+ * from its trim reads `unread`. An absent field, an object, an array, `NaN`, `±Infinity`,
+ * or a bigint reads `unread` for every comparison, and so does a malformed expected value.
  */
 export type Comparison =
 	| 'equals'

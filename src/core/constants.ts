@@ -148,9 +148,11 @@ export const EXPRESSION_SHAPE_DEPTH = 8
  * Holds how many operations the published `SymbolicExpression` shape may nest.
  *
  * @remarks
- * An operation has two sides, so the schema doubles with each level.
+ * An operation has two sides, so the schema doubles with each level: about 14 KB here against
+ * 56 KB at depth 6. A deeper authored expression still runs, because the guard admits it, and
+ * cannot cross a boundary on `is`.
  */
-export const SYMBOLIC_SHAPE_DEPTH = 6
+export const SYMBOLIC_SHAPE_DEPTH = 4
 
 /** Names the default `id` for an `Evaluator`. */
 export const EVALUATOR_ID = 'evaluator'

@@ -1,6 +1,7 @@
 import {
 	arrayShape,
 	booleanShape,
+	compileSchema,
 	FAULT_LIMIT,
 	integerShape,
 	jsonShape,
@@ -164,6 +165,60 @@ describe('SubjectDoor — the lossless rule on repairs', () => {
 	})
 })
 
+describe('SubjectDoor — defaults', () => {
+	const shape = objectShape({
+		age: numberShape(),
+		licensed: optionalShape(booleanShape(), { default: false }),
+		address: optionalShape(
+			objectShape({ city: optionalShape(stringShape(), { default: 'none' }) }),
+		),
+	})
+
+	it('fills an absent key and an undefined one, and says so', () => {
+		for (const subject of [{ age: 30 }, { age: 30, licensed: undefined }]) {
+			const admission = door.admit(subject, shape)
+			expect(admission.subject).toEqual({ age: 30, licensed: false })
+			expect(admission.defaulted).toEqual([['licensed']])
+			expect(admission.repairs).toEqual([])
+		}
+	})
+
+	it('a stated value is not a fill, whatever it is', () => {
+		const admission = door.admit({ age: 30, licensed: false }, shape)
+		expect(admission.subject).toEqual({ age: 30, licensed: false })
+		expect(admission.defaulted).toEqual([])
+	})
+
+	it('reports a nested fill by its path', () => {
+		const admission = door.admit({ age: 30, address: {} }, shape)
+		expect(admission.subject).toEqual({ age: 30, licensed: false, address: { city: 'none' } })
+		expect(admission.defaulted).toEqual([['licensed'], ['address', 'city']])
+	})
+
+	it('a typo beside a default refuses, instead of filling the default as an answer', () => {
+		const admission = door.admit({ age: 30, licenced: true }, shape)
+		expect(admission.subject).toBeUndefined()
+		expect(admission.faults).toEqual([{ reason: 'extra', path: ['licenced'] }])
+	})
+
+	it('a default reaches the rule, which then settles', () => {
+		const rule = createRule(
+			'r',
+			[createAtom('licensed', 'equals', false)],
+			createAtom('ok', 'equals', true),
+		)
+		const definition = createLogicalDefinition('d', 'd', [rule], { shape })
+		const result = expectLogical(createLogicalReasoner().reason({ age: 30 }, definition))
+		expect(result.conclusion).toBe('met')
+		expect(result.defaulted).toEqual([['licensed']])
+	})
+
+	it('reaches the schema', () => {
+		const schema = compileSchema(shape)
+		expect(schema.properties?.licensed?.default).toBe(false)
+	})
+})
+
 describe('SubjectDoor — null', () => {
 	it('is a fault unless the field admits it', () => {
 		expect(door.admit({ age: null }, age).subject).toBeUndefined()
@@ -183,6 +238,19 @@ describe('SubjectDoor — optional and untyped fields', () => {
 		const admission = door.admit({}, shape)
 		expect(admission.subject).toEqual({})
 		expect(admission.defaulted).toEqual([])
+	})
+
+	it('an optional key holding undefined is absent, so nothing was repaired or filled', () => {
+		const shape = objectShape({ age: optionalShape(numberShape()) })
+		const admission = door.admit({ age: undefined }, shape)
+		expect(admission.subject).toEqual({})
+		expect(admission.repairs).toEqual([])
+		expect(admission.defaulted).toEqual([])
+	})
+
+	it('an undeclared key holding undefined still refuses, because it faults on presence', () => {
+		const shape = objectShape({ age: optionalShape(numberShape()) })
+		expect(door.admit({ agee: undefined }, shape).subject).toBeUndefined()
 	})
 
 	it('a raw or json field passes unchanged, so the typed read is the backstop', () => {

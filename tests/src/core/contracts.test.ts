@@ -22,7 +22,9 @@ import {
 	createSymbolicReasoner,
 	createVariable,
 	createEquation,
-	definitionContract,
+	createDefinitionContract,
+	createLogicalDefinitionContract,
+	createSymbolicDefinitionContract,
 	EXPRESSION_SHAPE_DEPTH,
 	inferentialDefinitionContract,
 	inferentialResultContract,
@@ -30,14 +32,12 @@ import {
 	isExpression,
 	isReasonResult,
 	isSymbolicExpression,
-	logicalDefinitionContract,
 	logicalResultContract,
 	projectResult,
 	quantitativeDefinitionContract,
 	quantitativeResultContract,
 	resultContract,
 	SYMBOLIC_SHAPE_DEPTH,
-	symbolicDefinitionContract,
 	symbolicResultContract,
 } from '@src/core'
 import { describe, expect, it } from 'vitest'
@@ -62,6 +62,10 @@ const inferential = createInferentialDefinition(
 	[createFact('f', 'p', ['a'])],
 	[createInference('i', [createFact('q', 'p', ['?x'])], createFact('c', 'r', ['?x']))],
 )
+
+const definitionContract = createDefinitionContract()
+const logicalDefinitionContract = createLogicalDefinitionContract()
+const symbolicDefinitionContract = createSymbolicDefinitionContract()
 
 describe('definition contracts', () => {
 	it('admit what the factories build', () => {
@@ -95,6 +99,20 @@ describe('definition contracts', () => {
 		}
 	})
 
+	it('a schema stays small enough to travel', () => {
+		expect(JSON.stringify(definitionContract.schema).length).toBeLessThan(50_000)
+	})
+
+	it('a deeper authored expression runs in memory and cannot cross on is', () => {
+		const deep = createSymbolicDefinition('d', 'd', [
+			createEquation('e', createVariable('y'), buildOperationNest(SYMBOLIC_SHAPE_DEPTH + 1), 'y'),
+		])
+		expect(symbolicDefinitionContract.is(deep)).toBe(false)
+		expect(isDefinition(deep)).toBe(true)
+		const result = createSymbolicReasoner().reason({ x: 1 }, deep)
+		expect(result.success).toBe(true)
+	})
+
 	it('publish a schema a tool can carry', () => {
 		const schema = logicalDefinitionContract.schema
 		expect(schema.type).toBe('object')
@@ -117,7 +135,7 @@ describe('the depth the expression shapes hold', () => {
 
 	it('the bounds are the ruled ones', () => {
 		expect(EXPRESSION_SHAPE_DEPTH).toBe(8)
-		expect(SYMBOLIC_SHAPE_DEPTH).toBe(6)
+		expect(SYMBOLIC_SHAPE_DEPTH).toBe(4)
 	})
 
 	it('arity stays with validate', () => {

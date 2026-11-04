@@ -1643,6 +1643,35 @@ describe.each(['forward', 'backward'] as const)(
 	},
 )
 
+describe.each(['forward', 'backward'] as const)(
+	'LogicalReasoner — a key stays open while any rule concluding it could still fire (%s)',
+	(strategy) => {
+		const rules = [
+			createFlagRule('a1', 'a', [createAtom('x', 'above', 1)]),
+			createFlagRule('a2', 'a', [createAtom('y', 'above', 1)]),
+			createFlagRule('b', 'b', [createNegatedFlag('a')]),
+		]
+
+		it('one concluder unmet and one unread holds the negation over the key', () => {
+			const result = reasonRules({ x: 0 }, rules, strategy)
+			expect(result.rules.map((rule) => rule.state)).toEqual(['unmet', 'unread', 'unread'])
+			expect(result.count).toBe(0)
+			expect(result.errors).toEqual(['Field "y" is missing'])
+		})
+
+		it('both unmet close it, so the negation reads met', () => {
+			const result = reasonRules({ x: 0, y: 0 }, rules, strategy)
+			expect(result.rules.map((rule) => rule.state)).toEqual(['unmet', 'unmet', 'met'])
+			expect(result.success).toBe(true)
+		})
+
+		it('either met derives it, so the negation reads unmet', () => {
+			const result = reasonRules({ x: 5 }, rules, strategy)
+			expect(result.rules.map((rule) => rule.state)).toEqual(['met', 'unread', 'unmet'])
+		})
+	},
+)
+
 describe('LogicalReasoner — the fault channel', () => {
 	const rule = createRule(
 		'r',

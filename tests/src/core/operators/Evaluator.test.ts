@@ -462,7 +462,7 @@ describe('Evaluator — a difference of type never settles', () => {
 	}
 })
 
-describe('Evaluator — a blank or padded string reads unread under equals and not', () => {
+describe('Evaluator — a blank or padded string reads unread under equality and membership', () => {
 	const ROWS = [
 		['empty against empty', 'equals', '', ''],
 		['spaces against themselves', 'equals', '  ', '  '],
@@ -470,6 +470,10 @@ describe('Evaluator — a blank or padded string reads unread under equals and n
 		['padded against its trim', 'equals', ' FL ', 'FL'],
 		['padded under not', 'not', 'FL ', 'NY'],
 		['empty against null', 'not', '', null],
+		['padded against its trim, in a list', 'any', ' CA ', ['CA']],
+		['padded beside a list', 'none', ' CA ', ['CA']],
+		['padded against itself, in a list', 'any', ' CA ', [' CA ']],
+		['blank in a list', 'any', '', ['']],
 	] as const
 	for (const [name, operator, actual, expected] of ROWS) {
 		it(`reads unread: ${name}`, () => {

@@ -29,7 +29,8 @@ import {
 // JSON Schema. The guards in `validators.ts` stay the authority on a definition, because a
 // shape refuses cycles: `Expression` and `SymbolicExpression` are recursive, so each is a
 // depth-bounded expansion here and a test holds `is` inside the guard. Connective arity and
-// the rest of what `validate` reads are left to `validate`.
+// the rest of what `validate` reads are left to `validate`. Building those expansions is what
+// costs, so that family stays behind functions and an import pays nothing for it.
 
 /** Describes a `FieldPath` — one key, or the keys descending into nested objects. */
 export const fieldPathShape: ContractShape = unionShape(stringShape(), arrayShape(stringShape()))
@@ -130,7 +131,7 @@ export const quantitativeDefinitionShape: ContractShape = objectShape({
  * One `operands` array serves every connective, so the schema grows linearly with `depth`, and
  * arity stays with `validate`, since a shape holding it refuses to build at depth 7.
  *
- * @param depth - How many connectives may nest
+ * @param depth - How many connectives may nest. Default: `EXPRESSION_SHAPE_DEPTH`
  * @returns A shape admitting an atom, or a compound over shapes one level down
  *
  * @example
@@ -144,7 +145,7 @@ export const quantitativeDefinitionShape: ContractShape = objectShape({
  * contract.is(createCompound('not', [createCompound('not', [atom])])) // false
  * ```
  */
-export function createExpressionShape(depth: number): ContractShape {
+export function createExpressionShape(depth: number = EXPRESSION_SHAPE_DEPTH): ContractShape {
 	const atom = objectShape({ form: literalShape(['atom']), check: checkShape })
 	if (depth <= 0) return atom
 	return unionShape(
@@ -157,36 +158,61 @@ export function createExpressionShape(depth: number): ContractShape {
 	)
 }
 
-/** Describes an `Expression`, at the depth `EXPRESSION_SHAPE_DEPTH` names. */
-export const expressionShape: ContractShape = createExpressionShape(EXPRESSION_SHAPE_DEPTH)
-
-/** Describes a `Rule` — premises and a conclusion. */
-export const ruleShape: ContractShape = objectShape({
-	id: stringShape(),
-	name: stringShape(),
-	description: optionalShape(stringShape()),
-	premises: arrayShape(expressionShape),
-	conclusion: expressionShape,
-	priority: optionalShape(numberShape()),
-	enabled: optionalShape(booleanShape()),
-})
+/**
+ * Creates the shape of a `Rule` — premises and a conclusion.
+ *
+ * @returns A shape holding expressions at `EXPRESSION_SHAPE_DEPTH`
+ *
+ * @example
+ * ```ts
+ * import { createContract } from '@orkestrel/contract'
+ * import { createAtom, createRule, createRuleShape } from '@src/core'
+ *
+ * const rule = createRule('r', [createAtom('a', 'equals', 1)], createAtom('ok', 'equals', true))
+ * createContract(createRuleShape()).is(rule) // true
+ * ```
+ */
+export function createRuleShape(): ContractShape {
+	const expression = createExpressionShape()
+	return objectShape({
+		id: stringShape(),
+		name: stringShape(),
+		description: optionalShape(stringShape()),
+		premises: arrayShape(expression),
+		conclusion: expression,
+		priority: optionalShape(numberShape()),
+		enabled: optionalShape(booleanShape()),
+	})
+}
 
 /**
- * Describes a `LogicalDefinition`.
+ * Creates the shape of a `LogicalDefinition`.
  *
  * @remarks
  * `shape` is any JSON value here. A `ContractShape` is recursive, so `validate` reads it.
+ *
+ * @returns A shape holding rules at `EXPRESSION_SHAPE_DEPTH`
+ *
+ * @example
+ * ```ts
+ * import { createContract } from '@orkestrel/contract'
+ * import { createLogicalDefinition, createLogicalDefinitionShape } from '@src/core'
+ *
+ * createContract(createLogicalDefinitionShape()).is(createLogicalDefinition('d', 'd', [])) // true
+ * ```
  */
-export const logicalDefinitionShape: ContractShape = objectShape({
-	reasoning: literalShape(['logical']),
-	id: stringShape(),
-	name: stringShape(),
-	description: optionalShape(stringShape()),
-	rules: arrayShape(ruleShape),
-	strategy: literalShape(CHAIN_STRATEGIES),
-	depth: optionalShape(numberShape()),
-	shape: optionalShape(jsonShape()),
-})
+export function createLogicalDefinitionShape(): ContractShape {
+	return objectShape({
+		reasoning: literalShape(['logical']),
+		id: stringShape(),
+		name: stringShape(),
+		description: optionalShape(stringShape()),
+		rules: arrayShape(createRuleShape()),
+		strategy: literalShape(CHAIN_STRATEGIES),
+		depth: optionalShape(numberShape()),
+		shape: optionalShape(jsonShape()),
+	})
+}
 
 /**
  * Creates the shape of a `SymbolicExpression` nesting at most `depth` operations.
@@ -194,7 +220,7 @@ export const logicalDefinitionShape: ContractShape = objectShape({
  * @remarks
  * An operation holds two sides, so the schema doubles with each level.
  *
- * @param depth - How many operations may nest
+ * @param depth - How many operations may nest. Default: `SYMBOLIC_SHAPE_DEPTH`
  * @returns A shape admitting a variable, a constant, or an operation over shapes one level down
  *
  * @example
@@ -207,7 +233,7 @@ export const logicalDefinitionShape: ContractShape = objectShape({
  * contract.is(createOperation('abs', createConstant(1)))                 // false
  * ```
  */
-export function createSymbolicExpressionShape(depth: number): ContractShape {
+export function createSymbolicExpressionShape(depth: number = SYMBOLIC_SHAPE_DEPTH): ContractShape {
 	const variable = objectShape({ form: literalShape(['variable']), name: stringShape() })
 	const constant = objectShape({ form: literalShape(['constant']), value: numberShape() })
 	if (depth <= 0) return unionShape(variable, constant)
@@ -224,36 +250,60 @@ export function createSymbolicExpressionShape(depth: number): ContractShape {
 	)
 }
 
-/** Describes a `SymbolicExpression`, at the depth `SYMBOLIC_SHAPE_DEPTH` names. */
-export const symbolicExpressionShape: ContractShape =
-	createSymbolicExpressionShape(SYMBOLIC_SHAPE_DEPTH)
-
-/** Describes an `Equation` — `left = right`, solved for `target`. */
-export const equationShape: ContractShape = objectShape({
-	id: stringShape(),
-	name: stringShape(),
-	description: optionalShape(stringShape()),
-	left: symbolicExpressionShape,
-	right: symbolicExpressionShape,
-	target: stringShape(),
-})
+/**
+ * Creates the shape of an `Equation` — `left = right`, solved for `target`.
+ *
+ * @returns A shape holding expressions at `SYMBOLIC_SHAPE_DEPTH`
+ *
+ * @example
+ * ```ts
+ * import { createContract } from '@orkestrel/contract'
+ * import { createConstant, createEquation, createEquationShape, createVariable } from '@src/core'
+ *
+ * const equation = createEquation('e', createVariable('x'), createConstant(1), 'x')
+ * createContract(createEquationShape()).is(equation) // true
+ * ```
+ */
+export function createEquationShape(): ContractShape {
+	const expression = createSymbolicExpressionShape()
+	return objectShape({
+		id: stringShape(),
+		name: stringShape(),
+		description: optionalShape(stringShape()),
+		left: expression,
+		right: expression,
+		target: stringShape(),
+	})
+}
 
 /**
- * Describes a `SymbolicDefinition`.
+ * Creates the shape of a `SymbolicDefinition`.
  *
  * @remarks
  * `shape` is any JSON value here. A `ContractShape` is recursive, so `validate` reads it.
+ *
+ * @returns A shape holding equations at `SYMBOLIC_SHAPE_DEPTH`
+ *
+ * @example
+ * ```ts
+ * import { createContract } from '@orkestrel/contract'
+ * import { createSymbolicDefinition, createSymbolicDefinitionShape } from '@src/core'
+ *
+ * createContract(createSymbolicDefinitionShape()).is(createSymbolicDefinition('d', 'd', [])) // true
+ * ```
  */
-export const symbolicDefinitionShape: ContractShape = objectShape({
-	reasoning: literalShape(['symbolic']),
-	id: stringShape(),
-	name: stringShape(),
-	description: optionalShape(stringShape()),
-	equations: arrayShape(equationShape),
-	variables: recordShape(numberShape()),
-	precision: optionalShape(numberShape()),
-	shape: optionalShape(jsonShape()),
-})
+export function createSymbolicDefinitionShape(): ContractShape {
+	return objectShape({
+		reasoning: literalShape(['symbolic']),
+		id: stringShape(),
+		name: stringShape(),
+		description: optionalShape(stringShape()),
+		equations: arrayShape(createEquationShape()),
+		variables: recordShape(numberShape()),
+		precision: optionalShape(numberShape()),
+		shape: optionalShape(jsonShape()),
+	})
+}
 
 /** Describes a `Fact` — a predicate over positional terms. */
 export const factShape: ContractShape = objectShape({
@@ -292,13 +342,27 @@ export const inferentialDefinitionShape: ContractShape = objectShape({
 	shape: optionalShape(jsonShape()),
 })
 
-/** Describes any `Definition`, discriminated by `reasoning`. */
-export const definitionShape: ContractShape = unionShape(
-	quantitativeDefinitionShape,
-	logicalDefinitionShape,
-	symbolicDefinitionShape,
-	inferentialDefinitionShape,
-)
+/**
+ * Creates the shape of any `Definition`, discriminated by `reasoning`.
+ *
+ * @returns A union of the four definition shapes
+ *
+ * @example
+ * ```ts
+ * import { createContract } from '@orkestrel/contract'
+ * import { createDefinitionShape, createLogicalDefinition } from '@src/core'
+ *
+ * createContract(createDefinitionShape()).is(createLogicalDefinition('d', 'd', [])) // true
+ * ```
+ */
+export function createDefinitionShape(): ContractShape {
+	return unionShape(
+		quantitativeDefinitionShape,
+		createLogicalDefinitionShape(),
+		createSymbolicDefinitionShape(),
+		inferentialDefinitionShape,
+	)
+}
 
 /** Describes an `AuditFault` as a result carries it. */
 export const faultShape: ContractShape = unionShape(

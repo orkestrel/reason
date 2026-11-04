@@ -58,7 +58,7 @@ import {
 } from '@orkestrel/contract'
 import { DEFAULT_CONFIDENCE, DEFAULT_PRIORITY } from './constants.js'
 import { ReasonError } from './errors.js'
-import { isComparable, isLookupKey, isMembership, isRange } from './validators.js'
+import { isComparable, isLookupKey, isMembership, isPaddedText, isRange } from './validators.js'
 
 // The module's pure leaves: field display, the numeric helpers, equality and
 // ordering, the inferential fact machinery, the symbolic algebra machinery, the
@@ -263,11 +263,11 @@ export function resolveSource(
  * @remarks
  * Every comparison reads `unread` rather than guessing when either side cannot be
  * compared, and a malformed expected value is unread. Ordering and range need finite
- * numbers on both sides. Equality settles two values of one primitive type by `===`, reads
- * a blank or padded string as unread, and reads any other difference of type as unread,
- * except that `null` as the expected value settles on any present field. Membership
- * settles on an exact hit, reads as unread when an element has another type, and otherwise
- * settles.
+ * numbers on both sides. Equality and membership read a blank or padded string as unread.
+ * Equality settles two values of one primitive type by `===` and reads any other difference
+ * of type as unread, except that `null` as the expected value settles on any present field.
+ * Membership settles on an exact hit, reads as unread when an element has another type, and
+ * otherwise settles.
  *
  * @param actual - The subject's value
  * @param operator - The comparison, typed `string` because an untrusted definition reaches here unchecked
@@ -292,7 +292,7 @@ export function settleComparison(actual: unknown, operator: string, expected: un
 		case 'equals':
 		case 'not':
 			if (!isComparable(actual) || !isComparable(expected)) return 'unread'
-			if (isString(actual) && (actual === '' || actual !== actual.trim())) return 'unread'
+			if (isPaddedText(actual)) return 'unread'
 			if (!isNull(expected) && typeof actual !== typeof expected) return 'unread'
 			return (actual === expected) === (operator === 'equals') ? 'met' : 'unmet'
 		case 'above':
@@ -306,7 +306,7 @@ export function settleComparison(actual: unknown, operator: string, expected: un
 			return actual <= expected ? 'met' : 'unmet'
 		case 'any':
 		case 'none':
-			if (!isComparable(actual) || !isMembership(expected)) return 'unread'
+			if (!isComparable(actual) || !isMembership(expected) || isPaddedText(actual)) return 'unread'
 			if (expected.includes(actual)) return operator === 'any' ? 'met' : 'unmet'
 			if (expected.some((entry) => typeof entry !== typeof actual)) return 'unread'
 			return operator === 'any' ? 'unmet' : 'met'

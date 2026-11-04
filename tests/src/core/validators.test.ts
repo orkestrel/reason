@@ -52,6 +52,7 @@ import {
 	isComparable,
 	isContractShape,
 	isLookupKey,
+	isPaddedText,
 	isMembership,
 	isRange,
 	isComparison,
@@ -1630,6 +1631,19 @@ describe('isComparable', () => {
 		expect(isComparable(undefined)).toBe(false)
 		expect(isComparable({})).toBe(false)
 		expect(isComparable([1])).toBe(false)
+	})
+})
+
+describe('isPaddedText', () => {
+	it('is a string that is blank or differs from its trim', () => {
+		expect(isPaddedText('')).toBe(true)
+		expect(isPaddedText('  ')).toBe(true)
+		expect(isPaddedText(' a')).toBe(true)
+		expect(isPaddedText('a ')).toBe(true)
+		expect(isPaddedText('a b')).toBe(false)
+		expect(isPaddedText('a')).toBe(false)
+		expect(isPaddedText(1)).toBe(false)
+		expect(isPaddedText(null)).toBe(false)
 	})
 })
 

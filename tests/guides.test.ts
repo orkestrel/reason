@@ -53,6 +53,7 @@ await new GuideCommand({
 		createCompound,
 		createConstant,
 		createDefinitionBuilder,
+		createDefinitionContract,
 		createEquation,
 		createEvaluator,
 		createFact,
@@ -77,7 +78,6 @@ await new GuideCommand({
 		createTransform,
 		createTransformer,
 		createVariable,
-		definitionContract,
 		mergeQuantitativeDefinition,
 		parseDefinition,
 		projectResult,
@@ -356,8 +356,9 @@ await new GuideCommand({
 
 		it('§ Publishing definitions and results — the contracts', () => {
 			const definition = createLogicalDefinition('e', 'Eligibility', [])
-			expect(definitionContract.is(definition)).toBe(true)
-			expect(definitionContract.schema).toBeDefined()
+			const contract = createDefinitionContract()
+			expect(contract.is(definition)).toBe(true)
+			expect(contract.schema).toBeDefined()
 			const result = createLogicalReasoner().reason({}, definition)
 			expect(resultContract.is(projectResult(result))).toBe(true)
 		})

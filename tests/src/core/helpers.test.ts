@@ -2248,9 +2248,12 @@ describe('settleComparison', () => {
 		['a', 'none', 'a', r],
 		[1, 'any', [Number.NaN], r],
 		[{}, 'any', ['a'], r],
-		// Membership has no padding rule: one type with no hit settles.
-		[' CA ', 'any', ['CA'], u],
-		[' CA ', 'none', ['CA'], m],
+		// A blank or padded string reads unread, under membership as under equality.
+		[' CA ', 'any', ['CA'], r],
+		[' CA ', 'none', ['CA'], r],
+		[' CA ', 'any', [' CA '], r],
+		['', 'any', [''], r],
+		['  ', 'none', ['a'], r],
 	])('membership: %o %s %o is %s', (actual, operator, expected, state) => {
 		expect(settleComparison(actual, operator, expected)).toBe(state)
 	})
@@ -2888,7 +2891,7 @@ describe('scanShape', () => {
 	})
 
 	it('a required key with a default refuses, since the keyword is only an annotation there', () => {
-		// Built by hand, because `rawShape` refuses the keyword until `contract` admits it.
+		// Built by hand, as a stored definition arrives.
 		const restored = { category: 'raw', schema: { type: 'number', default: 3 } } as const
 		const required = { category: 'object', properties: { a: restored } } as const
 		const optional = {
