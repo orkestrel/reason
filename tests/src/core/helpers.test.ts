@@ -2988,6 +2988,10 @@ describe('scanShape', () => {
 
 	it('the root is an object', () => {
 		expect(scanShape(numberShape())).toEqual(['Shape must describe an object'])
+		expect(scanShape(objectShape({}, { additionalProperties: numberShape() }))).toEqual([])
+		expect(
+			scanShape(objectShape({}, { additionalProperties: stringShape({ pattern: /x/ }) })),
+		).toEqual(['Field "*" carries a pattern, which does not survive JSON'])
 	})
 
 	it('a pattern refuses, wherever it sits', () => {

@@ -1961,8 +1961,9 @@ export function scanShape(
 				...Object.entries(shape.properties).flatMap(([key, property]) =>
 					scanShape(property, [...path, key], property.category !== 'optional'),
 				),
+				// Typed extras are a field of no one name, so they never read as the root.
 				...(isObject(shape.additionalProperties)
-					? scanShape(shape.additionalProperties, path)
+					? scanShape(shape.additionalProperties, [...path, '*'])
 					: []),
 			]
 		case 'raw':
