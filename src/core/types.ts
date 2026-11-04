@@ -848,7 +848,8 @@ export interface InferentialReasonerOptions {
  * @remarks
  * Total: `evaluate` never throws — an unknown operator surfaces as
  * `CheckResult.error` with `state: 'unread'`, and errors are isolated per item in
- * `batch`.
+ * `batch`. Pure: a reasoner reads one check more than once in a run, so `evaluate` answers the
+ * same for the same check and subject. One that does not can contradict itself in a result.
  */
 export interface EvaluatorInterface {
 	readonly id: string

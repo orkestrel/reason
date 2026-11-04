@@ -18,6 +18,7 @@ import {
 	EXTREME_NUMBERS,
 	INTEGER_KEY_SUBJECT,
 	NESTED_SUBJECT,
+	readAnswerLines,
 	repeatValue,
 	runTwice,
 	sequence,
@@ -69,6 +70,32 @@ describe('result narrowers', () => {
 			const other = requireValue(NARROWERS[(index + 1) % NARROWERS.length])
 			expect(() => entry.narrow(other.result)).toThrow(`got "${other.reasoning}"`)
 		}
+	})
+})
+
+describe('readAnswerLines', () => {
+	it('drops a proof line, and reads the strategy on the engine lines that carry it', () => {
+		expect(
+			readAnswerLines([
+				'Proof: rule "r" established (depth 0)',
+				'Rule "r" derived: a=true (iteration 1)',
+				'Backward chaining converged at iteration 2',
+				'Backward chaining did not settle within depth 3',
+			]),
+		).toEqual([
+			'Rule "r" derived: a=true (iteration 1)',
+			'Forward chaining converged at iteration 2',
+			'Forward chaining did not settle within depth 3',
+		])
+	})
+
+	it('leaves any other text alone, so a difference in it still fails', () => {
+		const lines = [
+			'Rule "r": Backward chaining dependency unavailable',
+			'Proofreading is no proof line',
+			'Backward chaining converged at iteration 2 of many',
+		]
+		expect(readAnswerLines(lines)).toEqual(lines)
 	})
 })
 

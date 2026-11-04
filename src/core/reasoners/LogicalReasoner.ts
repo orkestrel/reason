@@ -69,8 +69,8 @@ import { isLogicalDefinition, isRule } from '../validators.js'
  * closed refuses as unstratified, and hitting `depth` refuses.
  *
  * Backward chaining answers from that same loop, so both strategies reach one model and refuse
- * the same runs, and `depth` counts the same passes in each. What differs is the trace: backward
- * also proves each rule goal-first on its own state, to say why. An atom on an underived
+ * the same runs, and `depth` counts the same passes in each. What differs is the trace: after the
+ * answer, backward also proves each rule goal-first on its own state, to say why. An atom on an underived
  * conclusion key tries the rules concluding that key, matched by field alone, and re-reads the
  * overlay once one fires, so `score above 5` never proves through `score equals 5`. Those proofs
  * answer nothing: each trace line opens `Proof:` and states an attempt, not a rule's state, a proof
@@ -217,14 +217,14 @@ export class LogicalReasoner implements ReasonerInterface {
 		// evaluator can throw. Each is a refusal like any other, because a reasoner's single throw
 		// is `MISMATCH`.
 		const chained = attempt(() => {
-			if (definition.strategy === 'backward') {
-				this.#backward(definition, rules, admitted, state, trace, errors)
-			} else this.#forward(definition, rules, admitted, state, trace, errors)
+			this.#chain(definition, rules, admitted, state, trace, errors)
 			const faults = this.#collectFaults(rules, admitted, state, errors)
 			const results = rules.map((rule) => this.#buildRuleResult(rule, admitted, state))
 			return { faults, results }
 		})
 		if (isSuccess(chained)) {
+			// Last, so what a proof reads cannot change what the answer read.
+			if (definition.strategy === 'backward') this.#prove(definition, rules, admitted, trace)
 			return this.#buildResult(
 				chained.value.results,
 				chained.value.faults,
@@ -282,9 +282,11 @@ export class LogicalReasoner implements ReasonerInterface {
 		}
 	}
 
-	// Phase A fires what the overlay supports, phase B closes what has settled, and each runs
-	// until the other has nothing to add.
-	#forward(
+	// The answer is the supported model, which both strategies share, so it comes from this one
+	// loop: a proof's order can take another value for a key two rules conclude, and a chain counts
+	// differently from the goal down. Phase A fires what the overlay supports, phase B closes what
+	// has settled, and each runs until the other has nothing to add.
+	#chain(
 		definition: LogicalDefinition,
 		rules: readonly Rule[],
 		subject: Subject,
@@ -293,10 +295,11 @@ export class LogicalReasoner implements ReasonerInterface {
 		errors: string[],
 	): void {
 		const depth = definition.depth ?? DEFAULT_DEPTH
+		const name = definition.strategy === 'backward' ? 'Backward' : 'Forward'
 		const pass = this.#settle(sortByPriority(rules), subject, state, trace, errors, 1, depth)
 		if (pass === undefined) {
-			errors.push(`Forward chaining did not settle within depth ${String(depth)}`)
-		} else if (errors.length === 0) trace.push(`Forward chaining converged at iteration ${pass}`)
+			errors.push(`${name} chaining did not settle within depth ${String(depth)}`)
+		} else if (errors.length === 0) trace.push(`${name} chaining converged at iteration ${pass}`)
 	}
 
 	// One pass fires from one snapshot, and `depth` counts the passes that derive something.
@@ -426,30 +429,23 @@ export class LogicalReasoner implements ReasonerInterface {
 		return state.concludes(key) && !state.has(key) && !state.closed(key)
 	}
 
-	// The answer is the supported model, which both strategies share, so it comes from the one
-	// settle loop: a proof's order can take another value for a key two rules conclude, and a chain
-	// counts differently from the goal down. The proofs run on their own state and say why, each
-	// line marked as a proof, and nothing they find or fail at refuses the run.
-	#backward(
+	// The proofs run on their own state and say why, each line marked as a proof. They run after
+	// the answer and contain their own failure, so nothing they read, find, or fail at reaches it.
+	#prove(
 		definition: LogicalDefinition,
 		rules: readonly Rule[],
 		subject: Subject,
-		state: LogicalState,
 		trace: string[],
-		errors: string[],
 	): void {
 		const depth = definition.depth ?? DEFAULT_DEPTH
-		const sorted = sortByPriority(rules)
 		const proving = new LogicalState(rules)
 		const proofs = new Map<Rule, CheckState>()
 		const proved = attempt(() => {
-			for (const rule of sorted) this.#proveRule(rule, 0, proofs, subject, proving, trace, depth)
+			for (const rule of sortByPriority(rules)) {
+				this.#proveRule(rule, 0, proofs, subject, proving, trace, depth)
+			}
 		})
 		if (!isSuccess(proved)) trace.push(`Proof: stopped: ${errorToMessage(proved.error)}`)
-		const pass = this.#settle(sorted, subject, state, trace, errors, 1, depth)
-		if (pass === undefined) {
-			errors.push(`Backward chaining did not settle within depth ${String(depth)}`)
-		} else if (errors.length === 0) trace.push(`Backward chaining converged at iteration ${pass}`)
 	}
 
 	#proveRule(

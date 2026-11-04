@@ -2,8 +2,11 @@ import type { ContractShape, FieldPath } from '@orkestrel/contract'
 import { isArray, isRecord } from '@orkestrel/contract'
 import type {
 	ChainStrategy,
+	Check,
+	CheckResult,
 	CheckState,
 	EquationManager,
+	EvaluatorInterface,
 	FactManager,
 	FactorManager,
 	GroupManager,
@@ -755,13 +758,63 @@ export function createShapedDefinition(premise: Expression, shape: ContractShape
 /**
  * Reads what a logical result's lines say about its answer, the same for either strategy.
  *
+ * @remarks
+ * Only the engine's own lines change: a proof's line drops, and the strategy's name reads as
+ * forward on the two lines that carry it. Any other text stays as it is, so a difference in it fails.
+ *
  * @param lines - A result's trace or errors
  * @returns The lines without a proof's, with the strategy's name read as forward
  */
 export function readAnswerLines(lines: readonly string[]): readonly string[] {
 	return lines
-		.filter((line) => !line.startsWith('Proof'))
-		.map((line) => line.replace('Backward chaining', 'Forward chaining'))
+		.filter((line) => !line.startsWith('Proof: '))
+		.map((line) =>
+			line.replace(
+				/^Backward chaining (did not settle within depth \d+|converged at iteration \d+)$/,
+				'Forward chaining $1',
+			),
+		)
+}
+
+/** Declares an evaluator with state: it records each field it reads. */
+export interface ScriptedEvaluatorInterface extends EvaluatorInterface {
+	readonly reads: readonly string[]
+}
+
+class ScriptedEvaluator implements ScriptedEvaluatorInterface {
+	readonly id = 'scripted'
+	readonly #inner = createEvaluator()
+	readonly #script: (read: number) => Subject
+	readonly #reads: string[] = []
+
+	constructor(script: (read: number) => Subject) {
+		this.#script = script
+	}
+
+	get reads(): readonly string[] {
+		return this.#reads
+	}
+
+	evaluate(check: Check, _subject: Subject): CheckResult {
+		this.#reads.push(String(check.field))
+		return this.#inner.evaluate(check, this.#script(this.#reads.length))
+	}
+
+	batch(checks: readonly Check[], subject: Subject): readonly CheckResult[] {
+		return checks.map((check) => this.evaluate(check, subject))
+	}
+}
+
+/**
+ * Creates an evaluator whose answer depends on how many reads it has had.
+ *
+ * @param script - Given the read's number, from 1, returns the subject that read sees, or throws
+ * @returns The evaluator, which records each field it reads
+ */
+export function createScriptedEvaluator(
+	script: (read: number) => Subject,
+): ScriptedEvaluatorInterface {
+	return new ScriptedEvaluator(script)
 }
 
 export function reasonRules(

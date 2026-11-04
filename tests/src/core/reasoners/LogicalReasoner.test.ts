@@ -13,6 +13,7 @@ import {
 	createFlagAtom,
 	createFlagRule,
 	createNegatedFlag,
+	createScriptedEvaluator,
 	createShapedDefinition,
 	SILENT_EVALUATOR,
 	THROWING_EVALUATOR,
@@ -2092,6 +2093,53 @@ describe('LogicalReasoner — one answer from either strategy', () => {
 		expect(backward.success).toBe(true)
 		expect(backward.count).toBe(count)
 		expect(backward.rules).toEqual(forward.rules)
+	})
+
+	it.each([
+		[
+			'throws on its first read',
+			(read: number) => {
+				if (read === 1) throw new Error('first read failure')
+				return { x: true }
+			},
+		],
+		['answers differently by read', (read: number) => ({ x: read === 2 })],
+		['answers the same each read', () => ({ x: true })],
+	])('an evaluator that %s gives the answer the same reads in either strategy', (_name, script) => {
+		const definition = createLogicalDefinition('d', 'd', [
+			createRule('r', [createAtom('x', 'equals', true)], createAtom('a', 'equals', true)),
+		])
+		const forwardReads = createScriptedEvaluator(script)
+		const backwardReads = createScriptedEvaluator(script)
+		const forward = expectLogical(
+			createLogicalReasoner({ evaluator: forwardReads }).reason({ x: true }, definition),
+		)
+		const backward = expectLogical(
+			createLogicalReasoner({ evaluator: backwardReads }).reason(
+				{ x: true },
+				{ ...definition, strategy: 'backward' },
+			),
+		)
+		expect(backward.success).toBe(forward.success)
+		expect(backward.rules).toEqual(forward.rules)
+		expect(backward.count).toBe(forward.count)
+		expect(backward.errors).toEqual(forward.errors)
+		expect(readAnswerLines(backward.trace)).toEqual(readAnswerLines(forward.trace))
+		expect(backwardReads.reads.slice(0, forwardReads.reads.length)).toEqual(forwardReads.reads)
+	})
+
+	it('runs the proofs after the answer, so each proof line follows the answer lines', () => {
+		const definition = createLogicalDefinition(
+			'd',
+			'd',
+			[createRule('r', [createAtom('x', 'equals', true)], createAtom('a', 'equals', true))],
+			{ strategy: 'backward' },
+		)
+		expect(expectLogical(reasoner.reason({ x: true }, definition)).trace).toEqual([
+			'Rule "r" derived: a=true (iteration 1)',
+			'Backward chaining converged at iteration 2',
+			'Proof: rule "r" established (depth 0)',
+		])
 	})
 
 	it('a rule negating its own conclusion reads as not established, and the answer refuses', () => {
