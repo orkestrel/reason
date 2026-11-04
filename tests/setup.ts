@@ -685,6 +685,60 @@ export function buildOperationNest(depth: number): SymbolicExpression {
 		: createOperation('add', buildOperationNest(depth - 1), createConstant(1))
 }
 
+// A value that throws the moment anything reads its member.
+export const HOSTILE_VALUE = {
+	keep: 1,
+	get boom(): number {
+		throw new Error('boom')
+	},
+}
+
+// A proxy that throws the moment anything lists its keys.
+export const HOSTILE_PROXY = new Proxy(
+	{},
+	{
+		ownKeys() {
+			throw new Error('boom')
+		},
+	},
+)
+
+// An evaluator that returns a result with no state, as one written against an older shape would.
+export const SILENT_EVALUATOR = {
+	id: 'silent',
+	evaluate() {
+		return { field: 'a', actual: 5 }
+	},
+	batch() {
+		return []
+	},
+}
+
+// An evaluator that throws on every read.
+export const THROWING_EVALUATOR = {
+	id: 'throwing',
+	evaluate() {
+		throw new Error('boom')
+	},
+	batch() {
+		return []
+	},
+}
+
+// An object holding itself.
+export function buildCycle(): Record<string, unknown> {
+	const cycle: Record<string, unknown> = { keep: 1 }
+	cycle.self = cycle
+	return cycle
+}
+
+// An object of `depth` levels where each level holds the next twice, so its tree is 2^depth wide.
+export function buildSharedNest(depth: number): Record<string, unknown> {
+	if (depth <= 0) return { leaf: 1 }
+	const next = buildSharedNest(depth - 1)
+	return { a: next, b: next }
+}
+
 // A definition's `shape` is any JSON value to its published shape and a real one to its guard,
 // so a generated definition drops it before the guard reads it.
 export function dropShapeKey(value: unknown): unknown {

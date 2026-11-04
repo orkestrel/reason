@@ -2,6 +2,9 @@ import {
 	readVariablePresence,
 	type Item,
 	ADVERSARIAL_VALUE_SUBJECT,
+	HOSTILE_PROXY,
+	HOSTILE_VALUE,
+	buildSharedNest,
 	createCycleThrough,
 	createFlagAtom,
 	createFlagRule,
@@ -67,6 +70,8 @@ import {
 	createVariable,
 	definitionToEnvelope,
 	describeFault,
+	describeMismatch,
+	describeTerms,
 	emptyAggregate,
 	equalValues,
 	extractAtoms,
@@ -114,6 +119,7 @@ import {
 	prependGroup,
 	prependInference,
 	prependRule,
+	projectValue,
 	readClosedState,
 	removeById,
 	removeEquation,
@@ -137,6 +143,7 @@ import {
 	roundTo,
 	scanCheck,
 	scanConclusion,
+	scanConclusionValues,
 	scanExpression,
 	scanFactor,
 	scanSymbolicExpression,
@@ -2130,6 +2137,14 @@ describe('combineStates — strong Kleene truth tables', () => {
 		expect(combineStates('xor', [m, u, m])).toBe(r)
 	})
 
+	it('an operand that is no state reads unread, so an evaluator returning none cannot read met', () => {
+		for (const operand of [undefined, 'maybe', true, null]) {
+			expect(invokeUnchecked<CheckState>(undefined, combineStates, ['and', [operand]])).toBe(r)
+			expect(invokeUnchecked<CheckState>(undefined, combineStates, ['or', [operand]])).toBe(r)
+			expect(invokeUnchecked<CheckState>(undefined, combineStates, ['not', [operand]])).toBe(r)
+		}
+	})
+
 	it('an unknown connective and a hole both read unread', () => {
 		expect(combineStates('nand', [m, m])).toBe(r)
 		expect(combineStates('and', sparse<CheckState>(2, [[0, u]]))).toBe(r)
@@ -2328,6 +2343,14 @@ describe('findSuppliedConclusions', () => {
 		expect(findSuppliedConclusions([a], { a: undefined })).toEqual(['a'])
 		expect(findSuppliedConclusions([a, a], { a: true })).toEqual(['a'])
 		expect(findSuppliedConclusions([a], { b: true })).toEqual([])
+	})
+
+	it('counts every spelling of the key the rules read it through', () => {
+		const dotted = createFlagRule('w', 'a.b')
+		const reader = createFlagRule('r', 'ok', [createFlagAtom(['a', 'b'])])
+		expect(findSuppliedConclusions([dotted, reader], { a: { b: 1 } })).toEqual(['a.b'])
+		expect(findSuppliedConclusions([dotted, reader], { 'a.b': 1 })).toEqual(['a.b'])
+		expect(findSuppliedConclusions([dotted, reader], { a: {} })).toEqual([])
 	})
 
 	it('reads a path nested and flat, and never through the prototype', () => {
@@ -2781,6 +2804,91 @@ describe('isLosslessRepair', () => {
 	})
 })
 
+describe('projectValue', () => {
+	it('keeps JSON, nulls a non-finite number, and omits what JSON cannot hold', () => {
+		expect(projectValue(1)).toBe(1)
+		expect(projectValue('a')).toBe('a')
+		expect(projectValue(null)).toBe(null)
+		expect(projectValue(Number.NaN)).toBe(null)
+		expect(projectValue(Number.POSITIVE_INFINITY)).toBe(null)
+		expect(projectValue(undefined)).toBeUndefined()
+		expect(projectValue(1n)).toBeUndefined()
+		expect(projectValue(new Date(0))).toBeUndefined()
+		expect(projectValue({ a: Number.NaN, b: undefined, c: [1, undefined] })).toEqual({
+			a: null,
+			c: [1, null],
+		})
+	})
+
+	it('a hole in an array is null, so the result is JSON', () => {
+		const holes = sparse<number>(3, [[0, 1]])
+		const projected = projectValue(holes)
+		expect(projected).toEqual([1, null, null])
+		expect(Object.keys(projected ?? {})).toEqual(['0', '1', '2'])
+	})
+
+	it('drops a reference back to an ancestor', () => {
+		const cyclic: Record<string, unknown> = { keep: 1 }
+		cyclic.self = cyclic
+		expect(projectValue(cyclic)).toEqual({ keep: 1 })
+		const ring: unknown[] = [1]
+		ring.push(ring)
+		expect(projectValue(ring)).toEqual([1, null])
+	})
+
+	it('a value sharing its sub-objects cannot unfold without end', () => {
+		const shared = buildSharedNest(60)
+		expect(JSON.stringify(projectValue(shared)).length).toBeLessThan(1_000_000)
+	})
+
+	it('a value that throws on being read is dropped, and nothing throws', () => {
+		expect(projectValue(HOSTILE_VALUE)).toBeUndefined()
+		expect(projectValue({ inner: HOSTILE_VALUE, keep: 1 })).toEqual({ keep: 1 })
+		expect(projectValue({ proxy: HOSTILE_PROXY, keep: 1 })).toEqual({ keep: 1 })
+	})
+
+	it('a value past the depth limit is dropped rather than overflowing', () => {
+		expect(() => projectValue(deepCompound(5000, createAtom('a', 'equals', 1)))).not.toThrow()
+	})
+})
+
+describe('scanConclusionValues, describeMismatch, and describeTerms', () => {
+	it('finds one key asserted with two values, and leaves one value alone', () => {
+		const one = createAtom('k', 'equals', 1)
+		const two = createAtom('k', 'equals', 2)
+		expect(scanConclusionValues(createCompound('and', [one, two]))).toEqual([
+			'Conclusion asserts two values for "k"',
+		])
+		expect(scanConclusionValues(createCompound('and', [one, one]))).toEqual([])
+		expect(scanConclusionValues(one)).toEqual([])
+	})
+
+	it('describes what a definition reaching validate holds, whatever it is', () => {
+		expect(describeMismatch('logical', { reasoning: 'symbolic' })).toBe(
+			'Expected reasoning "logical", got "symbolic"',
+		)
+		expect(describeMismatch('logical', null)).toBe('Expected reasoning "logical", got null')
+		expect(describeMismatch('logical', { reasoning: Symbol('x') })).toContain('Expected reasoning')
+		expect(describeMismatch('logical', { reasoning: Object.create(null) })).toContain(
+			'Expected reasoning',
+		)
+	})
+
+	it('describes a term that a template would throw on', () => {
+		expect(describeTerms(['a', 1, true])).toBe('a, 1, true')
+		expect(describeTerms([Symbol('s')])).toContain('s')
+		expect(() => describeTerms([Object.create(null)])).not.toThrow()
+	})
+})
+
+describe('extractConclusions — keys', () => {
+	it('holds a key named __proto__ as its own data', () => {
+		const conclusions = extractConclusions(createAtom('__proto__', 'equals', true))
+		expect(Object.keys(conclusions)).toEqual(['__proto__'])
+		expect(Object.getPrototypeOf(conclusions)).toBe(Object.prototype)
+	})
+})
+
 describe('findFilledPaths', () => {
 	it('lists what the output holds and the input left absent or undefined', () => {
 		expect(findFilledPaths({ a: 1 }, { a: 1, b: 2 })).toEqual([['b']])
@@ -2796,6 +2904,11 @@ describe('findFilledPaths', () => {
 
 	it('a repaired value is no fill', () => {
 		expect(findFilledPaths({ a: '1' }, { a: 1 })).toEqual([])
+	})
+
+	it('a value handed back by identity holds no fill, however it shares its parts', () => {
+		const shared = buildSharedNest(60)
+		expect(findFilledPaths({ blob: shared }, { blob: shared })).toEqual([])
 	})
 })
 
@@ -2835,8 +2948,8 @@ describe('findFieldShape', () => {
 	it('past an open object, a union, raw, or json it can say nothing', () => {
 		expect(findFieldShape(shape, ['open', 'x'])).toEqual({ declared: true })
 		expect(findFieldShape(shape, ['either', 'x'])).toEqual({ declared: true })
-		expect(findFieldShape(shape, ['raw', 'x'])).toEqual({ declared: true })
-		expect(findFieldShape(shape, ['json', 'x'])).toEqual({ declared: true })
+		expect(findFieldShape(shape, ['raw', 'x'])).toEqual({ declared: true, shape: rawShape({}) })
+		expect(findFieldShape(shape, ['json', 'x'])).toEqual({ declared: true, shape: jsonShape() })
 	})
 
 	it('additional properties of a shape read that shape', () => {

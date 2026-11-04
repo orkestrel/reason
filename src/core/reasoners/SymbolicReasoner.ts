@@ -17,6 +17,7 @@ import {
 	collectVariables,
 	containsVariable,
 	describeFault,
+	describeMismatch,
 	filterUniqueFaults,
 	findDuplicates,
 	invertLeft,
@@ -93,12 +94,8 @@ export class SymbolicReasoner implements ReasonerInterface {
 	}
 
 	validate(definition: Definition): ReasonValidationResult {
-		if (definition.reasoning !== 'symbolic') {
-			return {
-				valid: false,
-				errors: [`Expected reasoning "symbolic", got "${definition.reasoning}"`],
-				warnings: [],
-			}
+		if (!isObject(definition) || definition.reasoning !== 'symbolic') {
+			return { valid: false, errors: [describeMismatch('symbolic', definition)], warnings: [] }
 		}
 		const equations: unknown = definition.equations
 		if (!isSymbolicDefinition(definition)) {
@@ -238,13 +235,15 @@ export class SymbolicReasoner implements ReasonerInterface {
 				trace.push(`Equation "${equation.id}": ${equation.target} = ${rounded}`)
 			} catch (error) {
 				const message = isError(error) ? error.message : String(error)
-				errors.push(`Equation "${equation.id}": ${message}`)
 				trace.push(`Equation "${equation.id}": FAILED — ${message}`)
-				leaves.push(
-					...[...collectVariables(equation.left), ...collectVariables(equation.right)]
-						.filter((name) => state.values[name] === undefined && !targets.has(name))
-						.map((name) => valueToFault(name, 'number', resolveField(admitted, name))),
-				)
+				const unbound = [...collectVariables(equation.left), ...collectVariables(equation.right)]
+					.filter((name) => state.values[name] === undefined && !targets.has(name))
+					.map((name) => valueToFault(name, 'number', resolveField(admitted, name)))
+				leaves.push(...unbound)
+				// A fault already says an unbound variable, and `errors` holds one string per fault.
+				if (unbound.length === 0 || !message.startsWith('Unbound variable:')) {
+					errors.push(`Equation "${equation.id}": ${message}`)
+				}
 			}
 		}
 		const faults = filterUniqueFaults(leaves)

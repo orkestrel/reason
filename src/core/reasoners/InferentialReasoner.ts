@@ -16,6 +16,8 @@ import { isArray, isObject, iterateIndices } from '@orkestrel/contract'
 import {
 	buildRefusedResult,
 	computePremiseConfidence,
+	describeMismatch,
+	describeTerms,
 	factToArityKey,
 	factToKey,
 	findDuplicates,
@@ -110,12 +112,8 @@ export class InferentialReasoner implements ReasonerInterface {
 	}
 
 	validate(definition: Definition): ReasonValidationResult {
-		if (definition.reasoning !== 'inferential') {
-			return {
-				valid: false,
-				errors: [`Expected reasoning "inferential", got "${definition.reasoning}"`],
-				warnings: [],
-			}
+		if (!isObject(definition) || definition.reasoning !== 'inferential') {
+			return { valid: false, errors: [describeMismatch('inferential', definition)], warnings: [] }
 		}
 		const facts: unknown = definition.facts
 		const inferences: unknown = definition.inferences
@@ -320,7 +318,7 @@ export class InferentialReasoner implements ReasonerInterface {
 						seen.add(key)
 						derived.push(derivedFact)
 						trace.push(
-							`Derived ${derivedFact.predicate}(${derivedFact.terms.join(', ')}) ` +
+							`Derived ${derivedFact.predicate}(${describeTerms(derivedFact.terms)}) ` +
 								`through "${inference.id}" [confidence: ${derivedFact.confidence}] (iteration ${iteration + 1})`,
 						)
 						return true
@@ -394,7 +392,7 @@ export class InferentialReasoner implements ReasonerInterface {
 				}
 				derived.push(derivedFact)
 				trace.push(
-					`Proved ${inference.conclusion.predicate}(${inference.conclusion.terms.join(', ')})`,
+					`Proved ${inference.conclusion.predicate}(${describeTerms(inference.conclusion.terms)})`,
 				)
 				return { derived, proof }
 			}

@@ -1711,6 +1711,20 @@ describe('InferentialReasoner — depth-cap-bounded backward proof', () => {
 	})
 })
 
+describe('InferentialReasoner — a term a template would throw on', () => {
+	it('a symbol and a null-prototype term reach the trace without throwing', () => {
+		for (const term of [Symbol('s'), Object.create(null)]) {
+			const definition = createInferentialDefinition(
+				'd',
+				'd',
+				[createFact('f1', 'p', [term])],
+				[createInference('i1', [createFact('q', 'p', ['?x'])], createFact('c', 'r', ['?x']))],
+			)
+			expect(expectInferential(reasoner.reason({}, definition)).success).toBe(true)
+		}
+	})
+})
+
 describe('InferentialReasoner — a sparse array refuses, naming the hole', () => {
 	it('a sparse facts list derives from the present facts and refuses', () => {
 		const facts = sparse(3, [

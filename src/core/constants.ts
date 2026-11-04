@@ -15,8 +15,8 @@ import type { MathOperation } from './types.js'
 export const DEFAULT_REASON_BAIL = true
 
 /**
- * Holds the default `validate` for the `Reason` orchestrator — per-call validation is
- * skipped. Default: `false`.
+ * Holds the default `validate` for the `Reason` orchestrator — a definition is validated
+ * before it first runs, and remembered by identity. Default: `true`.
  */
 export const DEFAULT_VALIDATE = true
 
@@ -134,6 +134,12 @@ export const FAULT_KINDS = [
 
 /** Lists `contract`'s fault constraints, which a result's faults carry. */
 export const FAULT_CONSTRAINTS = ['min', 'max', 'pattern', 'integer'] as const
+
+/**
+ * Holds how many objects and arrays one JSON projection walks before it drops the rest, so a
+ * value sharing its sub-objects cannot unfold without end.
+ */
+export const PROJECTION_NODE_LIMIT = 10_000
 
 /**
  * Holds how many connectives the published `Expression` shape may nest.

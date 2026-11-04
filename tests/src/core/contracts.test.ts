@@ -1,6 +1,7 @@
 import { createContract, seededRandom } from '@orkestrel/contract'
 import {
 	createAtom,
+	createCheck,
 	createCompound,
 	createConstant,
 	createExpressionShape,
@@ -41,7 +42,17 @@ import {
 	symbolicResultContract,
 } from '@src/core'
 import { describe, expect, it } from 'vitest'
-import { buildCompoundNest, buildOperationNest, dropShapeKey, sequence } from '../../setup.js'
+import {
+	buildCycle,
+	HOSTILE_PROXY,
+	HOSTILE_VALUE,
+	buildCompoundNest,
+	buildOperationNest,
+	buildSharedNest,
+	dropShapeKey,
+	sequence,
+	sparse,
+} from '../../setup.js'
 
 // The published contracts, held in lockstep with the guards that stay the authority: anything
 // `is` admits the guard admits, and the shape is bounded where the guard is not. Results cross
@@ -193,6 +204,39 @@ describe('result contracts read the JSON projection', () => {
 		expect(Number.isNaN(noData.reasoning === 'quantitative' ? noData.value : 0)).toBe(true)
 		expect(resultContract.is(noData)).toBe(false)
 		expect(resultContract.is(projectResult(noData))).toBe(true)
+	})
+
+	it.each<[string, unknown]>([
+		['a cycle', buildCycle()],
+		['shared sub-objects', buildSharedNest(60)],
+		['a throwing member', HOSTILE_VALUE],
+		['a throwing proxy', HOSTILE_PROXY],
+		['an array with holes', sparse<number>(3, [[0, 1]])],
+		['a bigint', 1n],
+		['a symbol', Symbol('s')],
+	])('%s as an actual still projects to what the contract admits', (_name, actual) => {
+		const projected = projectResult(createLogicalReasoner().reason({ a: actual }, logical))
+		expect(resultContract.audit(projected)).toEqual([])
+	})
+
+	it('one huge actual cannot starve the checks around it', () => {
+		const rules = [
+			createRule('r1', [createAtom('a', 'equals', 1)], createAtom('x', 'equals', true)),
+			createRule('r2', [createAtom('b', 'equals', 1)], createAtom('y', 'equals', true)),
+		]
+		const subject = { a: buildSharedNest(60), b: buildSharedNest(60) }
+		const result = createLogicalReasoner().reason(subject, createLogicalDefinition('d', 'd', rules))
+		expect(resultContract.audit(projectResult(result))).toEqual([])
+	})
+
+	it('a quantitative check and its value project too', () => {
+		const gated = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g', 'sum', [
+				createStaticFactor('f', 1, { checks: [createCheck('a', 'equals', 1)] }),
+			]),
+		])
+		const result = createQuantitativeReasoner().reason({ a: buildSharedNest(60) }, gated)
+		expect(resultContract.audit(projectResult(result))).toEqual([])
 	})
 
 	it('the in-memory result and its guard stay as they were', () => {

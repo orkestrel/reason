@@ -36,7 +36,7 @@ import {
 } from '@src/core'
 import { describe, expect, it } from 'vitest'
 import { invokeUnchecked } from '@orkestrel/test'
-import { expectLogical } from '../../setup.js'
+import { buildSharedNest, expectLogical } from '../../setup.js'
 
 // The door a subject passes before a reasoner reads it: the order of its refusals, the
 // lossless rule on repairs, and that each reasoner puts it first. Filling a default needs
@@ -275,6 +275,12 @@ describe('SubjectDoor — total', () => {
 		expect(admission.subject).toBeUndefined()
 		expect(admission.errors).toHaveLength(1)
 		expect(admission.errors[0]).toMatch(/^Subject refused: /)
+	})
+
+	it('a subject sharing its sub-objects does not unfold', () => {
+		const shape = objectShape({ blob: jsonShape() })
+		const blob = buildSharedNest(60)
+		expect(door.admit({ blob }, shape).defaulted).toEqual([])
 	})
 
 	it('one contract serves many subjects, by shape identity', () => {

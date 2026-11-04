@@ -11,7 +11,7 @@ import type {
 	Subject,
 } from './types.js'
 import { Emitter } from '@orkestrel/emitter'
-import { isArray, isError } from '@orkestrel/contract'
+import { isArray, isError, isObject, preview } from '@orkestrel/contract'
 import { buildErrorResult } from './helpers.js'
 import { DEFAULT_REASON_BAIL, DEFAULT_VALIDATE } from './constants.js'
 import { ReasonError } from './errors.js'
@@ -121,12 +121,14 @@ export class Reason implements ReasonInterface {
 
 	validate(definition: Definition): ReasonValidationResult {
 		this.#ensureAlive()
-		const reasoner = this.#reasoners.get(definition.reasoning)
+		// A definition reaching here is unchecked, so nothing about it may throw.
+		const reasoning: unknown = isObject(definition) ? definition.reasoning : definition
+		const reasoner = isObject(definition) ? this.#reasoners.get(definition.reasoning) : undefined
 		// A missing reasoner is an invalid result here (reason() is where it throws).
 		if (!reasoner) {
 			return {
 				valid: false,
-				errors: [`No reasoner registered for reasoning "${definition.reasoning}"`],
+				errors: [`No reasoner registered for reasoning ${preview(reasoning)}`],
 				warnings: [],
 			}
 		}

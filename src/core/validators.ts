@@ -255,7 +255,8 @@ export const isRange: Guard<readonly [number, number]> = whereOf(
  *
  * isMembership(['CA', 'NY']) // true
  * isMembership([])           // false
- * isMembership([null])       // false
+ * isMembership([null])       // true
+ * isMembership([{}])         // false
  * ```
  */
 export const isMembership: Guard<ReadonlyArray<LiteralValue | null>> = whereOf(

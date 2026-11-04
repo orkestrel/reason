@@ -719,8 +719,9 @@ export interface SubjectDoorInterface {
  *
  * @remarks
  * `declared` is false when the shape leaves no room for the path. `shape` is the field's
- * own shape, its `optional` wrapper removed, and is absent when the path runs into an open
- * object, a union, or a `raw` or `json` node, which say nothing about what lies under them.
+ * own shape, its `optional` wrapper removed, or the `raw` or `json` node the path runs into. It
+ * is absent when the path runs into an open object or a union, which say nothing about what
+ * lies under them.
  */
 export interface ShapeRead {
 	readonly declared: boolean

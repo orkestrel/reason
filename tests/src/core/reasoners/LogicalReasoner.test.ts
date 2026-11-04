@@ -14,6 +14,8 @@ import {
 	createFlagRule,
 	createNegatedFlag,
 	createShapedDefinition,
+	SILENT_EVALUATOR,
+	THROWING_EVALUATOR,
 	EXTREME_NUMBERS,
 	expectLogical,
 	sequence,
@@ -34,6 +36,7 @@ import {
 	createCompound,
 	createDefinitionBuilder,
 	createLogicalDefinition,
+	createLogicalReasoner,
 	createQuantitativeDefinition,
 	createRule,
 	createSubjectBuilder,
@@ -1005,7 +1008,10 @@ describe('LogicalReasoner — backward depth-cap enforcement (sub-goal proving)'
 		expect(result.errors.length).toBeGreaterThan(0)
 		expect(result.errors.every((error) => error.includes('hit depth 3'))).toBe(true)
 		expect(result.trace).toContain('Rule "r6": does not hold (backward, depth 0)')
-		expect(result.trace).toContain('Rule "r5": does not hold (backward, depth 0)')
+		// r5 is proved once, under r6, so its one line carries the depth that proof reached.
+		expect(
+			result.trace.filter((entry) => entry.startsWith('Rule "r5": does not hold')),
+		).toHaveLength(1)
 	})
 
 	it('the SAME 6-hop chain at a sufficient depth (10, and the default) proves the goal', () => {
@@ -1567,6 +1573,14 @@ describe('LogicalReasoner — both strategies compute one supported model', () =
 			],
 		],
 		[
+			'two concluders with different values, against the authored order',
+			[
+				createRule('ra', [x], createAtom('k', 'equals', 1), { priority: 1 }),
+				createRule('rb', [y], createAtom('k', 'equals', 2), { priority: 0 }),
+				createRule('rc', [createAtom('k', 'equals', 2)], flag('out'), { priority: -1 }),
+			],
+		],
+		[
 			'an implication over a conclusion',
 			[
 				createFlagRule('a', 'a', [x]),
@@ -1671,6 +1685,99 @@ describe.each(['forward', 'backward'] as const)(
 		})
 	},
 )
+
+describe('LogicalReasoner — a heavily cross-read definition', () => {
+	it('backward proves each rule once, so many concluders of one key stay fast', () => {
+		const rules = sequence(40).map((index) =>
+			createFlagRule(`r${String(index)}`, 'k', [
+				createFlagAtom('k'),
+				createAtom(`x${String(index)}`, 'above', 1),
+			]),
+		)
+		const backward = reasonRules({}, rules, 'backward')
+		expect(backward.success).toBe(false)
+		expect(backward.faults).toHaveLength(40)
+		expect(backward.rules).toEqual(reasonRules({}, rules, 'forward').rules)
+	})
+})
+
+describe('LogicalReasoner — an evaluator it was handed', () => {
+	const rule = createFlagRule('r', 'ok', [createAtom('a', 'above', 1)])
+	const definition = createLogicalDefinition('d', 'd', [rule])
+
+	it('one that returns no state reads unread, never met', () => {
+		const custom = invokeUnchecked<LogicalReasoner>(undefined, createLogicalReasoner, [
+			{ evaluator: SILENT_EVALUATOR },
+		])
+		const result = expectLogical(custom.reason({ a: 5 }, definition))
+		expect(result.conclusion).toBe('unread')
+		expect(result.success).toBe(false)
+		expect(result.count).toBe(0)
+	})
+
+	it('one that throws refuses the run, because a reasoner throws only MISMATCH', () => {
+		const custom = invokeUnchecked<LogicalReasoner>(undefined, createLogicalReasoner, [
+			{ evaluator: THROWING_EVALUATOR },
+		])
+		const result = expectLogical(custom.reason({ a: 5 }, definition))
+		expect(result.success).toBe(false)
+		expect(result.errors).toEqual(['Chaining failed: boom'])
+	})
+})
+
+describe('LogicalReasoner — a conclusion key named __proto__', () => {
+	it('derives and reads as any other key', () => {
+		const rules = [
+			createFlagRule('w', '__proto__', [createAtom('x', 'above', 1)]),
+			createFlagRule('r', 'ok', [createFlagAtom('__proto__')]),
+		]
+		const result = reasonRules({ x: 5 }, rules)
+		expect(result.errors).toEqual([])
+		expect(result.conclusion).toBe('met')
+	})
+})
+
+describe('LogicalReasoner — one key spelled two ways', () => {
+	it('a subject holding the nested spelling supplies the dotted conclusion', () => {
+		const rules = [
+			createFlagRule('w', 'a.b', [createAtom('x', 'above', 1)]),
+			createFlagRule('r', 'ok', [createFlagAtom(['a', 'b'])]),
+		]
+		const result = reasonRules({ x: 0, a: { b: true } }, rules)
+		expect(result.errors).toEqual(['Subject supplies conclusion "a.b"'])
+	})
+})
+
+describe('LogicalReasoner — validate takes anything', () => {
+	it('never throws on what reaches it unchecked', () => {
+		for (const junk of [null, undefined, 1, 'x', { reasoning: Symbol('s') }, Object.create(null)]) {
+			const validation = invokeUnchecked<ReasonValidationResult>(reasoner, reasoner.validate, [
+				junk,
+			])
+			expect(validation.valid).toBe(false)
+			expect(validation.errors).toHaveLength(1)
+		}
+	})
+
+	it('a conclusion asserting one key twice refuses', () => {
+		const twice = createCompound('and', [
+			createAtom('k', 'equals', 1),
+			createAtom('k', 'equals', 2),
+		])
+		expect(readRuleErrors(twice)).toEqual(['Conclusion asserts two values for "k"'])
+	})
+
+	it('a read through a raw or json field warns at any depth', () => {
+		const shape = objectShape({ loose: jsonShape() })
+		const validation = reasoner.validate(
+			createShapedDefinition(createAtom(['loose', 'x'], 'above', 1), shape),
+		)
+		expect(validation.valid).toBe(true)
+		expect(validation.warnings).toEqual([
+			'Field "loose.x" is read through a shape that types nothing',
+		])
+	})
+})
 
 describe('LogicalReasoner — the fault channel', () => {
 	const rule = createRule(

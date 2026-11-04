@@ -306,6 +306,37 @@ describe('QuantitativeReasoner — reason (core pipeline)', () => {
 	})
 })
 
+describe('QuantitativeReasoner — a readable value the source has no answer for', () => {
+	it('a lookup miss with no fallback is an error, not a fault of the input', () => {
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [createLookupFactor('f1', 'state', { CA: 1 })]),
+		])
+		const result = expectQuantitative(reasoner.reason({ state: 'NY' }, definition))
+		expect(result.success).toBe(false)
+		expect(result.errors).toEqual(['Factor "f1" has no value for "NY"'])
+		expect(result.faults).toEqual([])
+	})
+
+	it('a range miss with no fallback is an error, not a fault of the input', () => {
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [
+				createRangeFactor('f1', 'age', [{ bounds: createBounds(0, 10), value: 1 }]),
+			]),
+		])
+		const result = expectQuantitative(reasoner.reason({ age: 30 }, definition))
+		expect(result.errors).toEqual(['Factor "f1" has no value for 30'])
+		expect(result.faults).toEqual([])
+	})
+
+	it('an unreadable value is still a fault', () => {
+		const definition = createQuantitativeDefinition('d', 'd', [
+			createFactorGroup('g1', 'sum', [createLookupFactor('f1', 'state', { CA: 1 })]),
+		])
+		const result = expectQuantitative(reasoner.reason({ state: {} }, definition))
+		expect(result.faults.map((fault) => fault.reason)).toEqual(['type'])
+	})
+})
+
 describe('QuantitativeReasoner — lookup & range sources', () => {
 	const stateLookup = createQuantitativeDefinition('d', 'd', [
 		createFactorGroup('g1', 'sum', [

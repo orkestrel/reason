@@ -2,6 +2,7 @@ import type {
 	Aggregation,
 	Atom,
 	Bounds,
+	CheckResult,
 	CheckState,
 	Definition,
 	DefinitionEnvelope,
@@ -41,6 +42,7 @@ import type {
 	JSONValue,
 } from '@orkestrel/contract'
 import {
+	attempt,
 	createContract,
 	GUARD_DEPTH_LIMIT,
 	isArray,
@@ -52,13 +54,21 @@ import {
 	isObject,
 	isRecord,
 	isString,
+	isSuccess,
 	iterateIndices,
 	preview,
 	resolveField,
 } from '@orkestrel/contract'
-import { DEFAULT_CONFIDENCE, DEFAULT_PRIORITY } from './constants.js'
+import { DEFAULT_CONFIDENCE, DEFAULT_PRIORITY, PROJECTION_NODE_LIMIT } from './constants.js'
 import { ReasonError } from './errors.js'
-import { isComparable, isLookupKey, isMembership, isPaddedText, isRange } from './validators.js'
+import {
+	isCheckState,
+	isComparable,
+	isLookupKey,
+	isMembership,
+	isPaddedText,
+	isRange,
+} from './validators.js'
 
 // The module's pure leaves: field display, the numeric helpers, equality and
 // ordering, the inferential fact machinery, the symbolic algebra machinery, the
@@ -373,8 +383,9 @@ export function combineStates(
 	operator: LogicalOperator | string,
 	states: readonly CheckState[],
 ): CheckState {
-	// A hole is an operand nobody can read, and the array methods below would step over it.
-	if (states.filter(() => true).length !== states.length) return 'unread'
+	// A hole, or anything but a state from an evaluator that returned none, is an operand nobody
+	// can read, and the array methods below would step over it or read it as met.
+	if (states.filter((state) => isCheckState(state)).length !== states.length) return 'unread'
 	const first = states[0]
 	const second = states[1]
 	switch (operator) {
@@ -1178,10 +1189,9 @@ export function extractAtoms(expression: Expression): readonly Atom[] {
  * ```
  */
 export function extractConclusions(expression: Expression): Record<string, unknown> {
-	const conclusions: Record<string, unknown> = {}
-	for (const leaf of extractAtoms(expression))
-		conclusions[formatField(leaf.check.field)] = leaf.check.value
-	return conclusions
+	return Object.fromEntries(
+		extractAtoms(expression).map((leaf) => [formatField(leaf.check.field), leaf.check.value]),
+	)
 }
 
 /**
@@ -1192,7 +1202,7 @@ export function extractConclusions(expression: Expression): Record<string, unkno
  * The `bail: false` fallback of the `Reason` orchestrator: when a reasoner
  * throws and bail is off, the throw becomes an empty failure result carrying the
  * message as its sole `errors` entry. Each reasoning gets its own zero-valued
- * shape (`quantitative` → `value: 0` / empty `groups`; `logical` → `state:
+ * shape (`quantitative` → `value: 0` / empty `groups`; `logical` → `conclusion:
  * 'unread'` / empty `rules`; `symbolic` → empty `solutions`; `inferential` → empty
  * `derived`), always with `success: false` and an empty `trace`.
  *
@@ -1331,14 +1341,21 @@ export function findSuppliedConclusions(
 	rules: readonly Rule[],
 	subject: Subject,
 ): readonly string[] {
-	const supplied = rules.flatMap((rule) =>
-		extractAtoms(rule.conclusion).flatMap((atom) => {
+	// Every spelling of a key counts: the overlay answers `'a.b'` and `['a', 'b']` alike, so a
+	// subject holding either would otherwise stand behind what a rule concludes.
+	const concluded = new Set(
+		rules.flatMap((rule) => Object.keys(extractConclusions(rule.conclusion))),
+	)
+	const supplied = rules
+		.flatMap((rule) => [rule.conclusion, ...rule.premises])
+		.flatMap((expression) => extractAtoms(expression))
+		.flatMap((atom) => {
 			const key = formatField(atom.check.field)
+			if (!concluded.has(key)) return []
 			const held =
 				Object.hasOwn(subject, key) || resolveField(subject, atom.check.field) !== undefined
 			return held ? [key] : []
-		}),
-	)
+		})
 	return [...new Set(supplied)]
 }
 
@@ -1350,9 +1367,9 @@ export function findSuppliedConclusions(
  * A rule reading key `r` and concluding key `c` is an edge from `r` to `c`, negative
  * when the read sits under an odd number of negations: the `not` connective, the
  * antecedent of `implies`, either side of `xor`, or the `not` and `none` comparisons. A
- * negative edge on a cycle makes the answer depend on visit order, so forward refuses it
- * at run time and backward would settle it silently. A key on any cycle through such an
- * edge is reported, whichever rule wrote it.
+ * negative edge on a cycle makes the answer depend on visit order. A key on any cycle through
+ * such an edge is reported, whichever rule wrote it. `validate` refuses them, backward refuses
+ * them before any proof, and forward refuses one that fires.
  *
  * @param rules - The enabled rules
  * @returns The keys on such a cycle, in authored order, once each
@@ -1409,10 +1426,14 @@ export function collectReachable(
 	start: string,
 	edges: ReadonlyArray<readonly [string, string]>,
 ): ReadonlySet<string> {
-	const reached = new Set([start])
-	for (const key of reached) {
-		for (const edge of edges) if (edge[0] === key) reached.add(edge[1])
+	const next = new Map<string, string[]>()
+	for (const [from, to] of edges) {
+		const known = next.get(from)
+		if (known === undefined) next.set(from, [to])
+		else known.push(to)
 	}
+	const reached = new Set([start])
+	for (const key of reached) for (const to of next.get(key) ?? []) reached.add(to)
 	return reached
 }
 
@@ -1589,11 +1610,14 @@ export function filterUniqueFaults(faults: readonly AuditFault[]): readonly Audi
  *
  * @remarks
  * `undefined`, a function, a symbol, a bigint, and an object that is not a plain record have no
- * JSON form, so a key holding one is omitted and an array slot holding one is `null`. A value
- * past `GUARD_DEPTH_LIMIT` is dropped the same way, so a cycle cannot run away.
+ * JSON form, so a key holding one is omitted and an array slot holding one is `null`, a hole
+ * included. So is a reference back to an ancestor, a value past `GUARD_DEPTH_LIMIT`, whatever
+ * lies past `PROJECTION_NODE_LIMIT` objects, and a value that throws on being read. It never
+ * throws, because a check's `actual` holds whatever the subject held.
  *
  * @param value - The value to project
- * @param depth - How deep the walk already is
+ * @param ancestors - The objects the walk is inside
+ * @param budget - The objects it may still walk, spent as it goes
  * @returns The JSON value, or `undefined` when it has no JSON form
  *
  * @example
@@ -1603,18 +1627,30 @@ export function filterUniqueFaults(faults: readonly AuditFault[]): readonly Audi
  * projectValue({ a: Number.NaN, b: undefined, c: [1, undefined] }) // { a: null, c: [1, null] }
  * ```
  */
-export function projectValue(value: unknown, depth = 0): JSONValue | undefined {
+export function projectValue(
+	value: unknown,
+	ancestors: ReadonlySet<object> = new Set(),
+	budget: { left: number } = { left: PROJECTION_NODE_LIMIT },
+): JSONValue | undefined {
 	if (isNull(value) || isString(value) || isBoolean(value)) return value
 	if (isNumber(value)) return isFiniteNumber(value) ? value : null
-	if (depth >= GUARD_DEPTH_LIMIT) return undefined
-	if (isArray(value)) return value.map((entry) => projectValue(entry, depth + 1) ?? null)
-	if (!isRecord(value)) return undefined
-	return Object.fromEntries(
-		Object.entries(value).flatMap(([key, entry]) => {
-			const projected = projectValue(entry, depth + 1)
-			return projected === undefined ? [] : [[key, projected]]
-		}),
-	)
+	if (!isObject(value) || ancestors.has(value)) return undefined
+	if (ancestors.size >= GUARD_DEPTH_LIMIT || budget.left <= 0) return undefined
+	budget.left -= 1
+	const inner = new Set([...ancestors, value])
+	const outcome = attempt((): JSONValue | undefined => {
+		if (isArray(value)) {
+			return Array.from(value, (entry) => projectValue(entry, inner, budget) ?? null)
+		}
+		if (!isRecord(value)) return undefined
+		return Object.fromEntries(
+			Object.entries(value).flatMap(([key, entry]) => {
+				const projected = projectValue(entry, inner, budget)
+				return projected === undefined ? [] : [[key, projected]]
+			}),
+		)
+	})
+	return isSuccess(outcome) ? outcome.value : undefined
 }
 
 /**
@@ -1637,7 +1673,61 @@ export function projectValue(value: unknown, depth = 0): JSONValue | undefined {
  * ```
  */
 export function projectResult(result: ReasonResult): JSONValue | undefined {
-	return projectValue(result)
+	// Each `actual` spends its own budget, so one huge value cannot starve the result around it.
+	const unlimited = { left: Number.POSITIVE_INFINITY }
+	switch (result.reasoning) {
+		case 'logical':
+			return projectValue(
+				{
+					...result,
+					rules: result.rules.map((rule) => ({
+						...rule,
+						checks: rule.checks.map((check) => projectCheck(check)),
+					})),
+				},
+				new Set(),
+				unlimited,
+			)
+		case 'quantitative':
+			return projectValue(
+				{
+					...result,
+					groups: result.groups.map((group) => ({
+						...group,
+						factors: group.factors.map((factor) => ({
+							...factor,
+							...(factor.checks === undefined
+								? {}
+								: { checks: factor.checks.map((check) => projectCheck(check)) }),
+						})),
+					})),
+				},
+				new Set(),
+				unlimited,
+			)
+		default:
+			return projectValue(result)
+	}
+}
+
+/**
+ * Projects a check's `actual` on its own budget, omitting it when it has no JSON form.
+ *
+ * @param check - The check result
+ * @returns The check result, its `actual` now JSON or absent
+ *
+ * @example
+ * ```ts
+ * import { projectCheck } from '@src/core'
+ *
+ * projectCheck({ field: 'a', state: 'unread', actual: Number.NaN }).actual // null
+ * projectCheck({ field: 'a', state: 'unread', actual: undefined }).actual  // undefined
+ * ```
+ */
+export function projectCheck(check: CheckResult): CheckResult {
+	const { actual, ...rest } = check
+	const projected = projectValue(actual)
+	return projected === undefined ? { ...rest, actual: undefined } : { ...rest, actual: projected }
 }
 
 // === The door's rules
@@ -1709,7 +1799,8 @@ export function findFilledPaths(
 	parsed: unknown,
 	path: readonly string[] = [],
 ): readonly FieldPath[] {
-	if (!isObject(parsed)) return []
+	// `parse` hands an unchanged value back by identity, and nothing fills inside one.
+	if (input === parsed || !isObject(parsed)) return []
 	return Object.keys(parsed).flatMap((key) => {
 		const inner = [...path, key]
 		const supplied =
@@ -1762,9 +1853,10 @@ export function findFieldShape(shape: ContractShape, path: FieldPath): ShapeRead
 		}
 		case 'array':
 			return /^\d+$/.test(key) ? findFieldShape(shape.items, rest) : { declared: false }
-		case 'union':
 		case 'raw':
 		case 'json':
+			return { declared: true, shape }
+		case 'union':
 			return { declared: true }
 		default:
 			return { declared: false }
@@ -2117,6 +2209,73 @@ export function scanConclusion(expression: Expression): readonly string[] {
 		...(value === false ? [`Conclusion on "${key}" may not assert false`] : []),
 		...(isComparable(value) ? [] : [`Conclusion on "${key}" must assert a comparable value`]),
 	]
+}
+
+/**
+ * Scans a conclusion for one key asserted with two values, of which a run would keep the last.
+ *
+ * @param expression - The conclusion to scan
+ * @returns One message per such key
+ *
+ * @example
+ * ```ts
+ * import { createAtom, createCompound, scanConclusionValues } from '@src/core'
+ *
+ * const twice = createCompound('and', [createAtom('k', 'equals', 1), createAtom('k', 'equals', 2)])
+ * scanConclusionValues(twice) // ['Conclusion asserts two values for "k"']
+ * ```
+ */
+export function scanConclusionValues(expression: Expression): readonly string[] {
+	const seen = extractConclusions(expression)
+	const twice = extractAtoms(expression).flatMap((atom) => {
+		const key = formatField(atom.check.field)
+		return seen[key] === atom.check.value ? [] : [`Conclusion asserts two values for "${key}"`]
+	})
+	return [...new Set(twice)]
+}
+
+/**
+ * Describes a fact's terms for the trace.
+ *
+ * @remarks
+ * A term may be anything, and a symbol or a null-prototype object would throw in a template.
+ *
+ * @param terms - The terms
+ * @returns The terms joined with commas, a string as itself and the rest through `preview`
+ *
+ * @example
+ * ```ts
+ * import { describeTerms } from '@src/core'
+ *
+ * describeTerms(['a', 1, true]) // 'a, 1, true'
+ * ```
+ */
+export function describeTerms(terms: readonly unknown[]): string {
+	return terms.map((term) => (isString(term) ? term : preview(term))).join(', ')
+}
+
+/**
+ * Describes a definition whose reasoning is not the one a reasoner expected.
+ *
+ * @remarks
+ * Reads through `preview`, because a definition reaching `validate` is unchecked and a symbol or
+ * a null-prototype object would throw in a template.
+ *
+ * @param expected - The reasoning the reasoner handles
+ * @param definition - What it was given
+ * @returns The message
+ *
+ * @example
+ * ```ts
+ * import { describeMismatch } from '@src/core'
+ *
+ * describeMismatch('logical', { reasoning: 'symbolic' }) // 'Expected reasoning "logical", got "symbolic"'
+ * describeMismatch('logical', null)                      // 'Expected reasoning "logical", got null'
+ * ```
+ */
+export function describeMismatch(expected: string, definition: unknown): string {
+	const reasoning = isObject(definition) ? Reflect.get(definition, 'reasoning') : definition
+	return `Expected reasoning "${expected}", got ${preview(reasoning)}`
 }
 
 /**

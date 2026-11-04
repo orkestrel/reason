@@ -17,13 +17,14 @@ import type {
 	Subject,
 	SubjectAdmission,
 } from '../types.js'
-import { isArray, isObject } from '@orkestrel/contract'
+import { attempt, errorToMessage, isArray, isObject, isSuccess } from '@orkestrel/contract'
 import {
 	buildRefusedResult,
 	collectConcluders,
 	collectReachable,
 	combineStates,
 	describeFault,
+	describeMismatch,
 	equalValues,
 	extractAtoms,
 	extractConclusions,
@@ -35,6 +36,7 @@ import {
 	readClosedState,
 	readExpectedKind,
 	scanConclusion,
+	scanConclusionValues,
 	scanExpression,
 	scanShape,
 	scanShapeConclusions,
@@ -119,12 +121,8 @@ export class LogicalReasoner implements ReasonerInterface {
 	}
 
 	validate(definition: Definition): ReasonValidationResult {
-		if (definition.reasoning !== 'logical') {
-			return {
-				valid: false,
-				errors: [`Expected reasoning "logical", got "${definition.reasoning}"`],
-				warnings: [],
-			}
+		if (!isObject(definition) || definition.reasoning !== 'logical') {
+			return { valid: false, errors: [describeMismatch('logical', definition)], warnings: [] }
 		}
 		const rules: unknown = definition.rules
 		if (!isLogicalDefinition(definition)) {
@@ -160,6 +158,7 @@ export class LogicalReasoner implements ReasonerInterface {
 				...(rule.premises.length === 0 ? [`Rule "${rule.id}" has no premises`] : []),
 				...rule.premises.flatMap((premise) => scanExpression(premise)),
 				...scanConclusion(rule.conclusion),
+				...scanConclusionValues(rule.conclusion),
 			]),
 			...(cycles.length === 0
 				? []
@@ -211,12 +210,28 @@ export class LogicalReasoner implements ReasonerInterface {
 		errors.push(...supplied.map((key) => `Subject supplies conclusion "${key}"`))
 		if (supplied.length > 0) return this.#buildResult([], [], trace, errors, admission)
 
-		if (definition.strategy === 'backward') {
-			this.#backward(definition, rules, admitted, state, trace, errors)
-		} else this.#forward(definition, rules, admitted, state, trace, errors)
-		const faults = this.#collectFaults(rules, admitted, state, errors)
-		const results = rules.map((rule) => this.#buildRuleResult(rule, admitted, state))
-		return this.#buildResult(results, faults, trace, errors, admission)
+		// A chain of thousands of rules at a raised `depth` can exhaust the stack, and an injected
+		// evaluator can throw. Each is a refusal like any other, because a reasoner's single throw
+		// is `MISMATCH`.
+		const chained = attempt(() => {
+			if (definition.strategy === 'backward') {
+				this.#backward(definition, rules, admitted, state, trace, errors)
+			} else this.#forward(definition, rules, admitted, state, trace, errors)
+			const faults = this.#collectFaults(rules, admitted, state, errors)
+			const results = rules.map((rule) => this.#buildRuleResult(rule, admitted, state))
+			return { faults, results }
+		})
+		if (isSuccess(chained)) {
+			return this.#buildResult(
+				chained.value.results,
+				chained.value.faults,
+				trace,
+				errors,
+				admission,
+			)
+		}
+		errors.push(`Chaining failed: ${errorToMessage(chained.error)}`)
+		return this.#buildResult([], [], trace, errors, admission)
 	}
 
 	// Keeps the rules that can run, in authored order: a disabled rule is skipped and traced, and
@@ -393,10 +408,13 @@ export class LogicalReasoner implements ReasonerInterface {
 				]),
 			),
 		)
+		const reach = new Map(
+			[...open, ...waits.map((edge) => edge[1])].map((key) => [key, collectReachable(key, waits)]),
+		)
 		return open
 			.filter((key) => !state.concluders(key).some((rule) => blocked.has(rule)))
 			.filter((key) =>
-				[...collectReachable(key, waits)].every((other) => collectReachable(other, waits).has(key)),
+				[...(reach.get(key) ?? [])].every((other) => reach.get(other)?.has(key) === true),
 			)
 	}
 
@@ -423,9 +441,9 @@ export class LogicalReasoner implements ReasonerInterface {
 			errors.push(`Unstratified: conclusions depend on their own negation: ${cycles.join(', ')}`)
 			return
 		}
-		for (const rule of sorted) {
-			this.#proveRule(rule, 0, new Set(), subject, state, trace, errors, depth)
-		}
+		const proofs = new Map<Rule, CheckState>()
+		for (const rule of sorted)
+			this.#proveRule(rule, 0, proofs, subject, state, trace, errors, depth)
 		if (errors.length > 0) return
 		if (this.#settle(sorted, subject, state, trace, errors, 1, depth) === undefined) {
 			errors.push(`Backward chaining did not settle within depth ${String(depth)}`)
@@ -435,24 +453,28 @@ export class LogicalReasoner implements ReasonerInterface {
 	#proveRule(
 		rule: Rule,
 		depth: number,
-		visited: ReadonlySet<string>,
+		proofs: Map<Rule, CheckState>,
 		subject: Subject,
 		state: LogicalState,
 		trace: string[],
 		errors: string[],
 		maxDepth: number,
 	): CheckState {
-		// The visited cut reads unread, which breaks the cycle without answering it: read as unmet
-		// it could settle an `and` over a real unread leaf, and a negation over that would fire.
-		// Settling closes the cycle afterwards, the way forward does.
-		if (visited.has(rule.id)) return 'unread'
-		const next = new Set([...visited, rule.id])
+		// A rule is proved once per run, which keeps a heavily cross-read definition from going
+		// factorial. While its proof is open it reads unread, which breaks a cycle without answering
+		// it: read as unmet it could settle an `and` over a real unread leaf, and a negation over
+		// that would fire. A settled proof stays true as keys derive, an unread one is only
+		// cautious, and settling afterwards finishes what the proofs left, the way forward does.
+		const known = proofs.get(rule)
+		if (known !== undefined) return known
+		proofs.set(rule, 'unread')
 		const outcome = combineStates(
 			'and',
 			rule.premises.map((premise) =>
-				this.#establish(premise, depth + 1, next, subject, state, trace, errors, maxDepth),
+				this.#establish(premise, depth + 1, proofs, subject, state, trace, errors, maxDepth),
 			),
 		)
+		proofs.set(rule, outcome)
 		if (outcome === 'met') this.#derive(rule, state, trace, errors, `backward, depth ${depth}`)
 		else trace.push(`Rule "${rule.id}": does not hold (backward, depth ${depth})`)
 		return outcome
@@ -461,7 +483,7 @@ export class LogicalReasoner implements ReasonerInterface {
 	#establish(
 		expression: Expression,
 		depth: number,
-		visited: ReadonlySet<string>,
+		proofs: Map<Rule, CheckState>,
 		subject: Subject,
 		state: LogicalState,
 		trace: string[],
@@ -472,7 +494,7 @@ export class LogicalReasoner implements ReasonerInterface {
 			return combineStates(
 				expression.operator,
 				expression.operands.map((operand) =>
-					this.#establish(operand, depth, visited, subject, state, trace, errors, maxDepth),
+					this.#establish(operand, depth, proofs, subject, state, trace, errors, maxDepth),
 				),
 			)
 		}
@@ -485,11 +507,12 @@ export class LogicalReasoner implements ReasonerInterface {
 			return 'unread'
 		}
 		const outcomes: CheckState[] = []
-		for (const candidate of state.concluders(key)) {
+		// Priority order, as forward fires them, so a key two rules conclude takes the same value.
+		for (const candidate of sortByPriority(state.concluders(key))) {
 			const outcome = this.#proveRule(
 				candidate,
 				depth,
-				visited,
+				proofs,
 				subject,
 				state,
 				trace,

@@ -15,12 +15,13 @@ import type {
 	Subject,
 	TransformerInterface,
 } from '../types.js'
-import { isArray, isFiniteNumber, isObject, resolveField } from '@orkestrel/contract'
+import { isArray, isFiniteNumber, isObject, preview, resolveField } from '@orkestrel/contract'
 import {
 	buildRefusedResult,
 	clamp,
 	combineStates,
 	describeFault,
+	describeMismatch,
 	filterUniqueFaults,
 	findDuplicates,
 	readExpectedKind,
@@ -38,7 +39,7 @@ import { SubjectDoor } from '../SubjectDoor.js'
 import { Evaluator } from '../operators/Evaluator.js'
 import { Transformer } from '../operators/Transformer.js'
 import { Aggregator } from '../operators/Aggregator.js'
-import { isFactorGroup, isQuantitativeDefinition } from '../validators.js'
+import { isFactorGroup, isLookupKey, isQuantitativeDefinition } from '../validators.js'
 
 /**
  * Performs factor-based numeric scoring.
@@ -106,12 +107,8 @@ export class QuantitativeReasoner implements ReasonerInterface {
 	}
 
 	validate(definition: Definition): ReasonValidationResult {
-		if (definition.reasoning !== 'quantitative') {
-			return {
-				valid: false,
-				errors: [`Expected reasoning "quantitative", got "${definition.reasoning}"`],
-				warnings: [],
-			}
+		if (!isObject(definition) || definition.reasoning !== 'quantitative') {
+			return { valid: false, errors: [describeMismatch('quantitative', definition)], warnings: [] }
 		}
 		const groups: unknown = definition.groups
 		if (!isQuantitativeDefinition(definition)) {
@@ -345,9 +342,16 @@ export class QuantitativeReasoner implements ReasonerInterface {
 		if (raw === undefined) {
 			trace.push(`Factor "${factor.id}": could not resolve source`)
 			if (factor.source && factor.source.origin !== 'static') {
-				const expected = factor.source.origin === 'lookup' ? 'union' : 'number'
+				const origin = factor.source.origin
 				const actual = resolveField(subject, factor.source.field)
-				leaves.push(valueToFault(factor.source.field, expected, actual))
+				// A readable value the table or bands miss, with no `fallback`, is no fault of the input.
+				if (origin === 'lookup' ? isLookupKey(actual) : isFiniteNumber(actual)) {
+					errors.push(`Factor "${factor.id}" has no value for ${preview(actual)}`)
+				} else {
+					leaves.push(
+						valueToFault(factor.source.field, origin === 'lookup' ? 'union' : 'number', actual),
+					)
+				}
 			} else errors.push(`Factor "${factor.id}" has no readable source`)
 			// `raw` is documented as absent when the source never resolved.
 			return { id: factor.id, applied: false, value: 0 }
