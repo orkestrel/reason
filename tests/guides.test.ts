@@ -343,7 +343,7 @@ await new GuideCommand({
 				'agee: extra; this key is not declared, remove it',
 			])
 			expect(reasoner.reason({ age: '30.0' }, definition).errors).toEqual([
-				'age: type; expected number; received "\\"30.0\\""',
+				'age: type; expected number; received "30.0"',
 			])
 		})
 

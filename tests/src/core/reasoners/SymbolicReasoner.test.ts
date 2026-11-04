@@ -300,7 +300,7 @@ describe('SymbolicReasoner — bindings (parseNumber coercion & precedence)', ()
 
 		const unbound = expectSymbolic(reasoner.reason({ x: 'hello' }, definition))
 		expect(unbound.success).toBe(false)
-		expect(unbound.errors).toEqual(['x: type; expected number; received "\\"hello\\""'])
+		expect(unbound.errors).toEqual(['x: type; expected number; received "hello"'])
 		expect(unbound.faults.map((fault) => fault.path)).toEqual(['x'])
 	})
 
@@ -310,7 +310,7 @@ describe('SymbolicReasoner — bindings (parseNumber coercion & precedence)', ()
 		])
 		const result = expectSymbolic(reasoner.reason({ x: Number.NaN }, definition))
 		expect(result.success).toBe(false)
-		expect(result.errors).toEqual(['x: type; expected number; received "NaN"'])
+		expect(result.errors).toEqual(['x: type; expected number; received NaN'])
 	})
 
 	it('the id subject field is traceability, not data — it never binds', () => {
@@ -319,7 +319,7 @@ describe('SymbolicReasoner — bindings (parseNumber coercion & precedence)', ()
 		])
 		const result = expectSymbolic(reasoner.reason({ id: 5 }, definition))
 		expect(result.success).toBe(false)
-		expect(result.errors).toEqual(['id: type; expected number; received "5"'])
+		expect(result.errors).toEqual(['id: type; expected number; received 5'])
 	})
 
 	it('only the SUBJECT id is skipped — definition.variables may carry an id key', () => {
@@ -1223,43 +1223,43 @@ describe('SymbolicReasoner — the binding site reads a finite number and nothin
 	it('exponential-notation string "1e3" never binds', () => {
 		const result = evaluateSubjectBinding('1e3')
 		expect(result.success).toBe(false)
-		expect(result.errors).toEqual(['x: type; expected number; received "\\"1e3\\""'])
+		expect(result.errors).toEqual(['x: type; expected number; received "1e3"'])
 	})
 
 	it('hex-notation string "0x10" never binds', () => {
 		const result = evaluateSubjectBinding('0x10')
 		expect(result.success).toBe(false)
-		expect(result.errors).toEqual(['x: type; expected number; received "\\"0x10\\""'])
+		expect(result.errors).toEqual(['x: type; expected number; received "0x10"'])
 	})
 
 	it('a numeric string with surrounding spaces never binds', () => {
 		const result = evaluateSubjectBinding(' 42 ')
 		expect(result.success).toBe(false)
-		expect(result.errors).toEqual(['x: type; expected number; received "\\" 42 \\""'])
+		expect(result.errors).toEqual(['x: type; expected number; received " 42 "'])
 	})
 
 	it('an empty string never binds', () => {
 		const result = evaluateSubjectBinding('')
 		expect(result.success).toBe(false)
-		expect(result.errors).toEqual(['x: type; expected number; received "\\"\\""'])
+		expect(result.errors).toEqual(['x: type; expected number; received ""'])
 	})
 
 	it('a whitespace-only string never binds', () => {
 		const result = evaluateSubjectBinding('   ')
 		expect(result.success).toBe(false)
-		expect(result.errors).toEqual(['x: type; expected number; received "\\"   \\""'])
+		expect(result.errors).toEqual(['x: type; expected number; received "   "'])
 	})
 
 	it('the string "Infinity" never binds (finite guard rejects it)', () => {
 		const result = evaluateSubjectBinding('Infinity')
 		expect(result.success).toBe(false)
-		expect(result.errors).toEqual(['x: type; expected number; received "\\"Infinity\\""'])
+		expect(result.errors).toEqual(['x: type; expected number; received "Infinity"'])
 	})
 
 	it('a boolean true never binds — never coerced to 1', () => {
 		const result = evaluateSubjectBinding(true)
 		expect(result.success).toBe(false)
-		expect(result.errors).toEqual(['x: type; expected number; received "true"'])
+		expect(result.errors).toEqual(['x: type; expected number; received true'])
 	})
 
 	it('a bigint value never binds', () => {

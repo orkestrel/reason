@@ -1886,7 +1886,7 @@ describe('LogicalReasoner — the fault channel', () => {
 		expect(result.faults).toEqual([
 			{ reason: 'type', path: 'credit', expected: 'number', received: '"700"' },
 		])
-		expect(result.errors).toEqual(['credit: type; expected number; received "\\"700\\""'])
+		expect(result.errors).toEqual(['credit: type; expected number; received "700"'])
 	})
 
 	it('names the kind the expected value needs', () => {

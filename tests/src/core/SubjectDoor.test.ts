@@ -64,7 +64,7 @@ describe('SubjectDoor — refusals, in order', () => {
 		expect(admission.subject).toBeUndefined()
 		expect(admission.faults).toEqual([{ reason: 'variant', path: [], variants: 2 }])
 		expect(admission.errors).toEqual([
-			': variant; the value matches none of the 2 declared forms; send it exactly as the schema declares',
+			'value: variant; the value matches none of the 2 declared forms; send it exactly as the schema declares',
 		])
 	})
 

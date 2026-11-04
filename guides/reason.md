@@ -966,7 +966,7 @@ repaired.success // true
 repaired.repairs // [{ reason: 'type', path: ['age'], expected: 'number', received: '"30"' }]
 
 reasoner.reason({ age: 30, agee: 1 }, definition).errors // ['agee: extra; this key is not declared, remove it']
-reasoner.reason({ age: '30.0' }, definition).errors // ["age: type; expected number; received \"\\\"30.0\\\"\""]
+reasoner.reason({ age: '30.0' }, definition).errors // ['age: type; expected number; received "30.0"']
 ```
 
 A subject with accessors has to read the same every time, because `explain`, `audit`, and `parse` each read it: a getter answering `30` and then `'30.0'` is admitted as `{ age: 30 }` with no repair recorded. Hand the door plain data. The same goes for a definition: `validate` runs once per definition by identity, so one edited in place after its first run is not validated again. Build a new one instead.

@@ -721,7 +721,7 @@ describe('QuantitativeReasoner — a field source reads a finite number and noth
 			reasoner.reason({ value: Number.NaN }, createFieldDefinition()),
 		)
 		expect(result.success).toBe(false)
-		expect(result.errors).toEqual(['value: type; expected number; received "NaN"'])
+		expect(result.errors).toEqual(['value: type; expected number; received NaN'])
 		expect(result.trace).toContain('Factor "f1": could not resolve source')
 	})
 })
