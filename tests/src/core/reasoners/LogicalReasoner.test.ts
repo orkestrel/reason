@@ -1282,7 +1282,7 @@ describe.each(['forward', 'backward'] as const)(
 			expect(result.conclusion).toBe('unread')
 			expect(result.success).toBe(false)
 			expect(result.count).toBe(0)
-			expect(result.errors).toEqual(['Field "credit" is missing'])
+			expect(result.errors).toEqual(['credit: missing; expected number'])
 			expect(result.faults.map((fault) => fault.path)).toEqual(['credit'])
 		})
 
@@ -1291,7 +1291,7 @@ describe.each(['forward', 'backward'] as const)(
 			const result = reasonRules({}, rules, strategy)
 			expect(result.conclusion).toBe('unread')
 			expect(result.success).toBe(false)
-			expect(result.errors).toEqual(['Field "credit" is missing'])
+			expect(result.errors).toEqual(['credit: missing; expected number'])
 			expect(result.faults.map((fault) => fault.path)).toEqual(['credit'])
 		})
 
@@ -1308,7 +1308,7 @@ describe.each(['forward', 'backward'] as const)(
 				createRule('b', [credit], createAtom('y', 'equals', true)),
 			]
 			const result = reasonRules({}, rules, strategy)
-			expect(result.errors).toEqual(['Field "credit" is missing'])
+			expect(result.errors).toEqual(['credit: missing; expected number'])
 			expect(result.faults.map((fault) => fault.path)).toEqual(['credit'])
 		})
 
@@ -1319,7 +1319,7 @@ describe.each(['forward', 'backward'] as const)(
 			]
 			const result = reasonRules({}, rules, strategy)
 			expect(result.conclusion).toBe('unread')
-			expect(result.errors).toEqual(['Field "age" is missing'])
+			expect(result.errors).toEqual(['age: missing; expected number'])
 			expect(result.faults.map((fault) => fault.path)).toEqual(['age'])
 		})
 
@@ -1392,7 +1392,7 @@ describe.each(['forward', 'backward'] as const)(
 			]
 			const result = reasonRules({}, rules, strategy)
 			expect(result.conclusion).toBe('unread')
-			expect(result.errors).toEqual(['Field "x" is missing'])
+			expect(result.errors).toEqual(['x: missing; expected number'])
 			expect(result.faults.map((fault) => fault.path)).toEqual(['x'])
 		})
 
@@ -1411,7 +1411,7 @@ describe.each(['forward', 'backward'] as const)(
 			]
 			const result = reasonRules({}, rules, strategy)
 			expect(result.conclusion).toBe('unread')
-			expect(result.errors).toEqual(['Field "x" is missing'])
+			expect(result.errors).toEqual(['x: missing; expected number'])
 			expect(result.faults.map((fault) => fault.path)).toEqual(['x'])
 		})
 
@@ -1741,7 +1741,7 @@ describe.each(['forward', 'backward'] as const)(
 				'unread',
 			])
 			expect(result.count).toBe(0)
-			expect(result.errors).toEqual(['Field "x" is missing'])
+			expect(result.errors).toEqual(['x: missing; expected number'])
 		})
 	},
 )
@@ -1759,7 +1759,7 @@ describe.each(['forward', 'backward'] as const)(
 			const result = reasonRules({ x: 0 }, rules, strategy)
 			expect(result.rules.map((rule) => rule.state)).toEqual(['unmet', 'unread', 'unread'])
 			expect(result.count).toBe(0)
-			expect(result.errors).toEqual(['Field "y" is missing'])
+			expect(result.errors).toEqual(['y: missing; expected number'])
 		})
 
 		it('both unmet close it, so the negation reads met', () => {
@@ -1886,7 +1886,7 @@ describe('LogicalReasoner — the fault channel', () => {
 		expect(result.faults).toEqual([
 			{ reason: 'type', path: 'credit', expected: 'number', received: '"700"' },
 		])
-		expect(result.errors).toEqual(['Field "credit" expected number, received "700"'])
+		expect(result.errors).toEqual(['credit: type; expected number; received "\\"700\\""'])
 	})
 
 	it('names the kind the expected value needs', () => {

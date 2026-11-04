@@ -10,13 +10,19 @@ import type {
 	SymbolicExpression,
 	SymbolicReasonerOptions,
 } from '../types.js'
-import { isArray, isError, isFiniteNumber, isObject, resolveField } from '@orkestrel/contract'
+import {
+	describeFaults,
+	isArray,
+	isError,
+	isFiniteNumber,
+	isObject,
+	resolveField,
+} from '@orkestrel/contract'
 import {
 	applyOperation,
 	buildRefusedResult,
 	collectVariables,
 	containsVariable,
-	describeFault,
 	describeMismatch,
 	filterUniqueFaults,
 	findDuplicates,
@@ -247,7 +253,7 @@ export class SymbolicReasoner implements ReasonerInterface {
 			}
 		}
 		const faults = filterUniqueFaults(leaves)
-		errors.push(...faults.map((fault) => describeFault(fault)))
+		errors.push(...faults.map((fault) => describeFaults([fault])))
 
 		const solutions = new SymbolicState()
 		for (const equation of definition.equations) {

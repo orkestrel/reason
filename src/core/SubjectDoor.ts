@@ -1,30 +1,24 @@
 import type { AuditFault, ContractInterface, ContractShape } from '@orkestrel/contract'
 import type { Subject, SubjectAdmission, SubjectDoorInterface } from './types.js'
 import {
+	admitValue,
+	describeFaults,
 	attempt,
 	createContract,
 	errorToMessage,
 	FAULT_LIMIT,
 	isRecord,
 	isSuccess,
-	matchesLosslessRepair,
-	resolveField,
 } from '@orkestrel/contract'
-import { describeFault, findFilledPaths } from './helpers.js'
+import { findFilledPaths } from './helpers.js'
 
 /**
  * Admits a subject through a definition's shape before any reasoner reads it.
  *
  * @remarks
- * Reads `contract`'s two domains the way they are built: `explain` for what `parse` cannot
- * answer, and `audit` for what `parse` answered by changing the value. It refuses, in order,
- * an `explain` fault; an undeclared key, because `parse` would drop it and a typo beside a
- * default would then read as an answer; an audit at `FAULT_LIMIT`, because the next fault is
- * hidden; a `variant` or `oneOf` fault, because a union repairs by declaration order; and any
- * repair `matchesLosslessRepair` says loses information. A union whose literal names one arm
- * answers through that arm, at its real paths. Accepted repairs and filled defaults are reported beside the
- * parsed subject. One contract is compiled per shape, by identity, so one door serves many
- * subjects. A malformed shape or a hostile subject refuses, and never throws.
+ * Uses `admitValue` to refuse undeclared keys, ambiguous unions, truncated audits, and lossy
+ * repairs. Reports accepted repairs and filled defaults beside the admitted subject. Compiles
+ * one contract per shape identity. A malformed shape or hostile subject refuses without throwing.
  *
  * @example
  * ```ts
@@ -35,7 +29,7 @@ import { describeFault, findFilledPaths } from './helpers.js'
  * const shape = objectShape({ age: numberShape() })
  * door.admit({ age: '30' }, shape).subject // { age: 30 }
  * door.admit({ age: '30.0' }, shape).subject // undefined — the repair would lose the text
- * door.admit({ age: 30, agee: 1 }, shape).errors // ['Field "agee" is not declared']
+ * door.admit({ age: 30, agee: 1 }, shape).errors // ['agee: extra; this key is not declared, remove it']
  * ```
  */
 export class SubjectDoor implements SubjectDoorInterface {
@@ -51,25 +45,18 @@ export class SubjectDoor implements SubjectDoorInterface {
 
 	#read(subject: Subject, shape: ContractShape): SubjectAdmission {
 		const contract = this.#compile(shape)
-		const explained = contract.explain(subject)
-		const audited = contract.audit(subject)
-		if (explained.length > 0) {
-			return this.#refuse([...explained, ...audited.filter((fault) => fault.reason === 'extra')])
+		const admitted = admitValue(contract, subject)
+		if (!isSuccess(admitted)) {
+			if (admitted.error.cause !== undefined) throw admitted.error.cause
+			return this.#refuse(
+				admitted.error.faults,
+				admitted.error.faults.length >= FAULT_LIMIT
+					? [`Subject has ${String(FAULT_LIMIT)} faults or more`]
+					: [],
+			)
 		}
-		if (audited.length >= FAULT_LIMIT) {
-			return this.#refuse(audited, [`Subject has ${String(FAULT_LIMIT)} faults or more`])
-		}
-		// A key holding undefined is absent, which `parse` will answer, so it changes nothing.
-		const repairs = audited.filter(
-			(fault) => fault.reason !== 'type' || resolveField(subject, fault.path) !== undefined,
-		)
-		// An undeclared key and a union fault are no repair, so they refuse before anything parses.
-		const unrepairable = repairs.filter((fault) => fault.reason !== 'type')
-		if (unrepairable.length > 0) return this.#refuse(unrepairable)
-		const parsed = contract.parse(subject)
+		const { value: parsed, repairs } = admitted.value
 		if (!isRecord(parsed)) return this.#refuse([], ['Shape does not describe a record'])
-		const lossy = repairs.filter((fault) => !matchesLosslessRepair(fault, subject, parsed))
-		if (lossy.length > 0) return this.#refuse(lossy)
 		return {
 			subject: parsed,
 			faults: [],
@@ -92,7 +79,7 @@ export class SubjectDoor implements SubjectDoorInterface {
 			faults,
 			repairs: [],
 			defaulted: [],
-			errors: [...faults.map((fault) => describeFault(fault)), ...errors],
+			errors: [...faults.map((fault) => describeFaults([fault])), ...errors],
 		}
 	}
 }

@@ -14,8 +14,7 @@ import {
  * Publishes a `QuantitativeDefinition` as a contract. Cross it on `is`.
  *
  * @remarks
- * `is` reads a nested `shape` as any JSON value and the guard reads it as a shape, so a definition
- * crossing a boundary goes through `isQuantitativeDefinition` as well.
+ * `is` validates the nested `shape` through the dependency's shape contract.
  */
 export const quantitativeDefinitionContract: ContractInterface<unknown> = createContract(
 	quantitativeDefinitionShape,
@@ -25,8 +24,7 @@ export const quantitativeDefinitionContract: ContractInterface<unknown> = create
  * Publishes an `InferentialDefinition` as a contract. Cross it on `is`.
  *
  * @remarks
- * `is` reads a nested `shape` as any JSON value and the guard reads it as a shape, so a definition
- * crossing a boundary goes through `isInferentialDefinition` as well.
+ * `is` validates the nested `shape` through the dependency's shape contract.
  */
 export const inferentialDefinitionContract: ContractInterface<unknown> = createContract(
 	inferentialDefinitionShape,

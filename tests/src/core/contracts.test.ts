@@ -6,7 +6,9 @@ import {
 	oneOfShape,
 	literalShape,
 	stringShape,
+	isJSONValue,
 } from '@orkestrel/contract'
+import { createHostileValues, roundTripJSON } from '@orkestrel/test'
 import {
 	createAtom,
 	createCheck,
@@ -61,10 +63,102 @@ import {
 	buildCompoundNest,
 	buildOperationNest,
 	buildSharedNest,
-	dropShapeKey,
 	sequence,
 	sparse,
+	buildReasonContractCases,
 } from '../../setup.js'
+
+describe('standing guard contract table', () => {
+	const table = buildReasonContractCases()
+
+	it('canonical positives and negative controls', () => {
+		for (const row of table.definitions) {
+			expect(row.direction).toBe('is implies guard')
+			expect(row.project).toBeUndefined()
+			expect(row.wire.is(row.positive)).toBe(true)
+			expect(row.guard(row.positive)).toBe(true)
+			expect(row.wire.is(row.negative)).toBe(false)
+			expect(row.guard(row.negative)).toBe(false)
+		}
+		for (const row of table.results) {
+			for (const pair of [row, table.union]) {
+				expect(pair.direction).toBe('producer implies wire after projection')
+				expect(pair.guard(row.positive)).toBe(true)
+				expect(pair.wire.is(pair.project(row.positive))).toBe(true)
+				expect(pair.wire.is(pair.negative)).toBe(false)
+				expect(pair.guard(pair.negative)).toBe(false)
+			}
+		}
+	})
+
+	it.each(table.definitions)(
+		'$name: generated admissions imply the structural guard without discards',
+		(row) => {
+			const admissions = sequence(100).map((seed) => {
+				const value = row.wire.generate(seededRandom(seed))
+				return { seed, admitted: row.wire.is(value), guarded: row.guard(value) }
+			})
+			expect(admissions.filter((entry) => !entry.admitted)).toEqual([])
+			expect(admissions.filter((entry) => !entry.guarded)).toEqual([])
+		},
+	)
+
+	it.each(table.definitions)(
+		'$name: absent, undefined, extras, non-finite and host values',
+		(row) => {
+			for (const value of [
+				row.positive,
+				{ ...row.positive, shape: undefined },
+				{ ...row.positive, extra: 1 },
+				...[
+					undefined,
+					NaN,
+					Infinity,
+					-Infinity,
+					new Date(0),
+					new Map(),
+					...createHostileValues(),
+				].map((shape) => ({ ...row.positive, shape })),
+			]) {
+				expect.soft(!row.wire.is(value) || row.guard(value)).toBe(true)
+			}
+		},
+	)
+
+	it.each(table.results)(
+		'$name: producer successes and refusals survive JSON projection',
+		(row) => {
+			for (const subject of [
+				{ x: 1 },
+				{},
+				{ x: undefined },
+				...[NaN, Infinity, -Infinity, new Date(0), new Map(), ...createHostileValues()].map(
+					(x) => ({
+						x,
+					}),
+				),
+			]) {
+				const outcome = row.reasoner.reason(subject, row.definition)
+				expect(outcome.success).toBe(outcome.errors.length === 0)
+				for (const pair of [row, table.union]) {
+					const projected = pair.project(outcome)
+					expect(pair.guard(outcome)).toBe(true)
+					expect(pair.wire.is(projected)).toBe(true)
+					if (!isJSONValue(projected)) throw new Error('Projection is not JSON')
+					expect(pair.wire.is(roundTripJSON(projected))).toBe(true)
+				}
+			}
+			const refusal = row.reasoner.reason(
+				{},
+				{ ...row.definition, shape: objectShape({ required: stringShape() }) },
+			)
+			expect(refusal.success).toBe(false)
+			expect(refusal.errors.length).toBeGreaterThan(0)
+			expect(row.wire.is(row.project(refusal))).toBe(true)
+			expect(table.union.wire.is(table.union.project(refusal))).toBe(true)
+		},
+	)
+})
 
 // The published contracts, held in lockstep with the guards that stay the authority: anything
 // `is` admits the guard admits, and the shape is bounded where the guard is not. Results cross
@@ -146,7 +240,7 @@ describe('definition contracts', () => {
 		}
 	})
 
-	it('names the gap: is admits a malformed nested shape, and the guard refuses it', () => {
+	it('refuses malformed nested shapes alongside the guard', () => {
 		const pairs = [
 			[definitionContract, logical],
 			[logicalDefinitionContract, logical],
@@ -156,7 +250,7 @@ describe('definition contracts', () => {
 		] as const
 		for (const [contract, definition] of pairs) {
 			for (const shape of [42, null, {}, { type: 'nonsense' }]) {
-				expect(contract.is({ ...definition, shape })).toBe(true)
+				expect(contract.is({ ...definition, shape })).toBe(false)
 				expect(isDefinition({ ...definition, shape })).toBe(false)
 			}
 		}
@@ -177,7 +271,7 @@ describe('definition contracts', () => {
 
 	it('what is admits, the guard admits', () => {
 		for (const seed of sequence(200)) {
-			const generated = dropShapeKey(definitionContract.generate(seededRandom(seed)))
+			const generated = definitionContract.generate(seededRandom(seed))
 			expect(definitionContract.is(generated)).toBe(true)
 			expect(isDefinition(generated)).toBe(true)
 		}

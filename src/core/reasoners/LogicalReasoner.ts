@@ -17,13 +17,19 @@ import type {
 	Subject,
 	SubjectAdmission,
 } from '../types.js'
-import { attempt, errorToMessage, isArray, isObject, isSuccess } from '@orkestrel/contract'
+import {
+	describeFaults,
+	attempt,
+	errorToMessage,
+	isArray,
+	isObject,
+	isSuccess,
+} from '@orkestrel/contract'
 import {
 	buildRefusedResult,
 	collectConcluders,
 	collectReachable,
 	combineStates,
-	describeFault,
 	describeMismatch,
 	equalValues,
 	extractAtoms,
@@ -608,7 +614,7 @@ export class LogicalReasoner implements ReasonerInterface {
 			})
 		})
 		const faults = filterUniqueFaults(leaves)
-		errors.push(...faults.map((fault) => describeFault(fault)))
+		errors.push(...faults.map((fault) => describeFaults([fault])))
 		return faults
 	}
 }

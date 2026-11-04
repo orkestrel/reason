@@ -72,7 +72,6 @@ import {
 	createSymbolicDefinition,
 	createVariable,
 	definitionToEnvelope,
-	describeFault,
 	describeMismatch,
 	describeTerms,
 	emptyAggregate,
@@ -2667,33 +2666,6 @@ describe('collectVariables', () => {
 			),
 		).toEqual(['x', 'y', 'x'])
 		expect(collectVariables(createOperation('abs', createVariable('x')))).toEqual(['x'])
-	})
-})
-
-describe('describeFault', () => {
-	it('names each reason', () => {
-		expect(describeFault({ reason: 'missing', path: 'age', expected: 'number' })).toBe(
-			'Field "age" is missing',
-		)
-		expect(
-			describeFault({ reason: 'type', path: ['a', 'b'], expected: 'number', received: '"x"' }),
-		).toBe('Field "a.b" expected number, received "x"')
-		expect(
-			describeFault({
-				reason: 'constraint',
-				path: 'a',
-				expected: 'number',
-				constraint: 'min',
-				received: '1',
-			}),
-		).toBe('Field "a" breaks its min constraint, received 1')
-		expect(describeFault({ reason: 'variant', path: 'a', variants: 2 })).toBe(
-			'Field "a" matches none of its 2 variants',
-		)
-		expect(describeFault({ reason: 'oneOf', path: 'a', matched: 0 })).toBe(
-			'Field "a" matches 0 of its variants, not exactly one',
-		)
-		expect(describeFault({ reason: 'extra', path: ['a'] })).toBe('Field "a" is not declared')
 	})
 })
 

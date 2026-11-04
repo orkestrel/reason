@@ -1472,38 +1472,6 @@ export function collectPolarReads(expression: Expression, negated: boolean): rea
 // === Faults
 
 /**
- * Describes a fault as one `errors` entry.
- *
- * @param fault - The fault
- * @returns The message
- *
- * @example
- * ```ts
- * import { describeFault } from '@src/core'
- *
- * describeFault({ reason: 'missing', path: 'age', expected: 'number' }) // 'Field "age" is missing'
- * describeFault({ reason: 'extra', path: ['agee'] })                    // 'Field "agee" is not declared'
- * ```
- */
-export function describeFault(fault: AuditFault): string {
-	const field = formatField(fault.path)
-	switch (fault.reason) {
-		case 'missing':
-			return `Field "${field}" is missing`
-		case 'type':
-			return `Field "${field}" expected ${fault.expected}, received ${fault.received}`
-		case 'constraint':
-			return `Field "${field}" breaks its ${fault.constraint} constraint, received ${fault.received}`
-		case 'variant':
-			return `Field "${field}" matches none of its ${String(fault.variants)} variants`
-		case 'oneOf':
-			return `Field "${field}" matches ${String(fault.matched)} of its variants, not exactly one`
-		case 'extra':
-			return `Field "${field}" is not declared`
-	}
-}
-
-/**
  * Builds the fault for a field the engine could not read.
  *
  * @param path - The field

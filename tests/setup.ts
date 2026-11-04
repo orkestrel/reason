@@ -85,6 +85,129 @@ import { afterEach, vi } from 'vitest'
 import type { createRecorder } from '@orkestrel/test'
 import { createRecorders, requireValue } from '@orkestrel/test'
 import { Collection } from '../src/core/builders/managers/Collection.js'
+import {
+	createDefinitionContract,
+	createLogicalDefinitionContract,
+	createSymbolicDefinitionContract,
+	inferentialDefinitionContract,
+	quantitativeDefinitionContract,
+	resultContract,
+	quantitativeResultContract,
+	logicalResultContract,
+	symbolicResultContract,
+	inferentialResultContract,
+	isDefinition,
+	isQuantitativeDefinition,
+	isLogicalDefinition,
+	isSymbolicDefinition,
+	isInferentialDefinition,
+	isReasonResult,
+	isQuantitativeResult,
+	isLogicalResult,
+	isSymbolicResult,
+	isInferentialResult,
+	projectResult,
+} from '@src/core'
+
+/** Builds the package's guard/contract table using real producer outcomes. */
+export function buildReasonContractCases() {
+	const quantitative = createQuantitativeDefinition('score', 'Score', [
+		createFactorGroup('sum', 'sum', [createFieldFactor('field', 'x')]),
+	])
+	const logical = createLogicalDefinition('rule', 'Rule', [
+		createRule('above', [createAtom('x', 'above', 0)], createAtom('ok', 'equals', true)),
+	])
+	const symbolic = createSymbolicDefinition('solve', 'Solve', [
+		createEquation('equation', createVariable('y'), createConstant(1), 'y'),
+	])
+	const inferential = createInferentialDefinition(
+		'infer',
+		'Infer',
+		[createFact('fact', 'p', ['a'])],
+		[],
+	)
+	const definitions = [
+		{
+			name: 'definition',
+			wire: createDefinitionContract(),
+			guard: isDefinition,
+			positive: logical,
+		},
+		{
+			name: 'quantitative definition',
+			wire: quantitativeDefinitionContract,
+			guard: isQuantitativeDefinition,
+			positive: quantitative,
+		},
+		{
+			name: 'logical definition',
+			wire: createLogicalDefinitionContract(),
+			guard: isLogicalDefinition,
+			positive: logical,
+		},
+		{
+			name: 'symbolic definition',
+			wire: createSymbolicDefinitionContract(),
+			guard: isSymbolicDefinition,
+			positive: symbolic,
+		},
+		{
+			name: 'inferential definition',
+			wire: inferentialDefinitionContract,
+			guard: isInferentialDefinition,
+			positive: inferential,
+		},
+	].map((row) => ({ ...row, direction: 'is implies guard', project: undefined, negative: {} }))
+	const producers = [
+		{
+			name: 'quantitative result',
+			wire: quantitativeResultContract,
+			guard: isQuantitativeResult,
+			reasoner: createQuantitativeReasoner(),
+			definition: quantitative,
+		},
+		{
+			name: 'logical result',
+			wire: logicalResultContract,
+			guard: isLogicalResult,
+			reasoner: createLogicalReasoner(),
+			definition: logical,
+		},
+		{
+			name: 'symbolic result',
+			wire: symbolicResultContract,
+			guard: isSymbolicResult,
+			reasoner: createSymbolicReasoner(),
+			definition: symbolic,
+		},
+		{
+			name: 'inferential result',
+			wire: inferentialResultContract,
+			guard: isInferentialResult,
+			reasoner: createInferentialReasoner(),
+			definition: inferential,
+		},
+	]
+	const results = producers.map((row) => ({
+		...row,
+		direction: 'producer implies wire after projection',
+		project: projectResult,
+		positive: row.reasoner.reason({ x: 1 }, row.definition),
+		negative: {},
+	}))
+	return {
+		definitions,
+		results,
+		union: {
+			name: 'result',
+			wire: resultContract,
+			guard: isReasonResult,
+			direction: 'producer implies wire after projection',
+			project: projectResult,
+			negative: {},
+		},
+	}
+}
 
 // Base test setup — environment-agnostic helpers loaded first by every
 // Vitest project (`setupFiles[0]`). Keep this file free of `node:*` and of
@@ -755,14 +878,6 @@ export function buildCountedNest(
 			return Reflect.ownKeys(target)
 		},
 	})
-}
-
-// A definition's `shape` is any JSON value to its published shape and a real one to its guard,
-// so a generated definition drops it before the guard reads it.
-export function dropShapeKey(value: unknown): unknown {
-	if (!isRecord(value)) return value
-	const { shape: _shape, ...rest } = value
-	return rest
 }
 
 export function createShapedDefinition(premise: Expression, shape: ContractShape) {

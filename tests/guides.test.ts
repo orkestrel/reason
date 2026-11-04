@@ -320,7 +320,7 @@ await new GuideCommand({
 			const result = expectLogical(reason.reason({}, definition))
 			expect(result.conclusion).toBe('unread')
 			expect(result.success).toBe(false)
-			expect(result.errors).toEqual(['Field "credit" is missing'])
+			expect(result.errors).toEqual(['credit: missing; expected number'])
 			expect(result.faults).toEqual([{ reason: 'missing', path: 'credit', expected: 'number' }])
 			reason.destroy()
 		})
@@ -340,10 +340,10 @@ await new GuideCommand({
 				{ reason: 'type', path: ['age'], expected: 'number', received: '"30"' },
 			])
 			expect(reasoner.reason({ age: 30, agee: 1 }, definition).errors).toEqual([
-				'Field "agee" is not declared',
+				'agee: extra; this key is not declared, remove it',
 			])
 			expect(reasoner.reason({ age: '30.0' }, definition).errors).toEqual([
-				'Field "age" expected number, received "30.0"',
+				'age: type; expected number; received "\\"30.0\\""',
 			])
 		})
 
@@ -351,7 +351,7 @@ await new GuideCommand({
 			const door = createSubjectDoor()
 			const shape = objectShape({ age: numberShape() })
 			expect(door.admit({ age: '30' }, shape).subject).toEqual({ age: 30 })
-			expect(door.admit({}, shape).errors).toEqual(['Field "age" is missing'])
+			expect(door.admit({}, shape).errors).toEqual(['age: missing; expected number'])
 		})
 
 		it('§ Publishing definitions and results — the contracts', () => {

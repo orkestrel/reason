@@ -179,11 +179,9 @@ export function createQuantitativeReasoner(
  *
  * @remarks
  * Cross a definition on `is`, never `parse`, which would turn `enabled: '0'` into `false` and
- * accept a padded operator. `is` sits inside `isDefinition` for all but a definition's own
- * `shape` key: `is` reads it as any JSON value and the guard reads it as a shape, so a definition
- * crossing a boundary goes through `isDefinition` as well. `validate` still reads what no shape
- * says. Building it walks the recursive expressions, so this is a function and the caller holds
- * the result.
+ * accept a padded operator. `is` implies the structural guard and validates nested shapes.
+ * `validate` still reads domain rules. Building the contract walks recursive expressions,
+ * so this is a function and the caller holds the result.
  *
  * @returns A contract over all four definition kinds
  *
@@ -203,8 +201,7 @@ export function createDefinitionContract(): ContractInterface<unknown> {
  * Creates the contract of a `LogicalDefinition`. Cross it on `is`, and hold the result.
  *
  * @remarks
- * `is` reads a nested `shape` as any JSON value and the guard reads it as a shape, so a definition
- * crossing a boundary goes through `isLogicalDefinition` as well.
+ * `is` validates nested shapes and implies the structural guard.
  *
  * @returns A contract holding expressions at `EXPRESSION_SHAPE_DEPTH`
  *
@@ -223,8 +220,7 @@ export function createLogicalDefinitionContract(): ContractInterface<unknown> {
  * Creates the contract of a `SymbolicDefinition`. Cross it on `is`, and hold the result.
  *
  * @remarks
- * `is` reads a nested `shape` as any JSON value and the guard reads it as a shape, so a definition
- * crossing a boundary goes through `isSymbolicDefinition` as well.
+ * `is` validates nested shapes and implies the structural guard.
  *
  * @returns A contract holding expressions at `SYMBOLIC_SHAPE_DEPTH`
  *

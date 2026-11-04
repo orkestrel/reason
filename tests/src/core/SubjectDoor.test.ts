@@ -63,14 +63,28 @@ describe('SubjectDoor — refusals, in order', () => {
 		])
 		expect(admission.subject).toBeUndefined()
 		expect(admission.faults).toEqual([{ reason: 'variant', path: [], variants: 2 }])
-		expect(admission.errors).toEqual(['Field "" matches none of its 2 variants'])
+		expect(admission.errors).toEqual([
+			': variant; the value matches none of the 2 declared forms; send it exactly as the schema declares',
+		])
 	})
 
 	it('an absent required key refuses, naming it', () => {
 		const admission = door.admit({}, age)
 		expect(admission.subject).toBeUndefined()
 		expect(admission.faults).toEqual([{ reason: 'missing', path: ['age'], expected: 'number' }])
-		expect(admission.errors).toEqual(['Field "age" is missing'])
+		expect(admission.errors).toEqual(['age: missing; expected number'])
+	})
+
+	it('an own undefined required key refuses without repairs', () => {
+		const admission = door.admit({ age: undefined }, age)
+		expect(admission.subject).toBeUndefined()
+		expect(admission.faults).toContainEqual({
+			reason: 'missing',
+			path: ['age'],
+			expected: 'number',
+		})
+		expect(admission.repairs).toEqual([])
+		expect(admission.errors).toContain('age: missing; expected number')
 	})
 
 	it('a value parse cannot answer refuses', () => {
@@ -85,7 +99,7 @@ describe('SubjectDoor — refusals, in order', () => {
 		const admission = door.admit({ age: 30, agee: 1 }, age)
 		expect(admission.subject).toBeUndefined()
 		expect(admission.faults).toEqual([{ reason: 'extra', path: ['agee'] }])
-		expect(admission.errors).toEqual(['Field "agee" is not declared'])
+		expect(admission.errors).toEqual(['agee: extra; this key is not declared, remove it'])
 	})
 
 	it('a typo reports the key it left missing and the key it brought', () => {
@@ -360,7 +374,7 @@ describe('SubjectDoor — total', () => {
 })
 
 describe('the door comes first in every reasoner', () => {
-	const refused = ['Field "x" is missing']
+	const refused = ['x: missing; expected number']
 	const shape = objectShape({ x: numberShape() })
 
 	it('logical', () => {

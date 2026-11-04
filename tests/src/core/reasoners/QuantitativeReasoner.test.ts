@@ -249,7 +249,7 @@ describe('QuantitativeReasoner — reason (core pipeline)', () => {
 		const result = expectQuantitative(reasoner.reason({}, definition))
 		expect(result.value).toBe(0)
 		expect(result.success).toBe(false)
-		expect(result.errors).toEqual(['Field "missing" is missing'])
+		expect(result.errors).toEqual(['missing: missing; expected number'])
 		expect(result.faults.map((fault) => fault.path)).toEqual(['missing'])
 		expect(reasoner.validate(definition).errors).toEqual([
 			'Factor "f1": a "field" source cannot use a fallback',
@@ -470,7 +470,7 @@ describe('QuantitativeReasoner — strict groups & required factors', () => {
 		])
 		const result = expectQuantitative(reasoner.reason({}, definition))
 		expect(result.success).toBe(false)
-		expect(result.errors).toEqual(['Field "missing" is missing'])
+		expect(result.errors).toEqual(['missing: missing; expected number'])
 		expect(result.trace).toContain('Factor "f1": could not resolve source')
 	})
 
@@ -721,7 +721,7 @@ describe('QuantitativeReasoner — a field source reads a finite number and noth
 			reasoner.reason({ value: Number.NaN }, createFieldDefinition()),
 		)
 		expect(result.success).toBe(false)
-		expect(result.errors).toEqual(['Field "value" expected number, received NaN'])
+		expect(result.errors).toEqual(['value: type; expected number; received "NaN"'])
 		expect(result.trace).toContain('Factor "f1": could not resolve source')
 	})
 })

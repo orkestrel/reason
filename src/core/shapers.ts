@@ -2,9 +2,8 @@ import type { ContractShape } from '@orkestrel/contract'
 import {
 	arrayShape,
 	booleanShape,
-	FAULT_CONSTRAINTS,
-	FAULT_KINDS,
-	integerShape,
+	auditFaultShape,
+	shapeShape,
 	jsonShape,
 	literalShape,
 	nullableShape,
@@ -110,7 +109,7 @@ export const factorGroupShape: ContractShape = objectShape({
  * Describes a `QuantitativeDefinition`.
  *
  * @remarks
- * `shape` is any JSON value here. A `ContractShape` is recursive, so `validate` reads it.
+ * `shape` admits a valid nested `ContractShape`.
  */
 export const quantitativeDefinitionShape: ContractShape = objectShape({
 	reasoning: literalShape(['quantitative']),
@@ -122,7 +121,7 @@ export const quantitativeDefinitionShape: ContractShape = objectShape({
 	base: optionalShape(numberShape()),
 	bounds: optionalShape(boundsShape),
 	precision: optionalShape(numberShape()),
-	shape: optionalShape(jsonShape()),
+	shape: optionalShape(shapeShape()),
 })
 
 /**
@@ -190,7 +189,7 @@ export function createRuleShape(): ContractShape {
  * Creates the shape of a `LogicalDefinition`.
  *
  * @remarks
- * `shape` is any JSON value here. A `ContractShape` is recursive, so `validate` reads it.
+ * `shape` admits a valid nested `ContractShape`.
  *
  * @returns A shape holding rules at `EXPRESSION_SHAPE_DEPTH`
  *
@@ -211,7 +210,7 @@ export function createLogicalDefinitionShape(): ContractShape {
 		rules: arrayShape(createRuleShape()),
 		strategy: literalShape(CHAIN_STRATEGIES),
 		depth: optionalShape(numberShape()),
-		shape: optionalShape(jsonShape()),
+		shape: optionalShape(shapeShape()),
 	})
 }
 
@@ -281,7 +280,7 @@ export function createEquationShape(): ContractShape {
  * Creates the shape of a `SymbolicDefinition`.
  *
  * @remarks
- * `shape` is any JSON value here. A `ContractShape` is recursive, so `validate` reads it.
+ * `shape` admits a valid nested `ContractShape`.
  *
  * @returns A shape holding equations at `SYMBOLIC_SHAPE_DEPTH`
  *
@@ -302,7 +301,7 @@ export function createSymbolicDefinitionShape(): ContractShape {
 		equations: arrayShape(createEquationShape()),
 		variables: recordShape(numberShape()),
 		precision: optionalShape(numberShape()),
-		shape: optionalShape(jsonShape()),
+		shape: optionalShape(shapeShape()),
 	})
 }
 
@@ -329,7 +328,7 @@ export const inferenceShape: ContractShape = objectShape({
  * Describes an `InferentialDefinition`.
  *
  * @remarks
- * `shape` is any JSON value here. A `ContractShape` is recursive, so `validate` reads it.
+ * `shape` admits a valid nested `ContractShape`.
  */
 export const inferentialDefinitionShape: ContractShape = objectShape({
 	reasoning: literalShape(['inferential']),
@@ -340,7 +339,7 @@ export const inferentialDefinitionShape: ContractShape = objectShape({
 	facts: arrayShape(factShape),
 	strategy: literalShape(CHAIN_STRATEGIES),
 	depth: optionalShape(numberShape()),
-	shape: optionalShape(jsonShape()),
+	shape: optionalShape(shapeShape()),
 })
 
 /**
@@ -364,54 +363,6 @@ export function createDefinitionShape(): ContractShape {
 		inferentialDefinitionShape,
 	)
 }
-
-/** Describes an `AuditFault` as JSON carries it, agreeing with `isAuditFault` for JSON values. */
-export const faultShape: ContractShape = unionShape(
-	objectShape({
-		reason: literalShape(['type']),
-		path: fieldPathShape,
-		expected: literalShape(FAULT_KINDS),
-		received: stringShape(),
-	}),
-	objectShape({
-		reason: literalShape(['missing']),
-		path: fieldPathShape,
-		expected: literalShape(FAULT_KINDS),
-	}),
-	objectShape({
-		reason: literalShape(['constraint']),
-		path: fieldPathShape,
-		expected: literalShape(FAULT_KINDS),
-		constraint: literalShape(FAULT_CONSTRAINTS),
-		limit: optionalShape(unionShape(numberShape(), stringShape())),
-		received: stringShape(),
-	}),
-	objectShape({
-		reason: literalShape(['variant']),
-		path: fieldPathShape,
-		variants: integerShape({ min: 0 }),
-	}),
-	objectShape({
-		reason: literalShape(['variant']),
-		path: fieldPathShape,
-		variants: integerShape({ min: 0 }),
-		key: stringShape(),
-		expected: arrayShape(unionShape(stringShape(), numberShape(), booleanShape())),
-	}),
-	objectShape({
-		reason: literalShape(['oneOf']),
-		path: fieldPathShape,
-		matched: integerShape({ min: 0 }),
-	}),
-	objectShape({
-		reason: literalShape(['oneOf']),
-		path: fieldPathShape,
-		matched: integerShape({ min: 0 }),
-		key: stringShape(),
-		expected: arrayShape(unionShape(stringShape(), numberShape(), booleanShape())),
-	}),
-	objectShape({ reason: literalShape(['extra']), path: fieldPathShape }),
-)
 
 /** Describes a `CheckResult` in its JSON projection. */
 export const checkResultShape: ContractShape = objectShape({
@@ -455,8 +406,8 @@ export const quantitativeResultShape: ContractShape = objectShape({
 	success: booleanShape(),
 	trace: arrayShape(stringShape()),
 	errors: arrayShape(stringShape()),
-	faults: arrayShape(faultShape),
-	repairs: arrayShape(faultShape),
+	faults: arrayShape(auditFaultShape()),
+	repairs: arrayShape(auditFaultShape()),
 	defaulted: arrayShape(fieldPathShape),
 })
 
@@ -469,8 +420,8 @@ export const logicalResultShape: ContractShape = objectShape({
 	success: booleanShape(),
 	trace: arrayShape(stringShape()),
 	errors: arrayShape(stringShape()),
-	faults: arrayShape(faultShape),
-	repairs: arrayShape(faultShape),
+	faults: arrayShape(auditFaultShape()),
+	repairs: arrayShape(auditFaultShape()),
 	defaulted: arrayShape(fieldPathShape),
 })
 
@@ -481,8 +432,8 @@ export const symbolicResultShape: ContractShape = objectShape({
 	success: booleanShape(),
 	trace: arrayShape(stringShape()),
 	errors: arrayShape(stringShape()),
-	faults: arrayShape(faultShape),
-	repairs: arrayShape(faultShape),
+	faults: arrayShape(auditFaultShape()),
+	repairs: arrayShape(auditFaultShape()),
 	defaulted: arrayShape(fieldPathShape),
 })
 
@@ -500,8 +451,8 @@ export const inferentialResultShape: ContractShape = objectShape({
 	success: booleanShape(),
 	trace: arrayShape(stringShape()),
 	errors: arrayShape(stringShape()),
-	faults: arrayShape(faultShape),
-	repairs: arrayShape(faultShape),
+	faults: arrayShape(auditFaultShape()),
+	repairs: arrayShape(auditFaultShape()),
 	defaulted: arrayShape(fieldPathShape),
 })
 

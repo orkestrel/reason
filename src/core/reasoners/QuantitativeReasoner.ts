@@ -15,12 +15,18 @@ import type {
 	Subject,
 	TransformerInterface,
 } from '../types.js'
-import { isArray, isFiniteNumber, isObject, preview, resolveField } from '@orkestrel/contract'
+import {
+	describeFaults,
+	isArray,
+	isFiniteNumber,
+	isObject,
+	preview,
+	resolveField,
+} from '@orkestrel/contract'
 import {
 	buildRefusedResult,
 	clamp,
 	combineStates,
-	describeFault,
 	describeMismatch,
 	filterUniqueFaults,
 	findDuplicates,
@@ -203,7 +209,7 @@ export class QuantitativeReasoner implements ReasonerInterface {
 			return [this.#evaluateGroup(group, admitted, trace, errors, leaves)]
 		})
 		const faults = filterUniqueFaults(leaves)
-		errors.push(...faults.map((fault) => describeFault(fault)))
+		errors.push(...faults.map((fault) => describeFaults([fault])))
 
 		const groupValues = groupResults.filter((group) => group.applied).map((group) => group.value)
 

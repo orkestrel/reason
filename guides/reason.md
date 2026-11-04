@@ -170,7 +170,6 @@ Every value factory returns a fresh object and omits absent optional keys entire
 | `valueToKind`              | function | `(value: unknown) => FaultKind`                                                                                           | Names the fault kind of a JSON value.                                                                                                                   |
 | `readExpectedKind`         | function | `(check: Check) => FaultKind`                                                                                             | Names what a check needed from its field, for the fault an unread read becomes.                                                                         |
 | `valueToFault`             | function | `(path: FieldPath, expected: FaultKind, actual: unknown) => AuditFault`                                                   | Builds the fault for a field the engine could not read.                                                                                                 |
-| `describeFault`            | function | `(fault: AuditFault) => string`                                                                                           | Describes a fault as one `errors` entry.                                                                                                                |
 | `collectPolarReads`        | function | `(expression: Expression, negated: boolean) => readonly PolarRead[]`                                                      | Collects every key an expression reads with the polarity of that read.                                                                                  |
 | `collectReachable`         | function | `(start: string, edges: ReadonlyArray<readonly [string, string]>) => ReadonlySet<string>`                                 | Collects every node a list of directed edges reaches from a start, the start included.                                                                  |
 | `findNegativeCycles`       | function | `(rules: readonly Rule[]) => readonly string[]`                                                                           | Finds the conclusion keys on a cycle through negation, which no order of evaluation can settle.                                                         |
@@ -335,7 +334,6 @@ The package's definitions and results as `ContractShape` values, compiled below 
 | `groupResultShape`              | const    | `ContractShape`                     | Describes a `GroupResult` in its JSON projection, where a non-finite number is `null`.        |
 | `factorResultShape`             | const    | `ContractShape`                     | Describes a `FactorResult` in its JSON projection, where a non-finite number is `null`.       |
 | `checkResultShape`              | const    | `ContractShape`                     | Describes a `CheckResult` in its JSON projection.                                             |
-| `faultShape`                    | const    | `ContractShape`                     | Describes an `AuditFault` as JSON carries it, agreeing with `isAuditFault` for JSON values.   |
 | `inferentialDefinitionShape`    | const    | `ContractShape`                     | Describes an `InferentialDefinition`.                                                         |
 | `inferenceShape`                | const    | `ContractShape`                     | Describes an `Inference` — premise patterns and a conclusion pattern.                         |
 | `factShape`                     | const    | `ContractShape`                     | Describes a `Fact` — a predicate over positional terms.                                       |
@@ -904,7 +902,7 @@ const result = reason.reason({}, definition)
 if (result.reasoning === 'logical') {
 	result.conclusion // 'unread' — no credit is not low credit
 	result.success // false
-	result.errors // ['Field "credit" is missing']
+	result.errors // ['credit: missing; expected number']
 	result.faults // [{ reason: 'missing', path: 'credit', expected: 'number' }]
 }
 ```
@@ -967,13 +965,13 @@ const repaired = reasoner.reason({ age: '30' }, definition)
 repaired.success // true
 repaired.repairs // [{ reason: 'type', path: ['age'], expected: 'number', received: '"30"' }]
 
-reasoner.reason({ age: 30, agee: 1 }, definition).errors // ['Field "agee" is not declared']
-reasoner.reason({ age: '30.0' }, definition).errors // ['Field "age" expected number, received "30.0"']
+reasoner.reason({ age: 30, agee: 1 }, definition).errors // ['agee: extra; this key is not declared, remove it']
+reasoner.reason({ age: '30.0' }, definition).errors // ["age: type; expected number; received \"\\\"30.0\\\"\""]
 ```
 
 A subject with accessors has to read the same every time, because `explain`, `audit`, and `parse` each read it: a getter answering `30` and then `'30.0'` is admitted as `{ age: 30 }` with no repair recorded. Hand the door plain data. The same goes for a definition: `validate` runs once per definition by identity, so one edited in place after its first run is not validated again. Build a new one instead.
 
-The door refuses, in this order: a value `parse` cannot answer; an undeclared key, because `parse` would drop it and a typo beside a default would then read as an answer; an audit at `FAULT_LIMIT`, because the next fault is hidden; a `variant` or `oneOf` fault, because a union repairs by declaration order; and any repair that loses information. An object declared open is the only way to admit extras.
+The door uses the dependency's admission boundary to refuse undeclared keys, ambiguous unions, truncated audits, and lossy repairs. An object declared open admits extras.
 
 A door fault's `path` is `contract`'s array of keys and an engine fault's is the path the rule wrote, so compare them with `formatField`. `parse` gives the subject the reasoner reads. What it coerced is reported in `repairs`, and only a lossless repair is accepted: a number from a string whose trim is the number's own text, so `'30'` and `' 30 '` pass and `'30.0'`, `'007'`, `'0x10'`, and `'1e3'` refuse; a boolean from `'true'` or `'false'` only; a literal from its trimmed text; a string from a finite number. A field declared with `optionalShape(inner, { default })` carries that default in its schema, and `parse` fills it when the key is absent or `undefined`. `defaulted` lists what `parse` filled, read from the difference between what arrived and what came out.
 
@@ -990,7 +988,7 @@ import { createSubjectDoor } from '@orkestrel/reason'
 const door = createSubjectDoor()
 const shape = objectShape({ age: numberShape() })
 door.admit({ age: '30' }, shape).subject // { age: 30 }
-door.admit({}, shape).errors // ['Field "age" is missing']
+door.admit({}, shape).errors // ['age: missing; expected number']
 ```
 
 ### Publishing definitions and results
@@ -1015,7 +1013,7 @@ const result = createLogicalReasoner().reason({}, definition)
 resultContract.is(projectResult(result)) // true
 ```
 
-A definition crosses on `is`, never `parse`, because `parse` would turn `enabled: '0'` into `false` and accept a padded operator. A shape refuses cycles, so `Expression` and `SymbolicExpression` are depth-bounded expansions (`EXPRESSION_SHAPE_DEPTH`, `SYMBOLIC_SHAPE_DEPTH`) and the recursive guards stay the authority: what `is` admits the guard admits, apart from a definition's own `shape`. `is` reads a nested `shape` as any JSON value and the guard reads it as a shape, so `shape: 42` passes `is` and `isDefinition` refuses it: a definition crossing a boundary goes through the guard as well. A deeper authored expression still runs in memory, because the guard admits it, and cannot cross on `is`. Building those expansions is what costs, so the recursive definition contracts are functions (`createDefinitionContract`, `createLogicalDefinitionContract`, `createSymbolicDefinitionContract`) a caller holds the result of, and an import pays nothing for them. Arity and the rest of what `validate` reads are left to `validate`. A definition's own `shape` key is any JSON value to its published shape.
+A definition crosses on `is`, never `parse`, because `parse` would turn `enabled: '0'` into `false` and accept a padded operator. A shape refuses cycles, so `Expression` and `SymbolicExpression` are depth-bounded expansions (`EXPRESSION_SHAPE_DEPTH`, `SYMBOLIC_SHAPE_DEPTH`) and the recursive guards stay the authority: what `is` admits the guard admits, including a definition's own nested `shape`. A malformed nested shape such as `shape: 42` fails both checks. A deeper authored expression still runs in memory, because the guard admits it, and cannot cross on `is`. Building those expansions is what costs, so the recursive definition contracts are functions (`createDefinitionContract`, `createLogicalDefinitionContract`, `createSymbolicDefinitionContract`) a caller holds the result of, and an import pays nothing for them. Arity and the rest of what `validate` reads are left to `validate`. A definition's own `shape` key must satisfy the dependency's shape contract.
 
 A result crosses as `projectResult`, because the engine publishes `NaN` by design and a check's `actual` holds whatever the subject held: a non-finite number becomes `null`, and what JSON cannot hold is omitted, so is a reference back to an ancestor, anything past `PROJECTION_NODE_LIMIT` objects, and a value that throws on being read. The in-memory result and its guard stay as they are.
 
