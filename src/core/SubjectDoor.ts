@@ -1,7 +1,6 @@
 import type { AuditFault, ContractInterface, ContractShape } from '@orkestrel/contract'
 import type { Subject, SubjectAdmission, SubjectDoorInterface } from './types.js'
 import {
-	admitValue,
 	describeFaults,
 	attempt,
 	createContract,
@@ -9,6 +8,7 @@ import {
 	FAULT_LIMIT,
 	isRecord,
 	isSuccess,
+	repairValue,
 } from '@orkestrel/contract'
 import { findFilledPaths } from './helpers.js'
 
@@ -16,9 +16,10 @@ import { findFilledPaths } from './helpers.js'
  * Admits a subject through a definition's shape before any reasoner reads it.
  *
  * @remarks
- * Uses `admitValue` to refuse undeclared keys, ambiguous unions, truncated audits, and lossy
- * repairs. Reports accepted repairs and filled defaults beside the admitted subject. Compiles
- * one contract per shape identity. A malformed shape or hostile subject refuses without throwing.
+ * Uses `repairValue` to repair a lossless leaf and to refuse undeclared keys, ambiguous unions,
+ * truncated audits, and lossy repairs. Reports accepted repairs and filled defaults beside the
+ * admitted subject. Compiles one contract per shape identity. A malformed shape or untrusted
+ * subject refuses without throwing.
  *
  * @example
  * ```ts
@@ -45,7 +46,7 @@ export class SubjectDoor implements SubjectDoorInterface {
 
 	#read(subject: Subject, shape: ContractShape): SubjectAdmission {
 		const contract = this.#compile(shape)
-		const admitted = admitValue(contract, subject)
+		const admitted = repairValue(contract, subject)
 		if (!isSuccess(admitted)) {
 			if (admitted.error.cause !== undefined) throw admitted.error.cause
 			return this.#refuse(
